@@ -1,0 +1,268 @@
+; CoRIM CDDL Schema (simplified from draft-ietf-rats-corim-09)
+; This is a test schema to validate CDDL parser features
+
+; CDDL sockets (extension points)
+$$corim-map-extension = ()
+$$comid-map-extension = ()
+
+; Type choices
+$corim-id-type-choice /= tstr
+$corim-id-type-choice /= uuid-type
+
+; UUID type
+uuid-type = bstr .size 16
+
+; Non-empty generic
+non-empty<M> = (M) .within ({ + any => any })
+
+; CoRIM top level
+corim-map = {
+  & ( corim-id : 0 ) => $corim-id-type-choice,
+  & ( tags : 1 ) => [ + $concise-tag-type-choice ],
+  ? & ( dependent-rims : 2 ) => [ + corim-locator-map ],
+  ? & ( profile : 3 ) => uri,
+  ? & ( rim-validity : 4 ) => validity-map,
+  ? & ( entities : 5 ) => [ + corim-entity-map ],
+  $$corim-map-extension,
+}
+
+; Locator map
+corim-locator-map = {
+  & ( href : 0 ) => uri,
+  ? & ( thumbprint : 1 ) => digest,
+}
+
+; Validity period
+validity-map = non-empty<{
+  ? & ( not-before : 0 ) => time,
+  ? & ( not-after : 1 ) => time,
+}>
+
+; Entity map
+corim-entity-map = {
+  & ( entity-name : 0 ) => tstr,
+  ? & ( reg-id : 1 ) => uri,
+  & ( roles : 2 ) => [ + $corim-role-type-choice ],
+}
+
+$corim-role-type-choice /= & ( manifest-creator : 1 )
+$corim-role-type-choice /= & ( manifest-signer : 2 )
+
+; Tag types
+$concise-tag-type-choice /= #6.505(comid-map)
+$concise-tag-type-choice /= #6.506(coswid-map)
+
+; CoMID (Concise Module Identifier)
+comid-map = {
+  & ( comid-id : 0 ) => comid-id-type,
+  ? & ( entities : 1 ) => [ + comid-entity-map ],
+  ? & ( triples : 2 ) => triples-map,
+  $$comid-map-extension,
+}
+
+comid-id-type = tstr / uuid-type
+
+; CoMID Entity
+comid-entity-map = {
+  & ( entity-name : 0 ) => tstr,
+  ? & ( reg-id : 1 ) => uri,
+  & ( roles : 2 ) => [ + $comid-role-type-choice ],
+}
+
+$comid-role-type-choice /= & ( tag-creator : 0 )
+$comid-role-type-choice /= & ( creator : 1 )
+$comid-role-type-choice /= & ( maintainer : 2 )
+
+; Triples (reference-values, endorsed-values, etc.)
+triples-map = non-empty<{
+  ? & ( reference-values : 0 ) => [ + reference-triple-record ],
+  ? & ( endorsed-values : 1 ) => [ + endorsed-triple-record ],
+  ? & ( identity-triples : 2 ) => [ + identity-triple-record ],
+  ? & ( attest-key-triples : 3 ) => [ + attest-key-triple-record ],
+  ? & ( domain-dependency-triples : 4 ) => [ + domain-dependency-triple-record ],
+  ? & ( domain-membership-triples : 5 ) => [ + domain-membership-triple-record ],
+  ? & ( coswid-triples : 6 ) => [ + coswid-triple-record ],
+}>
+
+; Reference triple
+reference-triple-record = [
+  environment-map,
+  measurement-map,
+]
+
+; Endorsed triple  
+endorsed-triple-record = [
+  environment-map,
+  measurement-map,
+]
+
+; Identity triple
+identity-triple-record = [
+  environment-map,
+  crypto-key-type-choice,
+]
+
+; Attestion key triple
+attest-key-triple-record = [
+  environment-map,
+  verification-key-map,
+]
+
+; Domain dependency triple
+domain-dependency-triple-record = [
+  environment-map,  
+  [ + measurement-map ],
+  [ + environment-map ],
+]
+
+; Domain membership triple
+domain-membership-triple-record = [
+  environment-map,
+  [ + domain-type-choice ],
+]
+
+; CoSWID triple
+coswid-triple-record = [
+  environment-map,
+  [ + coswid-tag-id ],
+]
+
+; Environment
+environment-map = {
+  ? & ( class : 0 ) => class-map,
+  ? & ( instance : 1 ) => instance-id-type-choice,
+  ? & ( group : 2 ) => group-id-type-choice,
+}
+
+class-map = {
+  ? & ( class-id : 0 ) => class-id-type-choice,
+  ? & ( vendor : 1 ) => tstr,
+  ? & ( model : 2 ) => tstr,
+  ? & ( layer : 3 ) => uint,
+  ? & ( index : 4 ) => uint,
+}
+
+$class-id-type-choice /= tagged-uuid-type
+$class-id-type-choice /= tagged-oid-type
+$class-id-type-choice /= tagged-int
+
+$instance-id-type-choice /= tagged-uuid-type
+$instance-id-type-choice /= tagged-ueid-type
+
+$group-id-type-choice /= tagged-uuid-type
+$group-id-type-choice /= tagged-oid-type
+
+; Tagged types
+tagged-uuid-type = #6.37(uuid-type)
+tagged-oid-type = #6.111(oid-type)
+tagged-int = #6.110(int)
+tagged-ueid-type = #6.550(ueid-type)
+
+oid-type = bstr
+ueid-type = bstr
+
+; Measurement map
+measurement-map = {
+  ? & ( mkey : 0 ) => measurement-keys-map,
+  ? & ( mval : 1 ) => measurement-values-map,
+}
+
+measurement-keys-map = non-empty<{
+  ? & ( oemid : 1 ) => uint,
+  ? & ( hwid : 2 ) => uint,
+  ? & ( vendor : 3 ) => tstr,
+  ? & ( class : 4 ) => tstr,
+  ? & ( version : 5 ) => version-map,
+}>
+
+version-map = {
+  & ( version : 0 ) => tstr,
+  ? & ( version-scheme : 1 ) => $version-scheme,
+}
+
+$version-scheme /= & ( multipartnumeric : 1 )
+$version-scheme /= & ( multipartnumeric-suffix : 2 )
+$version-scheme /= & ( alphanumeric : 3 )
+$version-scheme /= & ( decimal : 4 )
+$version-scheme /= & ( semver : 16384 )
+
+measurement-values-map = {
+  ? & ( svn : 0 ) => svn-type-choice,
+  ? & ( digests : 2 ) => digests-type,
+  ? & ( flags : 3 ) => flags-map,
+  ? & ( raw-value : 4 ) => raw-value-type-choice,
+  ? & ( raw-value-mask : 5 ) => raw-value-type-choice,
+  ? & ( mac-addr : 6 ) => mac-addr-type-choice,
+  ? & ( ip-addr : 7 ) => ip-addr-type-choice,
+  ? & ( serial-number : 8 ) => tstr,
+  ? & ( ueid : 9 ) => ueid-type,
+  ? & ( uuid : 10 ) => uuid-type,
+  ? & ( name : 11 ) => tstr,
+}
+
+$svn-type-choice /= tagged-svn
+$svn-type-choice /= tagged-min-svn
+
+tagged-svn = #6.552(svn)
+tagged-min-svn = #6.553(svn)
+svn = uint
+
+; Digest
+digests-type = [ + digest ]
+digest = [ hash-alg-id: int, hash-value: bstr ]
+
+; Flags
+flags-map = {
+  ? & ( configured : 0 ) => bool,
+  ? & ( secure : 1 ) => bool,
+  ? & ( recovery : 2 ) => bool,
+  ? & ( debug : 3 ) => bool,
+  ? & ( replay-protected : 4 ) => bool,
+  ? & ( integrity-protected : 5 ) => bool,
+  ? & ( runtime-meas : 6 ) => bool,
+  ? & ( immutable : 7 ) => bool,
+  ? & ( tcb : 8 ) => bool,
+}
+
+$raw-value-type-choice /= bstr
+$raw-value-type-choice /= int
+
+$mac-addr-type-choice /= eui-48
+$mac-addr-type-choice /= eui-64
+eui-48 = bstr .size 6
+eui-64 = bstr .size 8
+
+$ip-addr-type-choice /= ip4-addr
+$ip-addr-type-choice /= ip6-addr
+ip4-addr = bstr .size 4
+ip6-addr = bstr .size 16
+
+; Crypto keys
+$crypto-key-type-choice /= tagged-pkix-base64-key-type
+$crypto-key-type-choice /= tagged-pkix-base64-cert-type
+$crypto-key-type-choice /= tagged-cose-key-type
+
+tagged-pkix-base64-key-type = #6.554(tstr)
+tagged-pkix-base64-cert-type = #6.555(tstr)
+tagged-cose-key-type = #6.556(cose-key-type)
+
+cose-key-type = any
+
+verification-key-map = {
+  & ( environment : 0 ) => environment-map,
+  & ( verification-keys : 1 ) => [ + $crypto-key-type-choice ],
+}
+
+; Domains
+$domain-type-choice /= uint
+$domain-type-choice /= bstr
+$domain-type-choice /= tstr
+
+; CoSWID
+coswid-map = any
+coswid-tag-id = tstr / uuid-type
+
+; Common types
+uri = tstr
+time = #6.1(uint)
+any = *
