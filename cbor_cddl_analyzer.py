@@ -120,6 +120,8 @@ class CDDLParser:
     def __init__(self, cddl_content: str):
         self.content = cddl_content
         self.types: Dict[str, Dict] = {}
+        self.groups: Dict[str, List] = {}  # Store group definitions
+        self.type_choices: Dict[str, List] = {}  # Store type choice alternatives
         self.registered_params: Dict[int, str] = {}  # Maps keyindex to keyname
         self.parse()
     
@@ -128,6 +130,9 @@ class CDDLParser:
         lines = self.content.split('\n')
         current_type = None
         current_fields = {}
+        in_group = False
+        current_group_name = None
+        current_group_fields = []
         
         for line in lines:
             line = line.strip()
@@ -136,16 +141,72 @@ class CDDLParser:
             if not line or line.startswith(';'):
                 continue
             
+            # Normalize whitespace for various checks
+            line_normalized = line.replace('& (', '&(').replace('&  (', '&(').replace('&   (', '&(')
+            line_normalized = line_normalized.replace(') =>', ')=>').replace(')  =>', ')=>').replace(')   =>', ')=>')
+            
             # Handle type choice additions ($name /= value)
             if '/=' in line:
-                # This is a type choice extension, we'll skip for now
-                # but log that we saw it
+                self._parse_type_choice(line)
+                continue
+            
+            # Handle group definitions (name = ( ... ))
+            # Note: Groups can span multiple lines, ending with )
+            # Must NOT confuse with IANA parameters &( ... )
+            if '=' in line and '(' in line and not line_normalized.startswith('&') and not '{' in line and not '[' in line and '/=' not in line:
+                # Check if this looks like a group (not a simple assignment)
+                # Groups have format: name = ( fields )
+                equals_pos = line.index('=')
+                paren_pos = line.index('(')
+                
+                # Make sure ( comes after =
+                if paren_pos > equals_pos:
+                    group_name = line[:equals_pos].strip()
+                    
+                    # Clear current_type and current_fields to prevent pollution
+                    current_type = None
+                    current_fields = {}
+                    
+                    if line.count('(') > line.count(')'):
+                        # Multi-line group
+                        in_group = True
+                        current_group_name = group_name
+                        current_group_fields = []
+                        # Extract any fields on this line
+                        content = line[paren_pos+1:].strip()
+                        if content and not content.startswith('&'):
+                            current_group_fields.append(content)
+                        continue
+                    elif line.count('(') == line.count(')'):
+                        # Single-line group
+                        start = paren_pos + 1
+                        end = line.rindex(')')
+                        group_content = line[start:end].strip()
+                        if group_content and not group_content.startswith('&'):
+                            self.groups[group_name] = [group_content]
+                        continue
+            
+            # Handle multi-line group content
+            if in_group:
+                if ')' in line:
+                    # End of group
+                    in_group = False
+                    # Extract content before closing paren
+                    end_paren = line.index(')')
+                    content = line[:end_paren].strip()
+                    if content:
+                        current_group_fields.append(content)
+                    if current_group_name:
+                        self.groups[current_group_name] = current_group_fields
+                    current_group_name = None
+                    current_group_fields = []
+                else:
+                    # Middle of group - add the entire line
+                    if line.strip():
+                        current_group_fields.append(line.strip())
                 continue
             
             # IANA registered parameter (e.g., "&( keyname : 0 ) => value" or "& ( keyname : 0 ) => value")
-            # Normalize whitespace first for detection
-            line_normalized = line.replace('& (', '&(').replace('&  (', '&(').replace('&   (', '&(')
-            line_normalized = line_normalized.replace(') =>', ')=>').replace(')  =>', ')=>').replace(')   =>', ')=>')
             if '&(' in line_normalized and ')' in line_normalized and '=>' in line_normalized:
                 self._parse_registered_param(line, current_fields)
                 continue
@@ -232,13 +293,45 @@ class CDDLParser:
             elif line == '}' or line == ']':
                 current_type = None
     
+    def _parse_type_choice(self, line: str):
+        """Parse type choice definition: $name /= value"""
+        try:
+            # Remove comments
+            if ';' in line:
+                line = line.split(';', 1)[0].strip()
+            
+            # Split on /=
+            parts = line.split('/=', 1)
+            if len(parts) != 2:
+                return
+            
+            choice_name = parts[0].strip()
+            choice_value = parts[1].strip()
+            
+            # Initialize choice list if needed
+            if choice_name not in self.type_choices:
+                self.type_choices[choice_name] = []
+            
+            # Add this choice to the list
+            self.type_choices[choice_name].append(choice_value)
+            
+        except (ValueError, IndexError):
+            pass  # Skip malformed lines
+    
     def _parse_registered_param(self, line: str, current_fields: Dict):
         """Parse IANA registered parameter format: &( keyname : keyindex ) => value_type
-        Handles variations with extra whitespace like & (, ) =>, etc."""
+        Handles variations with extra whitespace like & (, ) =>, etc.
+        Also handles optional prefix: ? & ( keyname : keyindex ) => value_type"""
         try:
             # Remove any comments first
             if ';' in line:
                 line = line.split(';', 1)[0].strip()
+            
+            # Check for optional prefix
+            optional = False
+            if line.strip().startswith('?'):
+                optional = True
+                line = line.strip()[1:].strip()
             
             # Normalize whitespace around special characters
             # Handle: & (, &(, & (
@@ -265,9 +358,10 @@ class CDDLParser:
                 keyname = parts[0].strip()
                 keyindex_str = parts[1].strip()
                 
-                # Handle optional fields
-                optional = '?' in value_type
-                value_type = value_type.replace('?', '').strip()
+                # Handle optional fields in value type
+                if '?' in value_type:
+                    optional = True
+                    value_type = value_type.replace('?', '').strip()
                 
                 try:
                     keyindex = int(keyindex_str)
@@ -301,6 +395,14 @@ class CDDLParser:
         if field_info:
             return field_info['name']
         return None
+    
+    def get_type_choices(self, choice_name: str) -> Optional[List[str]]:
+        """Get all type alternatives for a type choice."""
+        return self.type_choices.get(choice_name)
+    
+    def get_group(self, group_name: str) -> Optional[List[str]]:
+        """Get group definition by name."""
+        return self.groups.get(group_name)
 
 
 class CBORAnalyzer:
@@ -544,6 +646,26 @@ Examples:
                 registered = " [IANA registered]" if field_info.get('registered') else ""
                 print(f"  {key}: {field_info['name']} -> {field_info['type']}{opt}{registered}", 
                       file=sys.stderr)
+        
+        # Show groups
+        if cddl.groups:
+            print("\n" + "=" * 50, file=sys.stderr)
+            print("CDDL Groups:", file=sys.stderr)
+            print("=" * 50, file=sys.stderr)
+            for group_name, group_fields in cddl.groups.items():
+                print(f"\n{group_name}:", file=sys.stderr)
+                for field in group_fields:
+                    print(f"  {field}", file=sys.stderr)
+        
+        # Show type choices
+        if cddl.type_choices:
+            print("\n" + "=" * 50, file=sys.stderr)
+            print("Type Choices:", file=sys.stderr)
+            print("=" * 50, file=sys.stderr)
+            for choice_name, alternatives in cddl.type_choices.items():
+                print(f"\n{choice_name}:", file=sys.stderr)
+                for alt in alternatives:
+                    print(f"  /= {alt}", file=sys.stderr)
         
         # Show global registered parameters
         if cddl.registered_params:

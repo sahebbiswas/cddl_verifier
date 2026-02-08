@@ -1,0 +1,96 @@
+; CDDL Test for Groups and Type Choices
+
+; === Type Choices ===
+; Define extensible type choices using /=
+
+$id-type-choice /= tstr
+$id-type-choice /= int
+$id-type-choice /= uuid-type
+
+$role-type-choice /= & ( admin : 0 )
+$role-type-choice /= & ( user : 1 )
+$role-type-choice /= & ( guest : 2 )
+
+$status-choice /= "active"
+$status-choice /= "inactive"
+$status-choice /= "pending"
+
+; === Groups ===
+; Groups are reusable field collections
+
+; Single-line group
+coordinates = ( latitude: float, longitude: float )
+
+; Multi-line group
+entity-info = (
+  & ( name : 0 ) => tstr,
+  ? & ( email : 1 ) => tstr,
+  & ( created : 2 ) => uint,
+)
+
+; Group with multiple fields
+audit-info = (
+  created-by: tstr,
+  created-at: uint,
+  ? modified-by: tstr,
+  ? modified-at: uint,
+)
+
+; === Types Using Groups ===
+
+; Map using a group
+location-map = {
+  coordinates,
+  & ( label : 2 ) => tstr,
+}
+
+; Map using multiple groups
+user-record = {
+  entity-info,
+  audit-info,
+  & ( status : 6 ) => $status-choice,
+}
+
+; === Types Using Type Choices ===
+
+document = {
+  & ( doc-id : 0 ) => $id-type-choice,
+  & ( author : 1 ) => tstr,
+  ? & ( reviewer : 2 ) => tstr,
+}
+
+permissions = {
+  & ( resource : 0 ) => tstr,
+  & ( role : 1 ) => $role-type-choice,
+  & ( granted : 2 ) => bool,
+}
+
+; === Complex Example ===
+; Combining groups and type choices
+
+resource-group = (
+  & ( resource-id : 0 ) => $id-type-choice,
+  & ( resource-type : 1 ) => tstr,
+)
+
+access-record = {
+  resource-group,
+  & ( user-role : 2 ) => $role-type-choice,
+  & ( access-level : 3 ) => uint,
+  & ( status : 4 ) => $status-choice,
+  audit-info,
+}
+
+; === Nested Type Choices ===
+
+$outer-choice /= simple-type
+$outer-choice /= complex-type
+
+simple-type = tstr
+complex-type = {
+  & ( value : 0 ) => $id-type-choice,
+  & ( metadata : 1 ) => tstr,
+}
+
+; === Common types ===
+uuid-type = bstr .size 16
