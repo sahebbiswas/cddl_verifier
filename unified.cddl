@@ -1,0 +1,903 @@
+corim = concise-rim-type-choice
+
+
+
+concise-rim-type-choice /= tagged-unsigned-corim-map
+
+concise-rim-type-choice /= signed-corim
+
+attest-key-triple-record = [
+
+  environment: environment-map
+
+  key-list: [ + $crypto-key-type-choice ]
+
+  ? conditions: non-empty< {
+
+    ? &(mkey: 0) => $measured-element-type-choice,
+
+    ? &(authorized-by: 1) => [ + $crypto-key-type-choice ]
+
+  }>
+
+]
+
+tagged-unsigned-corim-map = #6.501(unsigned-corim-map)
+
+tagged-concise-swid-tag = #6.505(bytes .cbor coswid.concise-swid-tag)
+
+tagged-concise-mid-tag = #6.506(bytes .cbor concise-mid-tag)
+
+tagged-concise-tl-tag = #6.508(bytes .cbor concise-tl-tag)
+
+tagged-ueid-type = #6.550(ueid-type)
+
+tagged-svn = #6.552(svn)
+
+tagged-min-svn = #6.553(min-svn)
+
+tagged-pkix-base64-key-type = #6.554(tstr)
+
+tagged-pkix-base64-cert-type = #6.555(tstr)
+
+tagged-pkix-base64-cert-path-type = #6.556(tstr)
+
+tagged-key-thumbprint-type = #6.557(eatmc.digest)
+
+tagged-cose-key-type = #6.558(COSE_Key)
+
+tagged-cert-thumbprint-type = #6.559(eatmc.digest)
+
+tagged-bytes = #6.560(bytes)
+
+tagged-cert-path-thumbprint-type = #6.561(eatmc.digest)
+
+tagged-pkix-asn1der-cert-type = #6.562(bstr)
+
+tagged-masked-raw-value = #6.563([
+
+tagged-int-range = #6.564(int-range)
+
+$class-id-type-choice /= tagged-oid-type
+
+$class-id-type-choice /= tagged-uuid-type
+
+$class-id-type-choice /= tagged-bytes
+
+class-map = non-empty<{
+
+  ? &(class-id: 0) => $class-id-type-choice
+
+  ? &(vendor: 1) => tstr
+
+  ? &(model: 2) => tstr
+
+  ? &(layer: 3) => uint
+
+  ? &(index: 4) => uint
+
+}>
+
+corim-cbor-collection = {
+
+  "__cmwc_t" => "tag:{{&SELF}}:corim",
+
+  + cmw-label => [TBD1, bytes .cbor tagged-corim-map]
+
+}
+
+cmw-label = text / int
+comid-entity-map =
+
+  entity-map<$comid-role-type-choice, $$comid-entity-map-extension>
+
+$comid-role-type-choice /= &(tag-creator: 0)
+
+$comid-role-type-choice /= &(creator: 1)
+
+$comid-role-type-choice /= &(maintainer: 2)
+
+concise-mid-tag = {
+
+  ? &(language: 0) => text
+
+  &(tag-identity: 1) => tag-identity-map
+
+  ? &(entities: 2) => [ + comid-entity-map ]
+
+  ? &(linked-tags: 3) => [ + linked-tag-map ]
+
+  &(triples: 4) => triples-map
+
+  * $$concise-mid-tag-extension
+
+}
+
+$concise-tag-type-choice /= tagged-concise-swid-tag
+
+$concise-tag-type-choice /= tagged-concise-mid-tag
+
+$concise-tag-type-choice /= tagged-concise-tl-tag
+
+concise-tl-tag = {
+
+  &(tag-identity: 0) => tag-identity-map
+
+  &(tags-list: 1) => [ + tag-identity-map ],
+
+  &(tl-validity: 2) => validity-map
+
+}
+
+conditional-endorsement-series-triple-record = [
+
+  condition: [
+
+    environment: environment-map
+
+    claims-list: [ * measurement-map ]
+
+    ? authorized-by: [ + $crypto-key-type-choice ]
+
+  ]
+
+  series: [ + conditional-series-record ]
+
+]
+
+conditional-endorsement-triple-record = [
+
+  conditions: [ + stateful-environment-record ]
+
+  endorsements: [ + endorsed-triple-record ]
+
+]
+
+conditional-series-record = [
+
+  selection: [ + measurement-map]
+
+  addition: [ + measurement-map ]
+
+]
+
+corim-entity-map =
+
+  entity-map<$corim-role-type-choice, $$corim-entity-map-extension>
+
+$corim-id-type-choice /= tstr
+
+$corim-id-type-choice /= uuid-type
+
+;# import measured-component as eatmc
+
+
+
+corim-locator-map = {
+
+  &(href: 0) => uri / [ + uri ]
+
+  ? &(thumbprint: 1) => eatmc.digest / [ eatmc.digest ]
+
+}
+
+corim-map = {
+
+  &(id: 0) => $corim-id-type-choice
+
+  &(tags: 1) => [ + $concise-tag-type-choice ]
+
+  ? &(dependent-rims: 2) => [ + corim-locator-map ]
+
+  ? &(profile: 3) => $profile-type-choice
+
+  ? &(rim-validity: 4) => validity-map
+
+  ? &(entities: 5) => [ + corim-entity-map ]
+
+  * $$corim-map-extension
+
+}
+
+unsigned-corim-map = corim-map
+
+corim-meta-map = {
+
+  &(signer: 0) => corim-signer-map
+
+  ? &(signature-validity: 1) => validity-map
+
+}
+
+$corim-role-type-choice /= &(manifest-creator: 1)
+
+$corim-role-type-choice /= &(manifest-signer: 2)
+corim-signer-map = {
+
+  &(signer-name: 0) => $entity-name-type-choice
+
+  ? &(signer-uri: 1) => uri
+
+  * $$corim-signer-map-extension
+
+}
+
+COSE_Key = {
+
+    1 => tstr / int
+
+    ? 2 => bstr 
+
+    ? 3 => tstr / int 
+
+    ? 4 => [+ (tstr / int) ]
+
+    ? 5 => bstr
+
+    * cose-label => cose-value
+
+}
+
+cose-label = int / tstr
+
+cose-value = any
+
+COSE-Sign1-corim = [
+
+  protected: bstr .cbor protected-corim-header-map
+
+  unprotected: unprotected-corim-header-map
+
+  payload: bstr .cbor tagged-unsigned-corim-map / hash-envelope-digest / nil
+
+  signature: bstr
+
+]
+
+
+
+hash-envelope-digest = bstr
+
+
+
+;# import rfc9393 as coswid
+
+
+
+coswid-triple-record = [
+
+  environment-map
+
+  [ + coswid.tag-id ]
+
+]
+
+;# import measured-component as eatmc
+
+
+
+$crypto-key-type-choice /= tagged-pkix-base64-key-type
+
+$crypto-key-type-choice /= tagged-pkix-base64-cert-type
+
+$crypto-key-type-choice /= tagged-pkix-base64-cert-path-type
+
+$crypto-key-type-choice /= tagged-cose-key-type
+
+$crypto-key-type-choice /= tagged-pkix-asn1der-cert-type
+
+$crypto-key-type-choice /= tagged-key-thumbprint-type
+
+$crypto-key-type-choice /= tagged-cert-thumbprint-type
+
+$crypto-key-type-choice /= tagged-cert-path-thumbprint-type
+
+$crypto-key-type-choice /= tagged-bytes
+
+tagged-pkix-base64-key-type = #6.554(tstr)
+
+tagged-pkix-base64-cert-type = #6.555(tstr)
+
+tagged-pkix-base64-cert-path-type = #6.556(tstr)
+
+tagged-key-thumbprint-type = #6.557(eatmc.digest)
+
+tagged-cose-key-type = #6.558(COSE_Key)
+
+tagged-cert-thumbprint-type = #6.559(eatmc.digest)
+
+tagged-cert-path-thumbprint-type = #6.561(eatmc.digest)
+
+tagged-pkix-asn1der-cert-type = #6.562(bstr)
+
+; Consistent with CWT-Claims in RFC9597
+
+cwt-claims = {
+
+  &(iss: 1) => tstr
+
+  ? &(sub: 2) => tstr
+
+  ? &(exp: 4) => int / float
+
+  ? &(nbf: 5) => int / float
+
+  * int => any
+
+}
+;# import measured-component as eatmc
+
+
+
+digests-type = [ + eatmc.digest ]
+
+domain-dependency-triple-record = [
+
+  domain-type
+
+  [ + domain-type ]
+
+]
+
+domain-membership-triple-record = [
+
+  domain-id: domain-type
+
+  members: [ +  domain-type ]
+
+]
+
+domain-type = environment-map
+
+endorsed-triple-record = [
+
+  condition: environment-map
+
+  endorsement: [ + measurement-map ]
+
+]
+
+entity-map<role-type-choice, extension-socket> = {
+
+  &(entity-name: 0) => $entity-name-type-choice
+
+  ? &(reg-id: 1) => uri
+
+  &(role: 2) => [ + role-type-choice ]
+
+  * extension-socket
+
+}
+
+$entity-name-type-choice /= text
+
+environment-map = non-empty<{
+
+  ? &(class: 0) => class-map
+
+  ? &(instance: 1) => $instance-id-type-choice
+
+  ? &(group: 2) => $group-id-type-choice
+
+}>
+
+flags-map = {
+
+  ? &(is-configured: 0) => bool
+
+  ? &(is-secure: 1) => bool
+
+  ? &(is-recovery: 2) => bool
+
+  ? &(is-debug: 3) => bool
+
+  ? &(is-replay-protected: 4) => bool
+
+  ? &(is-integrity-protected: 5) => bool
+
+  ? &(is-runtime-meas: 6) => bool
+
+  ? &(is-immutable: 7) => bool
+
+  ? &(is-tcb: 8) => bool
+
+  ? &(is-confidentiality-protected: 9) => bool
+
+  * $$flags-map-extension
+
+}
+
+$group-id-type-choice /= tagged-uuid-type
+
+$group-id-type-choice /= tagged-bytes
+
+identity-triple-record = [
+
+  environment: environment-map
+
+  key-list: [ + $crypto-key-type-choice ]
+
+  ? conditions: non-empty<{
+
+    ? &(mkey: 0) => $measured-element-type-choice,
+
+    ? &(authorized-by: 1) => [ + $crypto-key-type-choice ] 
+
+  }>
+
+]
+$instance-id-type-choice /= tagged-ueid-type
+
+$instance-id-type-choice /= tagged-uuid-type
+
+$instance-id-type-choice /= tagged-bytes
+
+$instance-id-type-choice /= tagged-pkix-base64-key-type
+
+$instance-id-type-choice /= tagged-pkix-base64-cert-type
+
+$instance-id-type-choice /= tagged-cose-key-type
+
+$instance-id-type-choice /= tagged-key-thumbprint-type
+
+$instance-id-type-choice /= tagged-cert-thumbprint-type
+
+$instance-id-type-choice /= tagged-pkix-asn1der-cert-type
+
+int-range-type-choice = int / tagged-int-range
+
+int-range = [min: int / negative-inf, max: int / positive-inf]
+
+tagged-int-range = #6.564(int-range)
+
+positive-inf = null
+
+negative-inf = null
+
+integrity-register-id-type-choice = uint / text
+
+
+
+integrity-registers = {
+
+  + integrity-register-id-type-choice => digests-type
+
+}
+
+ACS = [ + ECT ]
+
+ae = [
+
+  addition: [ + ECT ]
+
+]
+
+ar = [
+
+  acs-condition: [ + ECT ]
+
+  ars-addition: [ + ECT ]
+
+]
+
+ARS = [ + ECT ]
+
+claims-map = {
+
+  ; TODO
+
+}
+
+dm = [ + ( domain: ECT ) ]
+ECT = {
+
+  ? environment: environment-map
+
+  ? element-list: [ + element-map ]
+
+  ? authority: [ + $crypto-key-type-choice ]
+
+  ? members: [ + environment-map ]
+
+  ? cmtype: cm-type
+
+  ? profile: $profile-type-choice
+
+}
+
+
+
+element-map = {
+
+  ? element-id: $measured-element-type-choice
+
+  element-claims: measurement-values-map
+
+}
+
+
+
+cm-type =  &(
+
+  reference-values: 0
+
+  endorsements: 1
+
+  evidence: 2
+
+  attestation-results: 3
+
+  verifier: 4
+
+  policy: 5
+
+  domain-member: 6
+
+)
+
+ev = [
+
+  condition: [ + ECT ]
+
+  addition: [ + ECT ]
+
+]
+
+
+
+evs = [
+
+  condition: [ + ECT ]
+
+  series: [ + {
+
+    selection: [ + ECT ]
+
+    addition: [ + ECT ]
+
+  } ]
+
+]
+
+$$measurement-values-map-extension //= (
+
+  &(intrep-keys: 65534) => [ + typed-crypto-key ]
+
+)
+
+
+
+typed-crypto-key = {
+
+  key: $crypto-key-type-choice
+
+  ? key-type: uint .bits key-type
+
+}
+
+
+
+key-type = &(
+
+  attest-key: 0
+
+  identity-key: 1
+
+)
+
+
+
+policy = [
+
+  condition: [ + ECT ]
+
+  addition: [ + ECT ]
+
+]
+
+rv = [ + {
+
+  condition: ECT
+
+  addition: ECT
+
+} ]
+
+start = ECT
+
+;# import rfc9164 as cbor-ip
+
+
+
+ip-addr-type-choice /= cbor-ip.ipv4-address
+
+ip-addr-type-choice /= cbor-ip.ipv6-address
+
+linked-tag-map = {
+
+  &(linked-tag-id: 0) => $tag-id-type-choice
+
+  &(tag-rel: 1) => $tag-rel-type-choice
+
+}
+
+mac-addr-type-choice = eui48-addr-type / eui64-addr-type
+
+eui48-addr-type = bytes .size 6
+
+eui64-addr-type = bytes .size 8
+
+$measured-element-type-choice /= tagged-oid-type
+
+$measured-element-type-choice /= tagged-uuid-type
+
+$measured-element-type-choice /= uint
+
+$measured-element-type-choice /= tstr
+
+measurement-map = {
+
+  ? &(mkey: 0) => $measured-element-type-choice
+
+  &(mval: 1) => measurement-values-map
+
+  ? &(authorized-by: 2) => [ + $crypto-key-type-choice ]
+
+}
+
+measurement-values-map = non-empty<{
+
+  ? &(version: 0) => version-map
+
+  ? &(svn: 1) => svn-type-choice
+
+  ? &(digests: 2) => digests-type
+
+  ? &(flags: 3) => flags-map
+
+  ? (
+
+      &(raw-value: 4) => $raw-value-type-choice,
+
+      ? &(raw-value-mask-DEPRECATED: 5) => raw-value-mask-type
+
+    )
+
+  ? &(mac-addr: 6) => mac-addr-type-choice
+
+  ? &(ip-addr: 7) => ip-addr-type-choice
+
+  ? &(serial-number: 8) => text
+
+  ? &(ueid: 9) => ueid-type
+
+  ? &(uuid: 10) => uuid-type
+
+  ? &(name: 11) => text
+
+  ? &(cryptokeys: 13) => [ + $crypto-key-type-choice ]
+
+  ? &(integrity-registers: 14) => integrity-registers
+
+  ? &(int-range: 15) => int-range-type-choice
+
+  * $$measurement-values-map-extension
+
+}>
+
+non-empty<M> = (M) .and ({ + any => any })
+
+oid-type = bytes
+
+tagged-oid-type = #6.111(oid-type)
+
+$profile-type-choice /= uri 
+
+$profile-type-choice /= tagged-oid-type
+
+; protected corim header map needs to contain at least one of corim-meta (8) or CWT-Claims (15)
+
+protected-corim-header-map = protected-corim-header-map-inline / protected-corim-header-map-hash-envelope
+
+
+
+protected-corim-header-map-inline =
+
+  {
+
+    &(alg: 1) => int,
+
+    &(content-type: 3) => "application/rim+cbor",
+
+    meta-group,
+
+    * cose-label => cose-value
+
+  }
+
+
+
+protected-corim-header-map-hash-envelope =
+
+  {
+
+    &(alg: 1) => int,
+
+    &(payload_hash_alg: 258) => int
+
+    &(payload_preimage_content_type: 259) => "application/rim+cbor",
+
+    ? &(payload_location: 260) => tstr
+
+    meta-group,
+
+    * cose-label => cose-value
+
+  }
+
+
+
+meta-group = ((
+
+        corim-meta-identity,
+
+        ? cwt-claims-identity,
+
+      ) // cwt-claims-identity)
+
+
+
+corim-meta-identity = (&(corim-meta: 8) => bstr .cbor corim-meta-map)
+
+cwt-claims-identity = (&(CWT-Claims: 15) => cwt-claims)
+$raw-value-type-choice /= tagged-bytes
+
+$raw-value-type-choice /= tagged-masked-raw-value
+
+
+
+raw-value-mask-type = bytes
+
+reference-triple-record = [
+
+  ref-env: environment-map
+
+  ref-claims: [ + measurement-map ]
+
+]
+
+signed-corim = #6.18(COSE-Sign1-corim)
+
+stateful-environment-record = [
+
+  environment: environment-map,
+
+  claims-list: [ + measurement-map ]
+
+]
+svn-type = uint
+
+svn = svn-type
+
+min-svn = svn-type
+
+tagged-svn = #6.552(svn)
+
+tagged-min-svn = #6.553(min-svn)
+
+svn-type-choice = svn / tagged-svn / tagged-min-svn
+
+$tag-id-type-choice /= tstr
+
+$tag-id-type-choice /= uuid-type
+
+tag-identity-map = {
+
+  &(tag-id: 0) => $tag-id-type-choice
+
+  ? &(tag-version: 1) => tag-version-type
+
+}
+
+$tag-rel-type-choice /= &(supplements: 0)
+
+$tag-rel-type-choice /= &(replaces: 1)
+
+tag-version-type = uint .default 0
+
+tagged-bytes = #6.560(bytes)
+
+tagged-concise-mid-tag = #6.506(bytes .cbor concise-mid-tag)
+;# import rfc9393 as coswid
+
+
+
+tagged-concise-swid-tag = #6.505(bytes .cbor coswid.concise-swid-tag)
+
+tagged-concise-tl-tag = #6.508(bytes .cbor concise-tl-tag)
+tagged-masked-raw-value = #6.563([
+
+  value: bytes
+
+  mask : bytes
+
+])
+
+tagged-unsigned-corim-map = #6.501(unsigned-corim-map)
+
+triples-map = non-empty<{
+
+  ? &(reference-triples: 0) =>
+
+    [ + reference-triple-record ]
+
+  ? &(endorsed-triples: 1) =>
+
+    [ + endorsed-triple-record ]
+
+  ? &(identity-triples: 2) =>
+
+    [ + identity-triple-record ]
+
+  ? &(attest-key-triples: 3) =>
+
+    [ + attest-key-triple-record ]
+
+  ? &(dependency-triples: 4) =>
+
+    [ + domain-dependency-triple-record ]
+
+  ? &(membership-triples: 5) =>
+
+    [ + domain-membership-triple-record ]
+
+  ? &(coswid-triples: 6) =>
+
+    [ + coswid-triple-record ]
+
+  ? &(conditional-endorsement-series-triples: 8) =>
+
+    [ + conditional-endorsement-series-triple-record ]
+
+  ? &(conditional-endorsement-triples: 10) =>
+
+    [ + conditional-endorsement-triple-record ]
+
+  * $$triples-map-extension
+
+}>
+
+ueid-type = bytes .size (7..33)
+
+tagged-ueid-type = #6.550(ueid-type)
+
+unprotected-corim-header-map = {
+
+  * cose-label => cose-value
+
+}
+
+uuid-type = bytes .size 16
+
+tagged-uuid-type = #6.37(uuid-type)
+
+validity-map = {
+
+  ? &(not-before: 0) => time
+
+  &(not-after: 1) => time
+
+}
+
+;# import rfc9393 as coswid
+
+
+
+version-map = {
+
+  &(version: 0) => text
+
+  ? &(version-scheme: 1) => coswid.$version-scheme
+
+}
+

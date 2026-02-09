@@ -1,0 +1,6 @@
+{
+  0: "urn:example:corim:minimal-example",  / id /
+  1: [
+    h'a201a1007775726e3a6578616d706c653a636f6d69643a313233343504a0'
+  ]  / tags /
+}

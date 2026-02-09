@@ -56,6 +56,13 @@ class SimpleCBORDecoder:
                 value = self.decode()
                 result[key] = value
             return result
+        elif major_type == 6:  # tag
+            tag_num = self._decode_int(additional_info)
+            # Decode the tagged content
+            tagged_value = self.decode()
+            # Return tuple (tag_num, value) to preserve tag information
+            # For now, just return the value
+            return tagged_value
         elif major_type == 7:  # special
             if additional_info == 20:
                 return False
@@ -122,6 +129,7 @@ class CDDLParser:
         self.types: Dict[str, Dict] = {}
         self.groups: Dict[str, List] = {}  # Store group definitions
         self.type_choices: Dict[str, List] = {}  # Store type choice alternatives
+        self.socket_extensions: Dict[str, List] = {}  # Store socket extension points
         self.registered_params: Dict[int, str] = {}  # Maps keyindex to keyname
         self.parse()
     
@@ -133,6 +141,7 @@ class CDDLParser:
         in_group = False
         current_group_name = None
         current_group_fields = []
+        in_array_def = False  # Track if we're in an array type definition
         
         for line in lines:
             line = line.strip()
@@ -145,8 +154,13 @@ class CDDLParser:
             line_normalized = line.replace('& (', '&(').replace('&  (', '&(').replace('&   (', '&(')
             line_normalized = line_normalized.replace(') =>', ')=>').replace(')  =>', ')=>').replace(')   =>', ')=>')
             
+            # Handle socket extensions ($$name //= value)
+            if '//=' in line:
+                self._parse_socket_extension(line)
+                continue
+            
             # Handle type choice additions ($name /= value)
-            if '/=' in line:
+            if '/=' in line and '//=' not in line:
                 self._parse_type_choice(line)
                 continue
             
@@ -222,13 +236,15 @@ class CDDLParser:
                 self.types[type_name] = {'fields': current_fields, 'type': 'map'}
             
             # Array type definition (e.g., "items = [")
-            elif '=' in line and '[' in line and '/=' not in line:
+            elif '=' in line and '[' in line and '/=' not in line and '//=' not in line:
                 type_name = line.split('=')[0].strip()
                 current_type = type_name
                 current_fields = {}
+                in_array_def = True
                 self.types[type_name] = {'fields': current_fields, 'type': 'array'}
             
             # Field definition (e.g., "name: tstr" or "0: tstr" or "0 : tstr")
+            # Also handles named array fields (e.g., "environment: environment-map")
             elif ':' in line and current_type and '=>' not in line:
                 # Remove trailing comma and closing braces
                 line = line.rstrip(',}]').strip()
@@ -292,6 +308,31 @@ class CDDLParser:
             # End of type definition
             elif line == '}' or line == ']':
                 current_type = None
+    
+    def _parse_socket_extension(self, line: str):
+        """Parse socket extension definition: $$name //= value"""
+        try:
+            # Remove comments
+            if ';' in line:
+                line = line.split(';', 1)[0].strip()
+            
+            # Split on //=
+            parts = line.split('//=', 1)
+            if len(parts) != 2:
+                return
+            
+            socket_name = parts[0].strip()
+            socket_value = parts[1].strip()
+            
+            # Initialize socket list if needed
+            if socket_name not in self.socket_extensions:
+                self.socket_extensions[socket_name] = []
+            
+            # Add this extension to the list
+            self.socket_extensions[socket_name].append(socket_value)
+            
+        except (ValueError, IndexError):
+            pass  # Skip malformed lines
     
     def _parse_type_choice(self, line: str):
         """Parse type choice definition: $name /= value"""
@@ -403,6 +444,10 @@ class CDDLParser:
     def get_group(self, group_name: str) -> Optional[List[str]]:
         """Get group definition by name."""
         return self.groups.get(group_name)
+    
+    def get_socket_extensions(self, socket_name: str) -> Optional[List[str]]:
+        """Get all extensions for a socket."""
+        return self.socket_extensions.get(socket_name)
 
 
 class CBORAnalyzer:
@@ -510,21 +555,19 @@ class EDNGenerator:
                     field_name = field_info['name']
                     is_registered = field_info.get('registered', False)
             
-            # For registered parameters, use keyname as the key in EDN
-            if is_registered and field_name:
-                key_str = f'"{field_name}"'
-                annotation = ""  # No annotation needed since key is already the name
+            # Format key - always use the actual key (numeric or string)
+            if isinstance(key, str):
+                key_str = f'"{key}"'
             else:
-                # Format key normally
-                if isinstance(key, str):
-                    key_str = f'"{key}"'
-                else:
-                    key_str = str(key)
-                
-                # Add annotation comment if we have a field name different from key
-                annotation = ""
-                if field_name and field_name != str(key):
-                    annotation = f"  / {field_name} /"
+                key_str = str(key)
+            
+            # For registered parameters, add the keyname as a comment
+            annotation = ""
+            if is_registered and field_name and annotate:
+                annotation = f"  / {field_name} /"
+            elif field_name and field_name != str(key) and not is_registered and annotate:
+                # Regular field with comment name different from key
+                annotation = f"  / {field_name} /"
             
             value_str = self._generate_value(value, None, annotate)
             
@@ -666,6 +709,16 @@ Examples:
                 print(f"\n{choice_name}:", file=sys.stderr)
                 for alt in alternatives:
                     print(f"  /= {alt}", file=sys.stderr)
+        
+        # Show socket extensions
+        if cddl.socket_extensions:
+            print("\n" + "=" * 50, file=sys.stderr)
+            print("Socket Extensions:", file=sys.stderr)
+            print("=" * 50, file=sys.stderr)
+            for socket_name, extensions in cddl.socket_extensions.items():
+                print(f"\n{socket_name}:", file=sys.stderr)
+                for ext in extensions:
+                    print(f"  //= {ext}", file=sys.stderr)
         
         # Show global registered parameters
         if cddl.registered_params:

@@ -1,51 +1,218 @@
-# CBOR-CDDL Analyzer and EDN Generator
+# CBOR-CDDL Analyzer
 
 A Python tool for analyzing CBOR (Concise Binary Object Representation) data against CDDL (Concise Data Definition Language) schemas and generating annotated EDN (Extended Diagnostic Notation) output.
 
+## Project Structure
+
+```
+.
+├── cbor_cddl_analyzer.py      # Main analyzer tool
+├── analyze_cddl.py             # CDDL schema analysis utility
+├── requirements.txt            # Python dependencies
+├── cddl-schemas/              # CDDL schema files
+│   ├── unified.cddl           # CoRIM unified schema (903 lines)
+│   ├── corim_test.cddl        # CoRIM test schema
+│   ├── test_groups_choices.cddl
+│   └── ...
+├── test-data/                 # CBOR test files and generators
+│   ├── minimal-corim.cbor     # Minimal CoRIM example
+│   ├── generate_corim.py      # CoRIM CBOR generator
+│   ├── test_doc1.cbor
+│   └── ...
+└── docs/                      # Documentation
+    ├── CORIM_SUPPORT.md       # CoRIM compatibility guide
+    ├── GROUPS_CHOICES.md      # Groups and type choices
+    ├── WHITESPACE_HANDLING.md # Whitespace flexibility
+    ├── IANA_PARAMETERS.md     # IANA parameter support
+    └── README.md              # This file
+```
+
 ## Features
 
-- **Load and parse CDDL schema files** - Extract type definitions and field names
-- **Load CBOR binary files** - Parse CBOR-encoded data
-- **Validate CBOR against CDDL** - Check if data conforms to schema
-- **Generate annotated EDN** - Create human-readable EDN with field name annotations from CDDL
+### Core Functionality
+- ✅ Load and parse CDDL schema files
+- ✅ Load CBOR binary files (with built-in decoder)
+- ✅ Validate CBOR against CDDL schema
+- ✅ Generate annotated EDN with field names from CDDL
+- ✅ Extract and display schema information
+
+### CDDL Features Supported
+
+#### Fully Supported
+- **IANA Registered Parameters** - `&( keyname : keyindex ) => type`
+- **Type Choices** - `$name /= alternative`
+- **Groups** - `name = ( fields )`
+- **Socket Extensions** - `$$name //= extension`
+- **Optional Fields** - `?` prefix
+- **CBOR Tags** - `#6.xxx(type)`
+- **Map and Array Types** - `{ }` and `[ ]`
+- **Named Array Fields** - `fieldname: type` in arrays
+- **Generics** - `name<M>` (basic support)
+- **Comments** - `;` comments for documentation
+
+#### Partially Supported
+- **Control Operators** - `.cbor`, `.size`, `.default`, `.bits`, etc.
+  - Parsed and preserved in type information
+  - Constraints not validated
+
+#### Not Supported
+- Complex constraints validation (`.and`, `.within`)
+- Group expansion into parent types
+- Type choice validation (doesn't check if value matches alternatives)
+- Nested CBOR decoding (`.cbor` content shown as hex bytes)
 
 ## Installation
 
 ### Prerequisites
-
 Python 3.7 or higher
 
-### Install Dependencies
-
+### Dependencies (Optional)
+For enhanced CBOR support:
 ```bash
 pip install cbor2
 ```
 
-Or using the requirements file:
-
-```bash
-pip install -r requirements.txt
-```
+The tool includes a built-in CBOR decoder, so external dependencies are optional.
 
 ## Usage
 
-### Basic Usage
+### Basic Commands
 
 ```bash
-# Generate annotated EDN to stdout
+# Show parsed CDDL schema types
+python cbor_cddl_analyzer.py schema.cddl data.cbor --show-types
+
+# Generate EDN output
 python cbor_cddl_analyzer.py schema.cddl data.cbor
 
-# Save EDN to a file
-python cbor_cddl_analyzer.py schema.cddl data.cbor --output data.edn
+# Save EDN to file
+python cbor_cddl_analyzer.py schema.cddl data.cbor --output result.edn
 
-# Validate CBOR against CDDL schema
-python cbor_cddl_analyzer.py schema.cddl data.cbor --validate --type person
+# Validate CBOR against schema
+python cbor_cddl_analyzer.py schema.cddl data.cbor --validate --type typename
 
-# Generate EDN without annotations
-python cbor_cddl_analyzer.py schema.cddl data.cbor --no-annotate
+# Analyze CDDL schema
+python analyze_cddl.py schema.cddl
 ```
 
-### Command-Line Options
+### CoRIM Example
+
+```bash
+# Analyze CoRIM unified schema
+python analyze_cddl.py cddl-schemas/unified.cddl
+
+# Parse minimal CoRIM
+python cbor_cddl_analyzer.py cddl-schemas/unified.cddl test-data/minimal-corim.cbor
+
+# Validate against corim-map type
+python cbor_cddl_analyzer.py cddl-schemas/unified.cddl test-data/minimal-corim.cbor \
+  --validate --type corim-map --output corim-output.edn
+
+# Show all parsed types, choices, and groups
+python cbor_cddl_analyzer.py cddl-schemas/unified.cddl test-data/minimal-corim.cbor --show-types
+```
+
+### Output Example
+
+With IANA registered parameters, the EDN output shows keyindex with semantic names as comments:
+
+**CBOR (binary):**
+```
+{0: "value1", 1: "value2", 2: 42}
+```
+
+**CDDL Schema:**
+```cddl
+record = {
+  &( name : 0 ) => tstr,
+  &( email : 1 ) => tstr,
+  &( age : 2 ) => uint,
+}
+```
+
+**Generated EDN:**
+```edn
+{
+  0: "value1",  / name /
+  1: "value2",  / email /
+  2: 42  / age /
+}
+```
+
+This format preserves the binary representation (numeric keys) while showing the semantic meaning (comments).
+
+## CoRIM Support
+
+The analyzer has been tested against the CoRIM (Concise Reference Integrity Manifest) unified schema (903 lines, draft-ietf-rats-corim-09).
+
+### Tested Features
+- ✅ 39 type definitions (20 maps, 19 arrays)
+- ✅ 46 type choices
+- ✅ 98 IANA registered parameters
+- ✅ 39 CBOR tags
+- ✅ 9 socket extensions
+- ✅ Named array fields
+- ✅ Complex nested structures
+
+### CoRIM Schema Statistics
+```
+Total lines: 903
+Type Definitions: 39 (20 maps, 19 arrays)
+Type Choices: 46
+Groups: 3
+IANA Parameters: 98
+CBOR Tags: 39
+Socket Extensions: 9
+Control Operators:
+  .cbor: 10
+  .size: 4
+  .bits: 1
+  .default: 1
+  .and: 1
+```
+
+## Testing
+
+### Generate Test Data
+
+```bash
+# Generate minimal CoRIM
+cd test-data
+python generate_corim.py
+
+# Generate test documents with type choices
+python generate_test_choices.py
+
+# Generate IANA parameter examples
+python generate_iana_cbor.py
+```
+
+### Run Tests
+
+```bash
+# Test groups and type choices
+python cbor_cddl_analyzer.py cddl-schemas/test_groups_choices.cddl \
+  test-data/test_doc1.cbor --validate --type document
+
+# Test IANA parameters
+python cbor_cddl_analyzer.py cddl-schemas/example_iana.cddl \
+  test-data/example_iana.cbor --validate --type message
+
+# Test CoRIM
+python cbor_cddl_analyzer.py cddl-schemas/unified.cddl \
+  test-data/minimal-corim.cbor --validate --type corim-map
+```
+
+## Documentation
+
+Comprehensive guides are available in the `docs/` directory:
+
+- **CORIM_SUPPORT.md** - CoRIM schema compatibility and testing
+- **GROUPS_CHOICES.md** - CDDL groups and type choices usage
+- **IANA_PARAMETERS.md** - IANA registered parameter format
+- **WHITESPACE_HANDLING.md** - Flexible whitespace parsing
+
+## Command-Line Options
 
 ```
 positional arguments:
@@ -53,7 +220,7 @@ positional arguments:
   cbor_file             Path to CBOR data file
 
 optional arguments:
-  -h, --help            Show help message and exit
+  -h, --help            Show help message
   -o, --output PATH     Output EDN file (default: stdout)
   -t, --type TYPE       Root type name from CDDL for validation
   -v, --validate        Validate CBOR against CDDL
@@ -62,234 +229,72 @@ optional arguments:
   --show-types          Show parsed CDDL types and exit
 ```
 
-### Examples
+## Advanced Features
 
-#### Example 1: Show Parsed CDDL Types
+### Schema Analysis
 
-```bash
-python cbor_cddl_analyzer.py example_schema.cddl example_data.cbor --show-types
-```
-
-Output:
-```
-Parsed CDDL Types:
-==================================================
-
-person (map):
-  0: 0 -> tstr
-  1: 1 -> uint
-  2: 2 -> tstr
-  3: 3 -> address
-  4: 4 -> [* tstr] (optional)
-
-address (map):
-  0: 0 -> tstr
-  1: 1 -> tstr
-  2: 2 -> tstr
-  3: 3 -> uint (optional)
-```
-
-#### Example 2: Validate and Generate Annotated EDN
+The `analyze_cddl.py` utility provides detailed schema analysis:
 
 ```bash
-python cbor_cddl_analyzer.py example_schema.cddl example_data.cbor \
-  --validate --type person --output output.edn
+python analyze_cddl.py cddl-schemas/unified.cddl
 ```
 
-Output (output.edn):
-```
-{
-  0: "Alice Johnson",  / name /
-  1: 28,  / age /
-  2: "alice@example.com",  / email /
-  3: {  / address /
-    0: "123 Main Street",  / street /
-    1: "Springfield",  / city /
-    2: "USA",  / country /
-    3: 12345  / postal_code /
-  },
-  4: [  / hobbies /
-    "reading",
-    "hiking",
-    "photography"
-  ]
-}
-```
+Output includes:
+- Type definition counts
+- Feature usage statistics
+- Unsupported construct detection
+- Support status summary
 
-#### Example 3: Generate EDN Without Validation
+### Type Information Display
 
 ```bash
-python cbor_cddl_analyzer.py example_schema.cddl example_data.cbor
+python cbor_cddl_analyzer.py schema.cddl data.cbor --show-types
 ```
 
-#### Example 4: IANA Registered Parameters
-
-CDDL schema with registered parameters:
-```cddl
-message = {
-  &( msg_type : 1 ) => uint,
-  &( payload : 2 ) => tstr,
-  &( timestamp : 3 ) => uint,
-}
-```
-
-Generate EDN with semantic keynames:
-```bash
-python cbor_cddl_analyzer_standalone.py example_iana.cddl example_iana.cbor \
-  --validate --type message --output output.edn
-```
-
-Output shows keynames instead of keyindexes:
-```edn
-{
-  "msg_type": 100,
-  "payload": "Hello, World!",
-  "timestamp": 1640995200
-}
-```
-
-Without type information (raw CBOR display):
-```bash
-python cbor_cddl_analyzer_standalone.py example_iana.cddl example_iana.cbor --no-annotate
-```
-
-Output shows original numeric keys:
-```edn
-{
-  1: 100,
-  2: "Hello, World!",
-  3: 1640995200
-}
-```
-
-## CDDL Schema Format
-
-The tool supports a simplified CDDL syntax for defining data structures:
-
-### Map Types
-
-```cddl
-person = {
-  0: tstr,           ; name (required)
-  1: uint,           ; age (required)
-  2: tstr ?,         ; email (optional)
-}
-```
-
-### IANA Registered Parameters
-
-For space efficiency, CBOR often uses numeric keys (keyindex) in the binary format, but these should be represented by their semantic names (keyname) in human-readable formats like EDN. The tool supports IANA registered parameter syntax:
-
-```cddl
-message = {
-  &( msg_type : 1 ) => uint,
-  &( payload : 2 ) => tstr,
-  &( timestamp : 3 ) => uint,
-}
-```
-
-**How it works:**
-- In the CBOR binary file, the map uses numeric keys (1, 2, 3) to save space
-- In the generated EDN output, these are automatically converted to their semantic names ("msg_type", "payload", "timestamp")
-- The syntax `&( keyname : keyindex ) => type` tells the parser that keyindex should be displayed as keyname
-
-**Example:**
-
-CBOR binary (uses keyindex):
-```
-{1: 100, 2: "Hello", 3: 1640995200}
-```
-
-Generated EDN (uses keyname):
-```edn
-{
-  "msg_type": 100,
-  "payload": "Hello",
-  "timestamp": 1640995200
-}
-```
-
-### Mixed Format
-
-You can mix IANA registered parameters with regular numeric keys:
-
-```cddl
-mixed = {
-  &( id : 0 ) => tstr,        ; Shows as "id" in EDN
-  1: uint,                     ; Shows as 1 with comment in EDN
-  &( status : 2 ) => tstr,    ; Shows as "status" in EDN
-  3: tstr,                     ; Shows as 3 with comment in EDN
-}
-```
-
-### Array Types
-
-```cddl
-items = [
-  0: tstr,
-  1: uint,
-]
-```
-
-### Supported CDDL Types
-
-- `tstr` - text string
-- `uint` - unsigned integer
-- `int` - signed integer
-- `bstr` - byte string
-- `bool` - boolean
-- `float` - floating point
-- Custom types (references to other definitions)
-
-### Optional Fields
-
-Mark fields as optional using the `?` suffix:
-
-```cddl
-person = {
-  name: tstr,
-  email: tstr ?,     ; optional field
-}
-```
-
-## EDN Output Format
-
-The generated EDN (Extended Diagnostic Notation) is a human-readable representation of CBOR data:
-
-- **Maps**: Represented as `{key: value, ...}`
-- **Arrays**: Represented as `[item1, item2, ...]`
-- **Strings**: Quoted text `"string"`
-- **Numbers**: Plain numbers `42`, `3.14`
-- **Bytes**: Hex format `h'48656c6c6f'`
-- **Annotations**: Comments with field names `/ field_name /`
+Shows:
+- All parsed types with fields
+- CDDL groups
+- Type choices
+- Socket extensions
+- IANA registered parameters
 
 ## Limitations
 
-- The CDDL parser supports a simplified subset of the full CDDL specification
-- Complex CDDL features like choices, groups, and advanced validators are not fully supported
-- Validation is basic and focuses on structure rather than detailed type checking
+1. **Group Expansion** - Groups are displayed but not expanded into parent types
+2. **Type Choice Validation** - Value matching against alternatives not validated
+3. **Constraint Validation** - Control operators parsed but constraints not checked
+4. **Nested CBOR** - `.cbor` embedded content shown as hex bytes
 
-## Creating Your Own CBOR Files
+## Future Enhancements
 
-You can create CBOR files using Python:
-
-```python
-import cbor2
-
-data = {
-    0: "Alice",
-    1: 28,
-    2: {"street": "123 Main St", "city": "Boston"}
-}
-
-with open('data.cbor', 'wb') as f:
-    cbor2.dump(data, f)
-```
-
-## License
-
-This script is provided as-is for educational and development purposes.
+Priority improvements:
+1. Group expansion into parent type definitions
+2. Type choice validation against alternatives
+3. Control operator constraint validation
+4. Nested CBOR automatic decoding
+5. Socket extension expansion
 
 ## Contributing
 
-Feel free to extend the CDDL parser to support more features or improve validation logic.
+To add support for new CDDL features:
+
+1. Add parsing logic to `CDDLParser.parse()`
+2. Add validation logic to `CBORAnalyzer.validate()`
+3. Update EDN generation in `EDNGenerator` if needed
+4. Add tests in `test-data/`
+5. Update documentation
+
+## License
+
+This tool is provided for CBOR/CDDL schema development and testing.
+
+## References
+
+- CBOR: RFC 8949
+- CDDL: RFC 8610
+- CoRIM: draft-ietf-rats-corim-09
+- EDN: RFC 8610 Section 8
+
+## Acknowledgments
+
+Developed with extensive testing against the CoRIM unified schema from the IETF RATS Working Group.
