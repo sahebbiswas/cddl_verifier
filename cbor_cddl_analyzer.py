@@ -7,10 +7,19 @@ For full functionality, install cbor2: pip install cbor2
 """
 
 import argparse
+import logging
 import struct
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
+
+# Configure logging
+logger = logging.getLogger('cbor_cddl_analyzer')
+handler = logging.StreamHandler(sys.stderr)
+formatter = logging.Formatter('[%(levelname)s] %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+logger.setLevel(logging.WARNING)  # Default level
 
 
 class SimpleCBORDecoder:
@@ -131,6 +140,7 @@ class CDDLParser:
         self.type_choices: Dict[str, List] = {}  # Store type choice alternatives
         self.socket_extensions: Dict[str, List] = {}  # Store socket extension points
         self.registered_params: Dict[int, str] = {}  # Maps keyindex to keyname
+        self.type_aliases: Dict[str, str] = {}  # Store simple type aliases (name = other_name)
         self.parse()
     
     def parse(self):
@@ -146,8 +156,14 @@ class CDDLParser:
         for line in lines:
             line = line.strip()
             
+            # DEBUG: Check for specific line
+            if 'tagged-unsigned-corim-map = #6.501' in line:
+                print(f"DEBUG PARSE: Processing line: {line[:100]}", file=sys.stderr)
+            
             # Skip comments and empty lines
             if not line or line.startswith(';'):
+                if 'tagged-unsigned-corim-map = #6.501' in line:
+                    print(f"DEBUG PARSE: Skipped (comment or empty)", file=sys.stderr)
                 continue
             
             # Normalize whitespace for various checks
@@ -224,6 +240,48 @@ class CDDLParser:
             if '&(' in line_normalized and ')' in line_normalized and '=>' in line_normalized:
                 self._parse_registered_param(line, current_fields)
                 continue
+            
+            # Simple type alias (e.g., "corim = concise-rim-type-choice")
+            # Also includes CBOR tag notation: tagged-unsigned-corim-map = #6.501(unsigned-corim-map)
+            # Must come before type definition checks
+            if '=' in line and '{' not in line and '[' not in line and '/=' not in line and '//=' not in line:
+                # DEBUG
+                if 'tagged-unsigned-corim-map' in line:
+                    print(f"DEBUG: Found tagged-unsigned-corim-map line", file=sys.stderr)
+                    print(f"  Line: {line[:100]}", file=sys.stderr)
+                    print(f"  Ends with (: {line.rstrip().endswith('(')}", file=sys.stderr)
+                    print(f"  Has = (: {'= (' in line}", file=sys.stderr)
+                
+                # Exclude lines that look like group definitions: name = (
+                if not (line.rstrip().endswith('(') or '= (' in line):
+                    # Check if this is an alias (name = something)
+                    parts = line.split('=', 1)
+                    if len(parts) == 2:
+                        alias_name = parts[0].strip()
+                        alias_target = parts[1].strip()
+                        # Remove any comments
+                        if ';' in alias_target:
+                            alias_target = alias_target.split(';')[0].strip()
+                        # Store all single-line non-complex definitions as aliases
+                        # This includes CBOR tag notation: tagged-unsigned-corim-map = #6.501(unsigned-corim-map)
+                        if alias_target and not any(c in alias_target for c in ['{', '}', '[', ']', '&']):
+                            self.type_aliases[alias_name] = alias_target
+                            logger.debug(f"Parsed type alias: {alias_name} = {alias_target}")
+                            # DEBUG
+                            if 'tagged-unsigned-corim-map' in line:
+                                print(f"DEBUG: Successfully parsed as alias!", file=sys.stderr)
+                            continue
+                        else:
+                            # DEBUG
+                            if 'tagged-unsigned-corim-map' in line:
+                                print(f"DEBUG: Rejected - has excluded chars", file=sys.stderr)
+                                for c in ['{', '}', '[', ']', '&']:
+                                    if c in alias_target:
+                                        print(f"    Has: {c}", file=sys.stderr)
+                else:
+                    # DEBUG
+                    if 'tagged-unsigned-corim-map' in line:
+                        print(f"DEBUG: Rejected - looks like group definition", file=sys.stderr)
             
             # Type definition start (e.g., "person = {")
             if '=' in line and '{' in line and '/=' not in line:
@@ -308,6 +366,7 @@ class CDDLParser:
             # End of type definition
             elif line == '}' or line == ']':
                 current_type = None
+                in_array_def = False
     
     def _parse_socket_extension(self, line: str):
         """Parse socket extension definition: $$name //= value"""
@@ -422,9 +481,129 @@ class CDDLParser:
         except (ValueError, IndexError):
             pass  # Skip malformed lines
     
-    def get_type(self, type_name: str) -> Optional[Dict]:
-        """Get type definition by name."""
-        return self.types.get(type_name)
+    def resolve_type_alias(self, type_name: str, max_depth: int = 10) -> str:
+        """Resolve a type alias to its actual type, following the chain."""
+        resolved = type_name
+        depth = 0
+        logger.debug(f"Resolving type alias: {type_name}")
+        while resolved in self.type_aliases and depth < max_depth:
+            next_resolved = self.type_aliases[resolved]
+            logger.debug(f"  {resolved} -> {next_resolved}")
+            resolved = next_resolved
+            depth += 1
+        logger.debug(f"  Final resolution: {resolved}")
+        return resolved
+    
+    def extract_cbor_tag(self, type_string: str) -> Optional[Tuple[int, str]]:
+        """Extract CBOR tag number and inner type from tag notation.
+        
+        E.g., '#6.501(unsigned-corim-map)' -> (501, 'unsigned-corim-map')
+        """
+        import re
+        match = re.match(r'#6\.(\d+)\(([^)]+)\)', type_string.strip())
+        if match:
+            tag_num = int(match.group(1))
+            inner_type = match.group(2)
+            logger.debug(f"Extracted CBOR tag {tag_num} with inner type: {inner_type}")
+            return (tag_num, inner_type)
+        return None
+    
+    def resolve_type_choice_for_data(self, choice_name: str, cbor_data: Any) -> Optional[str]:
+        """Resolve a type choice by checking which alternative matches the CBOR data.
+        
+        For CBOR tagged data, tries to match the tag number.
+        Returns the matching alternative type name, or None if no match.
+        """
+        logger.debug(f"Resolving type choice '{choice_name}' for CBOR data")
+        
+        alternatives = self.type_choices.get(choice_name)
+        if not alternatives:
+            logger.debug(f"  No alternatives found for {choice_name}")
+            return None
+        
+        logger.debug(f"  Alternatives: {alternatives}")
+        
+        # For now, if we have CBOR tag data, try to match based on tags
+        # This is a simplified heuristic - proper implementation would need
+        # to check actual CBOR tags from the decoder
+        
+        # Return first alternative for now (can be enhanced with actual tag matching)
+        # TODO: Implement proper tag matching from CBOR decoder
+        if alternatives:
+            selected = alternatives[0]
+            logger.debug(f"  Selected: {selected} (first alternative)")
+            return selected
+        
+        return None
+    
+    def get_type(self, type_name: str, cbor_data: Any = None) -> Optional[Dict]:
+        """Get type definition by name, resolving aliases and type choices if needed.
+        
+        Args:
+            type_name: Name of the type to look up
+            cbor_data: Optional CBOR data to help resolve type choices
+        
+        Returns:
+            Type definition dict or None if not found
+        """
+        if not type_name:
+            return None
+        
+        logger.debug(f"Getting type: {type_name}")
+        
+        # First try direct lookup
+        if type_name in self.types:
+            logger.debug(f"  Found directly in types")
+            return self.types[type_name]
+        
+        # Try resolving alias
+        resolved_name = self.resolve_type_alias(type_name)
+        if resolved_name != type_name:
+            logger.debug(f"  Resolved alias: {type_name} -> {resolved_name}")
+            
+            # Check if resolved name is in types
+            if resolved_name in self.types:
+                logger.debug(f"  Found resolved type in types")
+                return self.types[resolved_name]
+            
+            # Check if it's a type choice
+            if resolved_name in self.type_choices:
+                logger.debug(f"  Resolved to type choice: {resolved_name}")
+                # Try to resolve the type choice
+                if cbor_data is not None:
+                    selected = self.resolve_type_choice_for_data(resolved_name, cbor_data)
+                    if selected:
+                        logger.debug(f"  Resolved type choice to: {selected}")
+                        # Recursively get the selected type
+                        return self.get_type(selected, cbor_data)
+                else:
+                    # No data to help resolve, try first alternative
+                    alternatives = self.type_choices[resolved_name]
+                    if alternatives:
+                        logger.debug(f"  Using first alternative: {alternatives[0]}")
+                        return self.get_type(alternatives[0], cbor_data)
+        
+        # Check if the original name is a type choice
+        if type_name in self.type_choices:
+            logger.debug(f"  Type is a type choice")
+            if cbor_data is not None:
+                selected = self.resolve_type_choice_for_data(type_name, cbor_data)
+                if selected:
+                    return self.get_type(selected, cbor_data)
+            else:
+                alternatives = self.type_choices[type_name]
+                if alternatives:
+                    return self.get_type(alternatives[0], cbor_data)
+        
+        # Try extracting from CBOR tag notation
+        tag_info = self.extract_cbor_tag(type_name)
+        if tag_info:
+            tag_num, inner_type = tag_info
+            logger.debug(f"  Extracted from tag notation: inner type = {inner_type}")
+            return self.get_type(inner_type, cbor_data)
+        
+        logger.debug(f"  Type not found: {type_name}")
+        return None
     
     def get_field_name(self, type_name: str, key: Any) -> Optional[str]:
         """Get field name for a given key in a type."""
@@ -461,31 +640,108 @@ class CBORAnalyzer:
         """Validate CBOR data against CDDL schema."""
         self.validation_errors = []
         
+        logger.info("=" * 60)
+        logger.info("VALIDATION STARTED")
+        logger.info("=" * 60)
+        
         if type_name:
-            type_def = self.cddl.get_type(type_name)
+            logger.info(f"Validating against type: '{type_name}'")
+            logger.debug(f"CBOR data type: {type(data).__name__}")
+            if isinstance(data, dict):
+                logger.debug(f"CBOR data keys: {list(data.keys())}")
+            
+            type_def = self.cddl.get_type(type_name, cbor_data=data)
             if not type_def:
-                self.validation_errors.append(f"Type '{type_name}' not found in CDDL")
+                logger.warning(f"Type '{type_name}' not found, attempting resolution...")
+                
+                # Try to provide helpful error message
+                resolved = self.cddl.resolve_type_alias(type_name)
+                if resolved != type_name:
+                    logger.info(f"Type '{type_name}' is an alias for '{resolved}'")
+                    # It's an alias
+                    choices = self.cddl.type_choices.get(resolved)
+                    if choices:
+                        logger.info(f"'{resolved}' is a type choice with alternatives: {choices}")
+                        logger.info("Attempting to auto-resolve type choice...")
+                        
+                        # Try to resolve automatically
+                        selected = self.cddl.resolve_type_choice_for_data(resolved, data)
+                        if selected:
+                            logger.info(f"Auto-selected: {selected}")
+                            return self.validate(data, selected)
+                        
+                        self.validation_errors.append(
+                            f"Type '{type_name}' resolves to type choice '{resolved}' with alternatives: {', '.join(choices)}. "
+                            f"Could not auto-resolve. Please specify one of the concrete types."
+                        )
+                    else:
+                        logger.warning(f"'{resolved}' is not a concrete type definition")
+                        self.validation_errors.append(
+                            f"Type '{type_name}' resolves to '{resolved}' which is not a concrete type definition"
+                        )
+                else:
+                    logger.error(f"Type '{type_name}' not found in CDDL schema")
+                    self.validation_errors.append(f"Type '{type_name}' not found in CDDL")
                 return False
             
-            return self._validate_type(data, type_def, type_name)
+            logger.info(f"Type definition found: {type_name} ({type_def['type']})")
+            logger.debug(f"Type fields: {list(type_def['fields'].keys())}")
+            
+            result = self._validate_type(data, type_def, type_name)
+            
+            if result:
+                logger.info("=" * 60)
+                logger.info("VALIDATION SUCCESSFUL")
+                logger.info("=" * 60)
+            else:
+                logger.error("=" * 60)
+                logger.error("VALIDATION FAILED")
+                logger.error("=" * 60)
+                for error in self.validation_errors:
+                    logger.error(f"  - {error}")
+            
+            return result
         
+        logger.info("No type specified, skipping validation")
         return True
     
     def _validate_type(self, data: Any, type_def: Dict, type_name: str) -> bool:
         """Validate data against a specific type definition."""
+        logger.debug(f"Validating type '{type_name}'")
+        logger.debug(f"  Expected: {type_def['type']}, Got: {type(data).__name__}")
+        
         if type_def['type'] == 'map':
             if not isinstance(data, dict):
-                self.validation_errors.append(
-                    f"Expected map for type '{type_name}', got {type(data).__name__}"
-                )
+                error_msg = f"Expected map for type '{type_name}', got {type(data).__name__}"
+                logger.error(f"  TYPE MISMATCH: {error_msg}")
+                self.validation_errors.append(error_msg)
                 return False
+            
+            logger.debug(f"  Checking {len(type_def['fields'])} field definitions")
             
             # Check required fields
             for key, field_info in type_def['fields'].items():
-                if not field_info.get('optional', False) and key not in data:
-                    self.validation_errors.append(
-                        f"Missing required field '{field_info['name']}' in type '{type_name}'"
-                    )
+                field_name = field_info['name']
+                is_optional = field_info.get('optional', False)
+                field_type = field_info.get('type', 'unknown')
+                
+                if key in data:
+                    logger.debug(f"  ✓ Field '{field_name}' (key {key}): present")
+                    logger.debug(f"    - Expected type: {field_type}")
+                    logger.debug(f"    - Actual value: {data[key]!r}")
+                elif not is_optional:
+                    error_msg = f"Missing required field '{field_name}' (key {key}) in type '{type_name}'"
+                    logger.error(f"  ✗ MISSING FIELD: {error_msg}")
+                    self.validation_errors.append(error_msg)
+                else:
+                    logger.debug(f"  ○ Field '{field_name}' (key {key}): optional, not present")
+            
+            # Report extra fields
+            defined_keys = set(type_def['fields'].keys())
+            actual_keys = set(data.keys())
+            extra_keys = actual_keys - defined_keys
+            if extra_keys:
+                logger.warning(f"  Extra fields not in schema: {extra_keys}")
         
         elif type_def['type'] == 'array':
             if not isinstance(data, (list, tuple)):
@@ -504,8 +760,9 @@ class CBORAnalyzer:
 class EDNGenerator:
     """Generates annotated EDN (Extended Diagnostic Notation) from CBOR data."""
     
-    def __init__(self, cddl_parser: CDDLParser):
+    def __init__(self, cddl_parser: CDDLParser, edn_format: str = 'keyindex'):
         self.cddl = cddl_parser
+        self.edn_format = edn_format  # 'keyindex', 'keyname', or 'both'
         self.indent_level = 0
         self.indent_str = "  "
     
@@ -548,28 +805,45 @@ class EDNGenerator:
             
             # Get field info from CDDL if available
             field_name = None
+            field_type = None
             is_registered = False
             if type_def and annotate:
                 field_info = type_def['fields'].get(key)
                 if field_info:
                     field_name = field_info['name']
+                    field_type = field_info.get('type')
                     is_registered = field_info.get('registered', False)
             
-            # Format key - always use the actual key (numeric or string)
-            if isinstance(key, str):
-                key_str = f'"{key}"'
-            else:
-                key_str = str(key)
+            # Determine key string and annotation based on edn_format
+            if self.edn_format == 'keyname' and is_registered and field_name:
+                # Format: "name": value
+                key_str = f'"{field_name}"'
+                annotation = ""
+            elif self.edn_format == 'both' and is_registered and field_name:
+                # Format: 0 / name /: value
+                if isinstance(key, str):
+                    key_str = f'"{key}"'
+                else:
+                    key_str = str(key)
+                key_str = f'{key_str} / {field_name} /'
+                annotation = ""
+            else:  # keyindex format (default)
+                # Format: 0: value  / name /
+                if isinstance(key, str):
+                    key_str = f'"{key}"'
+                else:
+                    key_str = str(key)
+                
+                # Add annotation comment
+                annotation = ""
+                if is_registered and field_name and annotate:
+                    annotation = f"  / {field_name} /"
+                elif field_name and field_name != str(key) and not is_registered and annotate:
+                    # Regular field with comment name different from key
+                    annotation = f"  / {field_name} /"
             
-            # For registered parameters, add the keyname as a comment
-            annotation = ""
-            if is_registered and field_name and annotate:
-                annotation = f"  / {field_name} /"
-            elif field_name and field_name != str(key) and not is_registered and annotate:
-                # Regular field with comment name different from key
-                annotation = f"  / {field_name} /"
-            
-            value_str = self._generate_value(value, None, annotate)
+            # Recursively generate value with type information for nested structures
+            value_str = self._generate_value(value, field_type, annotate)
             
             comma = "," if i < len(data) - 1 else ""
             lines.append(f"{indent}{key_str}: {value_str}{comma}{annotation}")
@@ -660,10 +934,19 @@ Examples:
                         help='Annotate EDN with field names from CDDL (default: True)')
     parser.add_argument('--no-annotate', action='store_false', dest='annotate',
                         help='Disable annotations in EDN output')
+    parser.add_argument('--edn-format', choices=['keyindex', 'keyname', 'both'], default='keyindex',
+                        help='EDN key format: keyindex (0: val / name /), keyname ("name": val), both (0 / name /: val)')
+    parser.add_argument('--verbose', action='store_true',
+                        help='Enable verbose logging of validation and type resolution')
     parser.add_argument('--show-types', action='store_true', 
                         help='Show parsed CDDL types and exit')
     
     args = parser.parse_args()
+    
+    # Set logging level
+    if args.verbose:
+        logger.setLevel(logging.DEBUG)
+        logger.debug("Verbose logging enabled")
     
     # Check if files exist
     if not args.cddl_file.exists():
@@ -749,7 +1032,7 @@ Examples:
     
     # Generate EDN
     print("Generating EDN...", file=sys.stderr)
-    generator = EDNGenerator(cddl)
+    generator = EDNGenerator(cddl, edn_format=args.edn_format)
     edn_output = generator.generate(cbor_data, args.type, args.annotate)
     
     # Output EDN
