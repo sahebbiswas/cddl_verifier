@@ -1,0 +1,17 @@
+; Test nested IANA parameters
+
+record = {
+  &( id : 0 ) => uint,
+  &( data : 1 ) => data-block,
+}
+
+data-block = {
+  &( value : 0 ) => uint,
+  &( label : 1 ) => tstr,
+  &( metadata : 2 ) => metadata-info,
+}
+
+metadata-info = {
+  &( created : 0 ) => uint,
+  &( author : 1 ) => tstr,
+}

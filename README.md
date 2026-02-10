@@ -40,6 +40,9 @@ A Python tool for analyzing CBOR (Concise Binary Object Representation) data aga
 
 #### Fully Supported
 - **IANA Registered Parameters** - `&( keyname : keyindex ) => type`
+  - Three output formats: keyindex (default), keyname, both
+  - Recursive annotation for nested structures
+- **Type Aliases** - `name = other_name` with automatic resolution
 - **Type Choices** - `$name /= alternative`
 - **Groups** - `name = ( fields )`
 - **Socket Extensions** - `$$name //= extension`
@@ -226,8 +229,55 @@ optional arguments:
   -v, --validate        Validate CBOR against CDDL
   -a, --annotate        Annotate EDN with field names (default: True)
   --no-annotate         Disable annotations in EDN output
+  --edn-format {keyindex,keyname,both}
+                        EDN key format (default: keyindex)
+                        - keyindex: 0: value  / name /
+                        - keyname: "name": value
+                        - both: 0 / name /: value
   --show-types          Show parsed CDDL types and exit
 ```
+
+## EDN Format Options
+
+The analyzer supports **three EDN output formats** for maximum flexibility:
+
+### Format: keyindex (default)
+Preserves binary structure with semantic annotations:
+```edn
+{
+  0: "value",  / id /
+  1: {  / data /
+    0: 42  / count /
+  }
+}
+```
+✅ Round-trip compatible, shows binary structure
+
+### Format: keyname
+Uses semantic names as keys:
+```edn
+{
+  "id": "value",
+  "data": {
+    "count": 42
+  }
+}
+```
+✅ Highly readable, JSON-like
+
+### Format: both
+Shows both representations:
+```edn
+{
+  0 / id /: "value",
+  1 / data /: {
+    0 / count /: 42
+  }
+}
+```
+✅ Complete information, educational
+
+See [EDN_FORMAT_OPTIONS.md](docs/EDN_FORMAT_OPTIONS.md) for detailed guide.
 
 ## Advanced Features
 
