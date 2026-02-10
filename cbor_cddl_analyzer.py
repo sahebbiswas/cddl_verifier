@@ -540,13 +540,21 @@ class CDDLParser:
             return (tag_num, inner_type)
         return None
     
-    def resolve_type_choice_for_data(self, choice_name: str, cbor_data: Any) -> Optional[str]:
+    def resolve_type_choice_for_data(self, choice_name: str, cbor_data: Any, validator=None) -> Optional[str]:
         """Resolve a type choice by checking which alternative matches the CBOR data.
         
-        For CBOR tagged data, tries to match the tag number.
-        Returns the matching alternative type name, or None if no match.
+        Tries each alternative and picks the first one that validates successfully.
+        For CBOR tagged data, also tries to match based on tag numbers.
+        
+        Args:
+            choice_name: Name of the type choice
+            cbor_data: The CBOR data to match against
+            validator: Optional CBORAnalyzer instance for validation-based matching
+        
+        Returns:
+            The matching alternative type name, or None if no match
         """
-        logger.debug(f"Resolving type choice '{choice_name}' for CBOR data")
+        logger.debug(f"{Colors.CDDL}Resolving type choice '{choice_name}' for CBOR data{Colors.RESET}")
         
         alternatives = self.type_choices.get(choice_name)
         if not alternatives:
@@ -554,16 +562,71 @@ class CDDLParser:
             return None
         
         logger.debug(f"  Alternatives: {alternatives}")
+        logger.debug(f"  CBOR data type: {type(cbor_data).__name__}")
         
-        # For now, if we have CBOR tag data, try to match based on tags
-        # This is a simplified heuristic - proper implementation would need
-        # to check actual CBOR tags from the decoder
+        # Strategy 1: For each alternative, try to get its type and check basic compatibility
+        compatible = []
+        for alt in alternatives:
+            logger.debug(f"  Checking alternative: {alt}")
+            
+            # Try to get the type definition for this alternative
+            alt_type = self.get_type(alt, cbor_data)
+            if not alt_type:
+                logger.debug(f"    ✗ Cannot resolve type definition")
+                continue
+            
+            # Check basic type compatibility (map vs array vs primitive)
+            expected_type = alt_type['type']
+            actual_type = type(cbor_data).__name__
+            
+            if expected_type == 'map' and isinstance(cbor_data, dict):
+                logger.debug(f"    {Colors.MATCH}✓{Colors.RESET} Compatible: map matches dict")
+                compatible.append(alt)
+            elif expected_type == 'array' and isinstance(cbor_data, (list, tuple)):
+                logger.debug(f"    {Colors.MATCH}✓{Colors.RESET} Compatible: array matches list/tuple")
+                compatible.append(alt)
+            else:
+                logger.debug(f"    ✗ Incompatible: {expected_type} vs {actual_type}")
         
-        # Return first alternative for now (can be enhanced with actual tag matching)
-        # TODO: Implement proper tag matching from CBOR decoder
-        if alternatives:
+        # If we have compatible alternatives, try validation-based matching if validator available
+        if compatible and validator:
+            logger.debug(f"  {len(compatible)} compatible alternatives, trying validation...")
+            
+            for alt in compatible:
+                logger.debug(f"  Attempting validation with: {alt}")
+                alt_type = self.get_type(alt, cbor_data)
+                
+                # Try to validate against this alternative
+                # Save current validation state
+                saved_errors = validator.validation_errors.copy()
+                saved_breadcrumb = validator.breadcrumb.copy()
+                
+                # Attempt validation
+                try:
+                    result = validator._validate_type(cbor_data, alt_type, alt)
+                    if result and len(validator.validation_errors) == len(saved_errors):
+                        logger.debug(f"    {Colors.MATCH}✓ VALIDATION SUCCESS{Colors.RESET}: Selected '{alt}'")
+                        # Restore state and return
+                        validator.validation_errors = saved_errors
+                        validator.breadcrumb = saved_breadcrumb
+                        return alt
+                    else:
+                        logger.debug(f"    ✗ Validation failed")
+                except Exception as e:
+                    logger.debug(f"    ✗ Validation error: {e}")
+                
+                # Restore state for next attempt
+                validator.validation_errors = saved_errors
+                validator.breadcrumb = saved_breadcrumb
+        
+        # Fallback: return first compatible alternative, or first alternative if none compatible
+        if compatible:
+            selected = compatible[0]
+            logger.debug(f"  {Colors.INFO}Selected: {selected} (first compatible){Colors.RESET}")
+            return selected
+        elif alternatives:
             selected = alternatives[0]
-            logger.debug(f"  Selected: {selected} (first alternative)")
+            logger.debug(f"  {Colors.WARNING}Selected: {selected} (first alternative, no validation){Colors.RESET}")
             return selected
         
         return None
@@ -735,10 +798,10 @@ class CBORAnalyzer:
                         logger.info(f"'{resolved}' is a type choice with alternatives: {choices}")
                         logger.info("Attempting to auto-resolve type choice...")
                         
-                        # Try to resolve automatically
-                        selected = self.cddl.resolve_type_choice_for_data(resolved, data)
+                        # Try to resolve automatically with validation
+                        selected = self.cddl.resolve_type_choice_for_data(resolved, data, validator=self)
                         if selected:
-                            logger.info(f"Auto-selected: {selected}")
+                            logger.info(f"{Colors.MATCH}Auto-selected: {selected}{Colors.RESET}")
                             return self.validate(data, selected, cbor_bytes)
                         
                         self.validation_errors.append(
@@ -810,13 +873,58 @@ class CBORAnalyzer:
                     logger.debug(f"{Colors.MATCH}[{field_breadcrumb}] ✓{Colors.RESET} Field present: " +
                                f"key={key}, type={field_type}, value={value_repr}")
                     
-                    # Recursively validate nested structures
-                    if field_type and field_type not in ['tstr', 'uint', 'int', 'bstr', 'bool', 'float', 'any']:
-                        # Try to get nested type definition
+                    # Basic type checking for primitives
+                    type_mismatch = False
+                    if field_type == 'uint' or field_type == 'int':
+                        if not isinstance(value, int):
+                            type_mismatch = True
+                            logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected {field_type}, got {type(value).__name__}")
+                    elif field_type == 'tstr':
+                        if not isinstance(value, str):
+                            type_mismatch = True
+                            logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected tstr, got {type(value).__name__}")
+                    elif field_type == 'bstr':
+                        if not isinstance(value, bytes):
+                            type_mismatch = True
+                            logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected bstr, got {type(value).__name__}")
+                    elif field_type and not field_type.startswith('$'):
+                        # It's a structured type - check basic structure
                         nested_type_def = self.cddl.get_type(field_type)
                         if nested_type_def:
-                            logger.debug(f"{Colors.CDDL}[{field_breadcrumb}]{Colors.RESET} Recursing into nested type: {field_type}")
-                            self._validate_type(value, nested_type_def, field_type)
+                            if nested_type_def['type'] == 'map' and not isinstance(value, dict):
+                                type_mismatch = True
+                                logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected map, got {type(value).__name__}")
+                            elif nested_type_def['type'] == 'array' and not isinstance(value, (list, tuple)):
+                                type_mismatch = True
+                                logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected array, got {type(value).__name__}")
+                    
+                    if type_mismatch:
+                        self.validation_errors.append(f"Type mismatch for field '{field_name}' in '{type_name}'")
+                    
+                    # Recursively validate nested structures
+                    if field_type and field_type not in ['tstr', 'uint', 'int', 'bstr', 'bool', 'float', 'any']:
+                        # Check if field_type is a type choice
+                        if field_type.startswith('$'):
+                            # It's a type choice - need to resolve it
+                            choice_name = field_type
+                            logger.debug(f"{Colors.CDDL}[{field_breadcrumb}]{Colors.RESET} Field type is a choice: {choice_name}")
+                            
+                            # Resolve the choice
+                            selected_type = self.cddl.resolve_type_choice_for_data(choice_name, value, validator=self)
+                            if selected_type:
+                                logger.debug(f"{Colors.MATCH}[{field_breadcrumb}]{Colors.RESET} Resolved choice to: {selected_type}")
+                                nested_type_def = self.cddl.get_type(selected_type)
+                                if nested_type_def:
+                                    logger.debug(f"{Colors.CDDL}[{field_breadcrumb}]{Colors.RESET} Recursing into nested type: {selected_type}")
+                                    self._validate_type(value, nested_type_def, selected_type)
+                            else:
+                                logger.warning(f"{Colors.WARNING}[{field_breadcrumb}]{Colors.RESET} Could not resolve type choice: {choice_name}")
+                        else:
+                            # Regular type - try to get nested type definition
+                            nested_type_def = self.cddl.get_type(field_type)
+                            if nested_type_def:
+                                logger.debug(f"{Colors.CDDL}[{field_breadcrumb}]{Colors.RESET} Recursing into nested type: {field_type}")
+                                self._validate_type(value, nested_type_def, field_type)
                     
                 elif not is_optional:
                     error_msg = f"Missing required field '{field_name}' (key {key}) in type '{type_name}'"
