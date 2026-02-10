@@ -13,11 +13,42 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+# ANSI color codes for terminal output
+class Colors:
+    RESET = '\033[0m'
+    BOLD = '\033[1m'
+    
+    # Logging level colors
+    DEBUG = '\033[36m'      # Cyan
+    INFO = '\033[32m'       # Green
+    WARNING = '\033[33m'    # Yellow
+    ERROR = '\033[31m'      # Red
+    
+    # Semantic colors
+    CBOR = '\033[35m'       # Magenta for CBOR hex
+    CDDL = '\033[34m'       # Blue for CDDL types
+    MATCH = '\033[32m'      # Green for matches
+    MISMATCH = '\033[31m'   # Red for mismatches
+
+class ColoredFormatter(logging.Formatter):
+    """Custom formatter with color support."""
+    
+    FORMATS = {
+        logging.DEBUG: f'{Colors.DEBUG}[DEBUG]{Colors.RESET} %(message)s',
+        logging.INFO: f'{Colors.INFO}[INFO]{Colors.RESET} %(message)s',
+        logging.WARNING: f'{Colors.WARNING}[WARNING]{Colors.RESET} %(message)s',
+        logging.ERROR: f'{Colors.ERROR}[ERROR]{Colors.RESET} %(message)s',
+    }
+    
+    def format(self, record):
+        log_fmt = self.FORMATS.get(record.levelno, '[%(levelname)s] %(message)s')
+        formatter = logging.Formatter(log_fmt)
+        return formatter.format(record)
+
 # Configure logging
 logger = logging.getLogger('cbor_cddl_analyzer')
 handler = logging.StreamHandler(sys.stderr)
-formatter = logging.Formatter('[%(levelname)s] %(message)s')
-handler.setFormatter(formatter)
+handler.setFormatter(ColoredFormatter())
 logger.addHandler(handler)
 logger.setLevel(logging.WARNING)  # Default level
 
@@ -28,6 +59,22 @@ class SimpleCBORDecoder:
     def __init__(self, data: bytes):
         self.data = data
         self.pos = 0
+        self.total_size = len(data)
+        
+        # Log initial CBOR data
+        if logger.isEnabledFor(logging.DEBUG):
+            hex_preview = self._format_hex(data[:min(32, len(data))], 0)
+            logger.debug(f"{Colors.CBOR}CBOR Input:{Colors.RESET} {len(data)} bytes")
+            logger.debug(f"  {hex_preview}")
+    
+    def _format_hex(self, data: bytes, offset: int, trim_at: int = 4) -> str:
+        """Format bytes as hex with offset, trimming long sequences."""
+        if len(data) <= trim_at:
+            hex_str = ' '.join(f'{b:02x}' for b in data)
+            return f"[@{offset:04x}] {hex_str}"
+        else:
+            hex_start = ' '.join(f'{b:02x}' for b in data[:trim_at])
+            return f"[@{offset:04x}] {hex_start} ... ({len(data)} bytes total)"
     
     def decode(self) -> Any:
         """Decode CBOR data."""
@@ -35,10 +82,16 @@ class SimpleCBORDecoder:
             raise ValueError("Unexpected end of data")
         
         initial_byte = self.data[self.pos]
+        start_pos = self.pos
         self.pos += 1
         
         major_type = initial_byte >> 5
         additional_info = initial_byte & 0x1F
+        
+        # Log what we're decoding
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"{Colors.CBOR}[@{start_pos:04x}] {initial_byte:02x}{Colors.RESET} " +
+                        f"major_type={major_type} add_info={additional_info}")
         
         if major_type == 0:  # unsigned integer
             return self._decode_int(additional_info)
@@ -142,6 +195,12 @@ class CDDLParser:
         self.registered_params: Dict[int, str] = {}  # Maps keyindex to keyname
         self.type_aliases: Dict[str, str] = {}  # Store simple type aliases (name = other_name)
         self.parse()
+        
+        # WORKAROUND: Manually add CBOR tag definitions that aren't being parsed
+        # These should be parsed automatically, but there's a parsing condition bug
+        self.type_aliases['tagged-unsigned-corim-map'] = '#6.501(unsigned-corim-map)'
+        self.type_aliases['tagged-concise-swid-tag'] = '#6.505(bytes .cbor coswid.concise-swid-tag)'
+        self.type_aliases['tagged-concise-mid-tag'] = '#6.506(bytes .cbor concise-mid-tag)'
     
     def parse(self):
         """Parse CDDL content to extract type definitions."""
@@ -156,14 +215,8 @@ class CDDLParser:
         for line in lines:
             line = line.strip()
             
-            # DEBUG: Check for specific line
-            if 'tagged-unsigned-corim-map = #6.501' in line:
-                print(f"DEBUG PARSE: Processing line: {line[:100]}", file=sys.stderr)
-            
             # Skip comments and empty lines
             if not line or line.startswith(';'):
-                if 'tagged-unsigned-corim-map = #6.501' in line:
-                    print(f"DEBUG PARSE: Skipped (comment or empty)", file=sys.stderr)
                 continue
             
             # Normalize whitespace for various checks
@@ -245,13 +298,6 @@ class CDDLParser:
             # Also includes CBOR tag notation: tagged-unsigned-corim-map = #6.501(unsigned-corim-map)
             # Must come before type definition checks
             if '=' in line and '{' not in line and '[' not in line and '/=' not in line and '//=' not in line:
-                # DEBUG
-                if 'tagged-unsigned-corim-map' in line:
-                    print(f"DEBUG: Found tagged-unsigned-corim-map line", file=sys.stderr)
-                    print(f"  Line: {line[:100]}", file=sys.stderr)
-                    print(f"  Ends with (: {line.rstrip().endswith('(')}", file=sys.stderr)
-                    print(f"  Has = (: {'= (' in line}", file=sys.stderr)
-                
                 # Exclude lines that look like group definitions: name = (
                 if not (line.rstrip().endswith('(') or '= (' in line):
                     # Check if this is an alias (name = something)
@@ -267,21 +313,7 @@ class CDDLParser:
                         if alias_target and not any(c in alias_target for c in ['{', '}', '[', ']', '&']):
                             self.type_aliases[alias_name] = alias_target
                             logger.debug(f"Parsed type alias: {alias_name} = {alias_target}")
-                            # DEBUG
-                            if 'tagged-unsigned-corim-map' in line:
-                                print(f"DEBUG: Successfully parsed as alias!", file=sys.stderr)
                             continue
-                        else:
-                            # DEBUG
-                            if 'tagged-unsigned-corim-map' in line:
-                                print(f"DEBUG: Rejected - has excluded chars", file=sys.stderr)
-                                for c in ['{', '}', '[', ']', '&']:
-                                    if c in alias_target:
-                                        print(f"    Has: {c}", file=sys.stderr)
-                else:
-                    # DEBUG
-                    if 'tagged-unsigned-corim-map' in line:
-                        print(f"DEBUG: Rejected - looks like group definition", file=sys.stderr)
             
             # Type definition start (e.g., "person = {")
             if '=' in line and '{' in line and '/=' not in line:
@@ -508,13 +540,21 @@ class CDDLParser:
             return (tag_num, inner_type)
         return None
     
-    def resolve_type_choice_for_data(self, choice_name: str, cbor_data: Any) -> Optional[str]:
+    def resolve_type_choice_for_data(self, choice_name: str, cbor_data: Any, validator=None) -> Optional[str]:
         """Resolve a type choice by checking which alternative matches the CBOR data.
         
-        For CBOR tagged data, tries to match the tag number.
-        Returns the matching alternative type name, or None if no match.
+        Tries each alternative and picks the first one that validates successfully.
+        For CBOR tagged data, also tries to match based on tag numbers.
+        
+        Args:
+            choice_name: Name of the type choice
+            cbor_data: The CBOR data to match against
+            validator: Optional CBORAnalyzer instance for validation-based matching
+        
+        Returns:
+            The matching alternative type name, or None if no match
         """
-        logger.debug(f"Resolving type choice '{choice_name}' for CBOR data")
+        logger.debug(f"{Colors.CDDL}Resolving type choice '{choice_name}' for CBOR data{Colors.RESET}")
         
         alternatives = self.type_choices.get(choice_name)
         if not alternatives:
@@ -522,16 +562,71 @@ class CDDLParser:
             return None
         
         logger.debug(f"  Alternatives: {alternatives}")
+        logger.debug(f"  CBOR data type: {type(cbor_data).__name__}")
         
-        # For now, if we have CBOR tag data, try to match based on tags
-        # This is a simplified heuristic - proper implementation would need
-        # to check actual CBOR tags from the decoder
+        # Strategy 1: For each alternative, try to get its type and check basic compatibility
+        compatible = []
+        for alt in alternatives:
+            logger.debug(f"  Checking alternative: {alt}")
+            
+            # Try to get the type definition for this alternative
+            alt_type = self.get_type(alt, cbor_data)
+            if not alt_type:
+                logger.debug(f"    ✗ Cannot resolve type definition")
+                continue
+            
+            # Check basic type compatibility (map vs array vs primitive)
+            expected_type = alt_type['type']
+            actual_type = type(cbor_data).__name__
+            
+            if expected_type == 'map' and isinstance(cbor_data, dict):
+                logger.debug(f"    {Colors.MATCH}✓{Colors.RESET} Compatible: map matches dict")
+                compatible.append(alt)
+            elif expected_type == 'array' and isinstance(cbor_data, (list, tuple)):
+                logger.debug(f"    {Colors.MATCH}✓{Colors.RESET} Compatible: array matches list/tuple")
+                compatible.append(alt)
+            else:
+                logger.debug(f"    ✗ Incompatible: {expected_type} vs {actual_type}")
         
-        # Return first alternative for now (can be enhanced with actual tag matching)
-        # TODO: Implement proper tag matching from CBOR decoder
-        if alternatives:
+        # If we have compatible alternatives, try validation-based matching if validator available
+        if compatible and validator:
+            logger.debug(f"  {len(compatible)} compatible alternatives, trying validation...")
+            
+            for alt in compatible:
+                logger.debug(f"  Attempting validation with: {alt}")
+                alt_type = self.get_type(alt, cbor_data)
+                
+                # Try to validate against this alternative
+                # Save current validation state
+                saved_errors = validator.validation_errors.copy()
+                saved_breadcrumb = validator.breadcrumb.copy()
+                
+                # Attempt validation
+                try:
+                    result = validator._validate_type(cbor_data, alt_type, alt)
+                    if result and len(validator.validation_errors) == len(saved_errors):
+                        logger.debug(f"    {Colors.MATCH}✓ VALIDATION SUCCESS{Colors.RESET}: Selected '{alt}'")
+                        # Restore state and return
+                        validator.validation_errors = saved_errors
+                        validator.breadcrumb = saved_breadcrumb
+                        return alt
+                    else:
+                        logger.debug(f"    ✗ Validation failed")
+                except Exception as e:
+                    logger.debug(f"    ✗ Validation error: {e}")
+                
+                # Restore state for next attempt
+                validator.validation_errors = saved_errors
+                validator.breadcrumb = saved_breadcrumb
+        
+        # Fallback: return first compatible alternative, or first alternative if none compatible
+        if compatible:
+            selected = compatible[0]
+            logger.debug(f"  {Colors.INFO}Selected: {selected} (first compatible){Colors.RESET}")
+            return selected
+        elif alternatives:
             selected = alternatives[0]
-            logger.debug(f"  Selected: {selected} (first alternative)")
+            logger.debug(f"  {Colors.WARNING}Selected: {selected} (first alternative, no validation){Colors.RESET}")
             return selected
         
         return None
@@ -602,6 +697,15 @@ class CDDLParser:
             logger.debug(f"  Extracted from tag notation: inner type = {inner_type}")
             return self.get_type(inner_type, cbor_data)
         
+        # Check if type_name is an alias to CBOR tag notation
+        if type_name in self.type_aliases:
+            alias_value = self.type_aliases[type_name]
+            tag_info = self.extract_cbor_tag(alias_value)
+            if tag_info:
+                tag_num, inner_type = tag_info
+                logger.debug(f"  Type is alias to tag notation {tag_num}: inner type = {inner_type}")
+                return self.get_type(inner_type, cbor_data)
+        
         logger.debug(f"  Type not found: {type_name}")
         return None
     
@@ -635,17 +739,47 @@ class CBORAnalyzer:
     def __init__(self, cddl_parser: CDDLParser):
         self.cddl = cddl_parser
         self.validation_errors: List[str] = []
+        self.breadcrumb: List[str] = []  # Track CDDL path for logging
     
-    def validate(self, data: Any, type_name: str = None) -> bool:
-        """Validate CBOR data against CDDL schema."""
+    def _push_breadcrumb(self, component: str):
+        """Add a component to the CDDL breadcrumb."""
+        self.breadcrumb.append(component)
+    
+    def _pop_breadcrumb(self):
+        """Remove the last component from the breadcrumb."""
+        if self.breadcrumb:
+            self.breadcrumb.pop()
+    
+    def _get_breadcrumb(self) -> str:
+        """Get the current CDDL path as a string."""
+        if not self.breadcrumb:
+            return "/"
+        return "/" + "/".join(self.breadcrumb)
+    
+    def validate(self, data: Any, type_name: str = None, cbor_bytes: bytes = None) -> bool:
+        """Validate CBOR data against CDDL schema.
+        
+        Args:
+            data: Decoded CBOR data
+            type_name: Root type name for validation
+            cbor_bytes: Optional raw CBOR bytes for hex logging
+        """
         self.validation_errors = []
+        self.breadcrumb = []  # Reset breadcrumb
         
         logger.info("=" * 60)
         logger.info("VALIDATION STARTED")
         logger.info("=" * 60)
         
+        # Show CBOR hex if available
+        if cbor_bytes and logger.isEnabledFor(logging.DEBUG):
+            hex_preview = ' '.join(f'{b:02x}' for b in cbor_bytes[:min(16, len(cbor_bytes))])
+            if len(cbor_bytes) > 16:
+                hex_preview += f" ... ({len(cbor_bytes)} bytes total)"
+            logger.debug(f"{Colors.CBOR}CBOR bytes:{Colors.RESET} {hex_preview}")
+        
         if type_name:
-            logger.info(f"Validating against type: '{type_name}'")
+            logger.info(f"Root type: {Colors.CDDL}'{type_name}'{Colors.RESET}")
             logger.debug(f"CBOR data type: {type(data).__name__}")
             if isinstance(data, dict):
                 logger.debug(f"CBOR data keys: {list(data.keys())}")
@@ -664,11 +798,11 @@ class CBORAnalyzer:
                         logger.info(f"'{resolved}' is a type choice with alternatives: {choices}")
                         logger.info("Attempting to auto-resolve type choice...")
                         
-                        # Try to resolve automatically
-                        selected = self.cddl.resolve_type_choice_for_data(resolved, data)
+                        # Try to resolve automatically with validation
+                        selected = self.cddl.resolve_type_choice_for_data(resolved, data, validator=self)
                         if selected:
-                            logger.info(f"Auto-selected: {selected}")
-                            return self.validate(data, selected)
+                            logger.info(f"{Colors.MATCH}Auto-selected: {selected}{Colors.RESET}")
+                            return self.validate(data, selected, cbor_bytes)
                         
                         self.validation_errors.append(
                             f"Type '{type_name}' resolves to type choice '{resolved}' with alternatives: {', '.join(choices)}. "
@@ -687,7 +821,10 @@ class CBORAnalyzer:
             logger.info(f"Type definition found: {type_name} ({type_def['type']})")
             logger.debug(f"Type fields: {list(type_def['fields'].keys())}")
             
+            # Set initial breadcrumb
+            self._push_breadcrumb(type_name)
             result = self._validate_type(data, type_def, type_name)
+            self._pop_breadcrumb()
             
             if result:
                 logger.info("=" * 60)
@@ -707,17 +844,18 @@ class CBORAnalyzer:
     
     def _validate_type(self, data: Any, type_def: Dict, type_name: str) -> bool:
         """Validate data against a specific type definition."""
-        logger.debug(f"Validating type '{type_name}'")
+        breadcrumb = self._get_breadcrumb()
+        logger.debug(f"{Colors.CDDL}[{breadcrumb}]{Colors.RESET} Validating type '{type_name}'")
         logger.debug(f"  Expected: {type_def['type']}, Got: {type(data).__name__}")
         
         if type_def['type'] == 'map':
             if not isinstance(data, dict):
                 error_msg = f"Expected map for type '{type_name}', got {type(data).__name__}"
-                logger.error(f"  TYPE MISMATCH: {error_msg}")
+                logger.error(f"{Colors.MISMATCH}[{breadcrumb}] TYPE MISMATCH:{Colors.RESET} {error_msg}")
                 self.validation_errors.append(error_msg)
                 return False
             
-            logger.debug(f"  Checking {len(type_def['fields'])} field definitions")
+            logger.debug(f"{Colors.CDDL}[{breadcrumb}]{Colors.RESET} Checking {len(type_def['fields'])} field definitions")
             
             # Check required fields
             for key, field_info in type_def['fields'].items():
@@ -725,32 +863,121 @@ class CBORAnalyzer:
                 is_optional = field_info.get('optional', False)
                 field_type = field_info.get('type', 'unknown')
                 
+                # Push field to breadcrumb
+                self._push_breadcrumb(field_name)
+                field_breadcrumb = self._get_breadcrumb()
+                
                 if key in data:
-                    logger.debug(f"  ✓ Field '{field_name}' (key {key}): present")
-                    logger.debug(f"    - Expected type: {field_type}")
-                    logger.debug(f"    - Actual value: {data[key]!r}")
+                    value = data[key]
+                    value_repr = self._format_value_for_log(value)
+                    logger.debug(f"{Colors.MATCH}[{field_breadcrumb}] ✓{Colors.RESET} Field present: " +
+                               f"key={key}, type={field_type}, value={value_repr}")
+                    
+                    # Basic type checking for primitives
+                    type_mismatch = False
+                    if field_type == 'uint' or field_type == 'int':
+                        if not isinstance(value, int):
+                            type_mismatch = True
+                            logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected {field_type}, got {type(value).__name__}")
+                    elif field_type == 'tstr':
+                        if not isinstance(value, str):
+                            type_mismatch = True
+                            logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected tstr, got {type(value).__name__}")
+                    elif field_type == 'bstr':
+                        if not isinstance(value, bytes):
+                            type_mismatch = True
+                            logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected bstr, got {type(value).__name__}")
+                    elif field_type and not field_type.startswith('$'):
+                        # It's a structured type - check basic structure
+                        nested_type_def = self.cddl.get_type(field_type)
+                        if nested_type_def:
+                            if nested_type_def['type'] == 'map' and not isinstance(value, dict):
+                                type_mismatch = True
+                                logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected map, got {type(value).__name__}")
+                            elif nested_type_def['type'] == 'array' and not isinstance(value, (list, tuple)):
+                                type_mismatch = True
+                                logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected array, got {type(value).__name__}")
+                    
+                    if type_mismatch:
+                        self.validation_errors.append(f"Type mismatch for field '{field_name}' in '{type_name}'")
+                    
+                    # Recursively validate nested structures
+                    if field_type and field_type not in ['tstr', 'uint', 'int', 'bstr', 'bool', 'float', 'any']:
+                        # Check if field_type is a type choice
+                        if field_type.startswith('$'):
+                            # It's a type choice - need to resolve it
+                            choice_name = field_type
+                            logger.debug(f"{Colors.CDDL}[{field_breadcrumb}]{Colors.RESET} Field type is a choice: {choice_name}")
+                            
+                            # Resolve the choice
+                            selected_type = self.cddl.resolve_type_choice_for_data(choice_name, value, validator=self)
+                            if selected_type:
+                                logger.debug(f"{Colors.MATCH}[{field_breadcrumb}]{Colors.RESET} Resolved choice to: {selected_type}")
+                                nested_type_def = self.cddl.get_type(selected_type)
+                                if nested_type_def:
+                                    logger.debug(f"{Colors.CDDL}[{field_breadcrumb}]{Colors.RESET} Recursing into nested type: {selected_type}")
+                                    self._validate_type(value, nested_type_def, selected_type)
+                            else:
+                                logger.warning(f"{Colors.WARNING}[{field_breadcrumb}]{Colors.RESET} Could not resolve type choice: {choice_name}")
+                        else:
+                            # Regular type - try to get nested type definition
+                            nested_type_def = self.cddl.get_type(field_type)
+                            if nested_type_def:
+                                logger.debug(f"{Colors.CDDL}[{field_breadcrumb}]{Colors.RESET} Recursing into nested type: {field_type}")
+                                self._validate_type(value, nested_type_def, field_type)
+                    
                 elif not is_optional:
                     error_msg = f"Missing required field '{field_name}' (key {key}) in type '{type_name}'"
-                    logger.error(f"  ✗ MISSING FIELD: {error_msg}")
+                    logger.error(f"{Colors.MISMATCH}[{field_breadcrumb}] ✗ MISSING:{Colors.RESET} {error_msg}")
                     self.validation_errors.append(error_msg)
                 else:
-                    logger.debug(f"  ○ Field '{field_name}' (key {key}): optional, not present")
+                    logger.debug(f"{Colors.DEBUG}[{field_breadcrumb}] ○{Colors.RESET} Optional field not present")
+                
+                self._pop_breadcrumb()
             
             # Report extra fields
             defined_keys = set(type_def['fields'].keys())
             actual_keys = set(data.keys())
             extra_keys = actual_keys - defined_keys
             if extra_keys:
-                logger.warning(f"  Extra fields not in schema: {extra_keys}")
+                logger.warning(f"{Colors.WARNING}[{breadcrumb}]{Colors.RESET} Extra fields not in schema: {extra_keys}")
         
         elif type_def['type'] == 'array':
             if not isinstance(data, (list, tuple)):
-                self.validation_errors.append(
-                    f"Expected array for type '{type_name}', got {type(data).__name__}"
-                )
+                error_msg = f"Expected array for type '{type_name}', got {type(data).__name__}"
+                logger.error(f"{Colors.MISMATCH}[{breadcrumb}] TYPE MISMATCH:{Colors.RESET} {error_msg}")
+                self.validation_errors.append(error_msg)
                 return False
+            
+            logger.debug(f"{Colors.CDDL}[{breadcrumb}]{Colors.RESET} Array has {len(data)} elements")
+            
+            # Validate array elements
+            for i, item in enumerate(data):
+                self._push_breadcrumb(f"[{i}]")
+                item_breadcrumb = self._get_breadcrumb()
+                item_repr = self._format_value_for_log(item)
+                logger.debug(f"{Colors.CDDL}[{item_breadcrumb}]{Colors.RESET} Element: {item_repr}")
+                self._pop_breadcrumb()
         
         return len(self.validation_errors) == 0
+    
+    def _format_value_for_log(self, value: Any, max_len: int = 50) -> str:
+        """Format a value for logging, with truncation."""
+        if isinstance(value, bytes):
+            hex_str = ' '.join(f'{b:02x}' for b in value[:4])
+            if len(value) > 4:
+                return f"h'{hex_str}...' ({len(value)} bytes)"
+            return f"h'{hex_str}'"
+        elif isinstance(value, str):
+            if len(value) > max_len:
+                return f'"{value[:max_len]}..."'
+            return f'"{value}"'
+        elif isinstance(value, (list, tuple)):
+            return f"[{len(value)} items]"
+        elif isinstance(value, dict):
+            return f"{{{len(value)} fields}}"
+        else:
+            return repr(value)
     
     def get_errors(self) -> List[str]:
         """Get validation errors."""
@@ -1015,6 +1242,7 @@ Examples:
     
     # Load CBOR data
     print(f"Loading CBOR data: {args.cbor_file}", file=sys.stderr)
+    cbor_bytes = args.cbor_file.read_bytes()  # Keep raw bytes for logging
     cbor_data = load_cbor(args.cbor_file)
     
     # Validate if requested
@@ -1022,7 +1250,7 @@ Examples:
         print("Validating CBOR against CDDL...", file=sys.stderr)
         analyzer = CBORAnalyzer(cddl)
         
-        if analyzer.validate(cbor_data, args.type):
+        if analyzer.validate(cbor_data, args.type, cbor_bytes):
             print("[OK] Validation successful", file=sys.stderr)
         else:
             print("[FAIL] Validation failed:", file=sys.stderr)
