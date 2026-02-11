@@ -132,8 +132,8 @@ class SimpleCBORDecoder:
             # Decode the tagged content
             tagged_value = self.decode(f"{path}<tag{tag_num}>" if path else f"<tag{tag_num}>")
             # Return tuple (tag_num, value) to preserve tag information
-            # For now, just return the value
-            return tagged_value
+            logger.debug(f"{Colors.CBOR}Tag {tag_num} wrapping:{Colors.RESET} {type(tagged_value).__name__}")
+            return (tag_num, tagged_value)
         elif major_type == 7:  # special
             if additional_info == 20:
                 return False
@@ -565,6 +565,22 @@ class CDDLParser:
         logger.debug(f"  Final resolution: {resolved}")
         return resolved
     
+    def extract_cbor_control(self, type_string: str) -> Optional[Tuple[str, str]]:
+        """Extract .cbor control operator from type string.
+        
+        E.g., 'bytes .cbor concise-mid-tag' -> ('bytes', 'concise-mid-tag')
+              'bstr .cbor my-type' -> ('bstr', 'my-type')
+        """
+        import re
+        # Match: (bytes|bstr) .cbor type-name
+        match = re.match(r'(bytes?|bstr)\s+\.cbor\s+(.+)', type_string.strip())
+        if match:
+            base_type = match.group(1)
+            inner_type = match.group(2).strip()
+            logger.debug(f"Extracted .cbor control: {base_type} contains CBOR-encoded {inner_type}")
+            return (base_type, inner_type)
+        return None
+    
     def extract_cbor_tag(self, type_string: str) -> Optional[Tuple[int, str]]:
         """Extract CBOR tag number and inner type from tag notation.
         
@@ -603,26 +619,54 @@ class CDDLParser:
         logger.debug(f"  Alternatives: {alternatives}")
         logger.debug(f"  CBOR data type: {type(cbor_data).__name__}")
         
-        # Strategy 1: For each alternative, try to get its type and check basic compatibility
+        # Check if cbor_data is a tagged value (tag_num, value)
+        actual_tag = None
+        actual_data = cbor_data
+        if isinstance(cbor_data, tuple) and len(cbor_data) == 2 and isinstance(cbor_data[0], int):
+            actual_tag = cbor_data[0]
+            actual_data = cbor_data[1]
+            logger.debug(f"  CBOR data is tagged: tag {actual_tag}")
+        
+        # Strategy 1: If we have a CBOR tag, try to match by tag number
+        if actual_tag is not None:
+            logger.debug(f"  Attempting tag-based matching for tag {actual_tag}")
+            for alt in alternatives:
+                # Get the alternative's type definition
+                alt_type_name = self.resolve_type_alias(alt)
+                
+                # Extract tag number from the type definition
+                tag_info = self.extract_cbor_tag(alt_type_name)
+                if tag_info:
+                    expected_tag, inner_type = tag_info
+                    if expected_tag == actual_tag:
+                        logger.debug(f"    {Colors.MATCH}✓ Tag match:{Colors.RESET} {alt} expects tag {expected_tag}")
+                        return alt
+                    else:
+                        logger.debug(f"    ✗ Tag mismatch: {alt} expects tag {expected_tag}, got {actual_tag}")
+        
+        # Strategy 2: For each alternative, try to get its type and check basic compatibility
         compatible = []
         for alt in alternatives:
             logger.debug(f"  Checking alternative: {alt}")
             
             # Try to get the type definition for this alternative
-            alt_type = self.get_type(alt, cbor_data)
+            alt_type = self.get_type(alt, actual_data)
             if not alt_type:
                 logger.debug(f"    ✗ Cannot resolve type definition")
                 continue
             
             # Check basic type compatibility (map vs array vs primitive)
             expected_type = alt_type['type']
-            actual_type = type(cbor_data).__name__
+            actual_type = type(actual_data).__name__
             
-            if expected_type == 'map' and isinstance(cbor_data, dict):
+            if expected_type == 'map' and isinstance(actual_data, dict):
                 logger.debug(f"    {Colors.MATCH}✓{Colors.RESET} Compatible: map matches dict")
                 compatible.append(alt)
-            elif expected_type == 'array' and isinstance(cbor_data, (list, tuple)):
+            elif expected_type == 'array' and isinstance(actual_data, (list, tuple)):
                 logger.debug(f"    {Colors.MATCH}✓{Colors.RESET} Compatible: array matches list/tuple")
+                compatible.append(alt)
+            elif expected_type == 'bstr' and isinstance(actual_data, bytes):
+                logger.debug(f"    {Colors.MATCH}✓{Colors.RESET} Compatible: bstr matches bytes")
                 compatible.append(alt)
             else:
                 logger.debug(f"    ✗ Incompatible: {expected_type} vs {actual_type}")
@@ -633,7 +677,7 @@ class CDDLParser:
             
             for alt in compatible:
                 logger.debug(f"  Attempting validation with: {alt}")
-                alt_type = self.get_type(alt, cbor_data)
+                alt_type = self.get_type(alt, actual_data)
                 
                 # Try to validate against this alternative
                 # Save current validation state
@@ -642,7 +686,7 @@ class CDDLParser:
                 
                 # Attempt validation
                 try:
-                    result = validator._validate_type(cbor_data, alt_type, alt)
+                    result = validator._validate_type(actual_data, alt_type, alt)
                     if result and len(validator.validation_errors) == len(saved_errors):
                         logger.debug(f"    {Colors.MATCH}✓ VALIDATION SUCCESS{Colors.RESET}: Selected '{alt}'")
                         # Restore state and return
@@ -735,6 +779,18 @@ class CDDLParser:
             tag_num, inner_type = tag_info
             logger.debug(f"  Extracted from tag notation: inner type = {inner_type}")
             return self.get_type(inner_type, cbor_data)
+        
+        # Try extracting .cbor control operator
+        cbor_control = self.extract_cbor_control(type_name)
+        if cbor_control:
+            base_type, inner_type = cbor_control
+            logger.debug(f"  Extracted .cbor control: {base_type} containing {inner_type}")
+            # Return a synthetic type definition for bytes
+            return {
+                'type': 'bstr',
+                'fields': {},
+                'cbor_inner_type': inner_type  # Store inner type for validation
+            }
         
         # Check if type_name is an alias to CBOR tag notation
         if type_name in self.type_aliases:
@@ -1019,8 +1075,52 @@ class CBORAnalyzer:
         """
         breadcrumb = self._get_breadcrumb()
         offset_str = f"{Colors.CBOR}[@{cbor_offset:04x}]{Colors.RESET} " if cbor_offset is not None else ""
+        
+        # Unwrap CBOR tagged data (tag_num, value) tuples
+        cbor_tag = None
+        if isinstance(data, tuple) and len(data) == 2 and isinstance(data[0], int):
+            cbor_tag = data[0]
+            data = data[1]
+            logger.debug(f"{Colors.CBOR}[{breadcrumb}] Unwrapped CBOR tag {cbor_tag}{Colors.RESET}")
+        
         logger.debug(f"{offset_str}{Colors.CDDL}[{breadcrumb}]{Colors.RESET} Validating type '{type_name}'")
         logger.debug(f"  Expected: {type_def['type']}, Got: {type(data).__name__}")
+        
+        # Check if this is a .cbor control type (bytes containing CBOR)
+        if type_def.get('cbor_inner_type'):
+            inner_type = type_def['cbor_inner_type']
+            logger.debug(f"{Colors.CDDL}[{breadcrumb}]{Colors.RESET} Type has .cbor control: contains {inner_type}")
+            
+            if not isinstance(data, bytes):
+                error_msg = f"Expected bytes (for .cbor control) for type '{type_name}', got {type(data).__name__}"
+                logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
+                self.validation_errors.append(error_msg)
+                return False
+            
+            # Decode the nested CBOR
+            try:
+                logger.debug(f"{Colors.CBOR}[{breadcrumb}]{Colors.RESET} Decoding nested CBOR ({len(data)} bytes)")
+                nested_decoder = SimpleCBORDecoder(data)
+                nested_data = nested_decoder.decode(f"{breadcrumb}:cbor")
+                logger.debug(f"{Colors.MATCH}[{breadcrumb}]{Colors.RESET} Decoded nested CBOR successfully")
+                
+                # Validate the decoded data against the inner type
+                nested_type_def = self.cddl.get_type(inner_type, nested_data)
+                if nested_type_def:
+                    logger.debug(f"{Colors.CDDL}[{breadcrumb}]{Colors.RESET} Validating nested CBOR against: {inner_type}")
+                    self._push_breadcrumb("cbor")
+                    self._validate_type(nested_data, nested_type_def, inner_type)
+                    self._pop_breadcrumb()
+                else:
+                    logger.warning(f"{Colors.WARNING}[{breadcrumb}]{Colors.RESET} Could not find type definition for: {inner_type}")
+                    
+                return len(self.validation_errors) == 0
+                
+            except Exception as e:
+                error_msg = f"Failed to decode nested CBOR in type '{type_name}': {e}"
+                logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
+                self.validation_errors.append(error_msg)
+                return False
         
         if type_def['type'] == 'map':
             if not isinstance(data, dict):
@@ -1050,7 +1150,38 @@ class CBORAnalyzer:
                     
                     # Basic type checking for primitives
                     type_mismatch = False
-                    if field_type == 'uint' or field_type == 'int':
+                    
+                    # Check for .cbor control operator (bytes containing CBOR data)
+                    cbor_control = self.cddl.extract_cbor_control(field_type) if field_type else None
+                    if cbor_control:
+                        base_type, inner_type = cbor_control
+                        logger.debug(f"{Colors.CDDL}[{field_breadcrumb}]{Colors.RESET} Field has .cbor control: {base_type} .cbor {inner_type}")
+                        
+                        # Verify it's bytes
+                        if not isinstance(value, bytes):
+                            type_mismatch = True
+                            logger.error(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Expected bytes (for .cbor), got {type(value).__name__}")
+                            self.validation_errors.append(f"Field '{field_name}' should be bytes containing CBOR data")
+                        else:
+                            # Decode the nested CBOR and validate it
+                            try:
+                                logger.debug(f"{Colors.CBOR}[{field_breadcrumb}]{Colors.RESET} Decoding nested CBOR ({len(value)} bytes)")
+                                nested_decoder = SimpleCBORDecoder(value)
+                                nested_data = nested_decoder.decode(f"{field_breadcrumb}:cbor")
+                                logger.debug(f"{Colors.MATCH}[{field_breadcrumb}]{Colors.RESET} Decoded nested CBOR: {type(nested_data).__name__}")
+                                
+                                # Validate the decoded data against the inner type
+                                nested_type_def = self.cddl.get_type(inner_type, nested_data)
+                                if nested_type_def:
+                                    logger.debug(f"{Colors.CDDL}[{field_breadcrumb}]{Colors.RESET} Validating nested CBOR against: {inner_type}")
+                                    self._validate_type(nested_data, nested_type_def, inner_type)
+                                else:
+                                    logger.warning(f"{Colors.WARNING}[{field_breadcrumb}]{Colors.RESET} Could not find type definition for: {inner_type}")
+                            except Exception as e:
+                                logger.error(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Failed to decode nested CBOR: {e}")
+                                self.validation_errors.append(f"Failed to decode nested CBOR in field '{field_name}': {e}")
+                    
+                    elif field_type == 'uint' or field_type == 'int':
                         if not isinstance(value, int):
                             type_mismatch = True
                             logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected {field_type}, got {type(value).__name__}")
@@ -1078,8 +1209,54 @@ class CBORAnalyzer:
                     
                     # Recursively validate nested structures
                     if field_type and field_type not in ['tstr', 'uint', 'int', 'bstr', 'bool', 'float', 'any']:
+                        # Check if field_type is an inline array definition: [ + type ] or [ * type ]
+                        import re
+                        array_match = re.match(r'^\[\s*([+*]?)\s*(.+?)\s*\]$', field_type)
+                        if array_match:
+                            # It's an inline array definition
+                            quantifier = array_match.group(1)  # + or * or empty
+                            element_type = array_match.group(2).strip()
+                            
+                            logger.debug(f"{Colors.CDDL}[{field_breadcrumb}]{Colors.RESET} Field is inline array: [{quantifier} {element_type}]")
+                            
+                            if not isinstance(value, (list, tuple)):
+                                logger.error(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Expected array, got {type(value).__name__}")
+                                self.validation_errors.append(f"Expected array for field '{field_name}', got {type(value).__name__}")
+                            else:
+                                # Validate array constraints
+                                if quantifier == '+' and len(value) == 0:
+                                    logger.error(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Array must have at least one element")
+                                    self.validation_errors.append(f"Array field '{field_name}' must not be empty")
+                                
+                                # Validate each array element
+                                logger.debug(f"{Colors.CDDL}[{field_breadcrumb}]{Colors.RESET} Validating {len(value)} array elements")
+                                for i, item in enumerate(value):
+                                    self._push_breadcrumb(f"[{i}]")
+                                    item_breadcrumb = self._get_breadcrumb()
+                                    item_repr = self._format_value_for_log(item)
+                                    logger.debug(f"{Colors.CDDL}[{item_breadcrumb}]{Colors.RESET} Element: {item_repr}")
+                                    
+                                    # Check if element type is a type choice
+                                    if element_type.startswith('$'):
+                                        logger.debug(f"{Colors.CDDL}[{item_breadcrumb}]{Colors.RESET} Element type is a choice: {element_type}")
+                                        selected_type = self.cddl.resolve_type_choice_for_data(element_type, item, validator=self)
+                                        if selected_type:
+                                            logger.debug(f"{Colors.MATCH}[{item_breadcrumb}]{Colors.RESET} Resolved choice to: {selected_type}")
+                                            nested_type_def = self.cddl.get_type(selected_type)
+                                            if nested_type_def:
+                                                self._validate_type(item, nested_type_def, selected_type)
+                                        else:
+                                            logger.warning(f"{Colors.WARNING}[{item_breadcrumb}]{Colors.RESET} Could not resolve type choice: {element_type}")
+                                    else:
+                                        # Regular element type
+                                        nested_type_def = self.cddl.get_type(element_type)
+                                        if nested_type_def:
+                                            self._validate_type(item, nested_type_def, element_type)
+                                    
+                                    self._pop_breadcrumb()
+                        
                         # Check if field_type is a type choice
-                        if field_type.startswith('$'):
+                        elif field_type.startswith('$'):
                             # It's a type choice - need to resolve it
                             choice_name = field_type
                             logger.debug(f"{Colors.CDDL}[{field_breadcrumb}]{Colors.RESET} Field type is a choice: {choice_name}")
@@ -1175,6 +1352,33 @@ class EDNGenerator:
     
     def _generate_value(self, value: Any, type_name: str = None, annotate: bool = True) -> str:
         """Generate EDN for a value."""
+        # Handle CBOR tagged tuples (tag_num, value)
+        if isinstance(value, tuple) and len(value) == 2 and isinstance(value[0], int):
+            tag_num = value[0]
+            inner_value = value[1]
+            
+            # Check if this type has .cbor control (nested CBOR in bytes)
+            if type_name:
+                type_def = self.cddl.get_type(type_name, inner_value)
+                if type_def and type_def.get('cbor_inner_type'):
+                    # Decode nested CBOR and generate EDN for it
+                    inner_type = type_def['cbor_inner_type']
+                    if isinstance(inner_value, bytes):
+                        try:
+                            logger.debug(f"EDN: Decoding nested CBOR ({len(inner_value)} bytes) for type {inner_type}")
+                            nested_decoder = SimpleCBORDecoder(inner_value)
+                            nested_data = nested_decoder.decode()
+                            logger.debug(f"EDN: Successfully decoded nested CBOR")
+                            # Generate EDN for the decoded nested data
+                            return self._generate_value(nested_data, inner_type, annotate)
+                        except Exception as e:
+                            logger.warning(f"EDN: Failed to decode nested CBOR: {e}")
+                            # Fall back to hex representation
+                            return self._generate_bytes(inner_value)
+            
+            # For other tagged data, unwrap and continue
+            return self._generate_value(inner_value, type_name, annotate)
+        
         if isinstance(value, dict):
             return self._generate_map(value, type_name, annotate)
         elif isinstance(value, (list, tuple)):
@@ -1260,12 +1464,37 @@ class EDNGenerator:
         if not data:
             return "[]"
         
+        # Check if type_name is an inline array definition: [ + type ] or [ * type ]
+        element_type = None
+        if type_name:
+            import re
+            array_match = re.match(r'^\[\s*([+*]?)\s*(.+?)\s*\]$', type_name)
+            if array_match:
+                element_type = array_match.group(2).strip()
+                logger.debug(f"EDN: Inline array type detected, element type: {element_type}")
+        
         lines = ["["]
         self.indent_level += 1
         
         for i, value in enumerate(data):
             indent = self.indent_str * self.indent_level
-            value_str = self._generate_value(value, None, annotate)
+            
+            # For inline arrays with type choices, resolve the type for each element
+            resolved_element_type = element_type
+            if element_type and element_type.startswith('$'):
+                # It's a type choice - need to resolve it
+                # Unwrap tagged tuple for type resolution
+                resolution_data = value
+                if isinstance(value, tuple) and len(value) == 2 and isinstance(value[0], int):
+                    resolution_data = value  # Keep tuple for tag matching
+                
+                # Try to resolve the type choice based on the actual data
+                resolved = self.cddl.resolve_type_choice_for_data(element_type, resolution_data)
+                if resolved:
+                    resolved_element_type = resolved
+                    logger.debug(f"EDN: Resolved array element [{i}] type choice to: {resolved}")
+            
+            value_str = self._generate_value(value, resolved_element_type, annotate)
             comma = "," if i < len(data) - 1 else ""
             lines.append(f"{indent}{value_str}{comma}")
         
