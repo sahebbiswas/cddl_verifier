@@ -250,9 +250,29 @@ class CDDLParser:
         current_group_name = None
         current_group_fields = []
         in_array_def = False  # Track if we're in an array type definition
+        pending_field_line = None  # Track incomplete field definitions (multi-line)
         
         for line in lines:
             line = line.strip()
+            
+            # Handle continuation of pending field (multi-line registered param)
+            if pending_field_line:
+                # This line should contain the type
+                continuation = line.rstrip(',').strip()
+                if continuation and not line.startswith(';'):
+                    full_line = pending_field_line + ' ' + continuation
+                    pending_field_line = None
+                    # Re-process the complete line
+                    line_normalized = full_line.replace('& (', '&(').replace('&  (', '&(').replace('&   (', '&(')
+                    line_normalized = line_normalized.replace(') =>', ')=>').replace(')  =>', ')=>').replace(')   =>', ')=>')
+                    if '&(' in line_normalized and ')' in line_normalized and '=>' in line_normalized:
+                        self._parse_registered_param(full_line, current_fields)
+                    continue
+                elif not line.startswith(';'):
+                    # Empty line, skip and continue waiting
+                    continue
+                # If it's a comment, clear pending and continue
+                pending_field_line = None
             
             # Skip comments and empty lines
             if not line or line.startswith(';'):
@@ -330,8 +350,16 @@ class CDDLParser:
             
             # IANA registered parameter (e.g., "&( keyname : 0 ) => value" or "& ( keyname : 0 ) => value")
             if '&(' in line_normalized and ')' in line_normalized and '=>' in line_normalized:
-                self._parse_registered_param(line, current_fields)
-                continue
+                # Check if value type is on the same line
+                arrow_pos = line.index('=>')
+                value_after_arrow = line[arrow_pos + 2:].strip().rstrip(',')
+                if not value_after_arrow or value_after_arrow == '':
+                    # Type is on next line, save this line as pending
+                    pending_field_line = line
+                    continue
+                else:
+                    self._parse_registered_param(line, current_fields)
+                    continue
             
             # Simple type alias (e.g., "corim = concise-rim-type-choice")
             # Also includes CBOR tag notation: tagged-unsigned-corim-map = #6.501(unsigned-corim-map)
@@ -370,7 +398,7 @@ class CDDLParser:
                 current_type = type_name
                 current_fields = {}
                 in_array_def = True
-                self.types[type_name] = {'fields': current_fields, 'type': 'array'}
+                self.types[type_name] = {'fields': current_fields, 'type': 'array', 'element_types': {}}
             
             # Field definition (e.g., "name: tstr" or "0: tstr" or "0 : tstr")
             # Also handles named array fields (e.g., "environment: environment-map")
@@ -438,6 +466,21 @@ class CDDLParser:
             elif line == '}' or line == ']':
                 current_type = None
                 in_array_def = False
+        
+        # Post-processing: Convert named array fields to indexed element_types
+        for type_name, type_def in self.types.items():
+            if type_def.get('type') == 'array' and 'fields' in type_def:
+                # Convert named fields to indexed positions
+                fields = type_def['fields']
+                element_types = {}
+                for idx, (field_name, field_info) in enumerate(fields.items()):
+                    element_type = field_info.get('type', '')
+                    # Fix incomplete array syntax (missing closing bracket)
+                    if element_type.startswith('[') and not element_type.endswith(']'):
+                        element_type = element_type + ' ]'
+                    element_types[idx] = element_type
+                    logger.debug(f"Array type '{type_name}' element {idx}: {field_name} -> {element_type}")
+                type_def['element_types'] = element_types
     
     def _parse_socket_extension(self, line: str):
         """Parse socket extension definition: $$name //= value"""
@@ -639,10 +682,10 @@ class CDDLParser:
                 if tag_info:
                     expected_tag, inner_type = tag_info
                     if expected_tag == actual_tag:
-                        logger.debug(f"    {Colors.MATCH}✓ Tag match:{Colors.RESET} {alt} expects tag {expected_tag}")
+                        logger.debug(f"    {Colors.MATCH}[OK] Tag match:{Colors.RESET} {alt} expects tag {expected_tag}")
                         return alt
                     else:
-                        logger.debug(f"    ✗ Tag mismatch: {alt} expects tag {expected_tag}, got {actual_tag}")
+                        logger.debug(f"    [X] Tag mismatch: {alt} expects tag {expected_tag}, got {actual_tag}")
         
         # Strategy 2: For each alternative, try to get its type and check basic compatibility
         compatible = []
@@ -652,7 +695,7 @@ class CDDLParser:
             # Try to get the type definition for this alternative
             alt_type = self.get_type(alt, actual_data)
             if not alt_type:
-                logger.debug(f"    ✗ Cannot resolve type definition")
+                logger.debug(f"    [X] Cannot resolve type definition")
                 continue
             
             # Check basic type compatibility (map vs array vs primitive)
@@ -660,16 +703,16 @@ class CDDLParser:
             actual_type = type(actual_data).__name__
             
             if expected_type == 'map' and isinstance(actual_data, dict):
-                logger.debug(f"    {Colors.MATCH}✓{Colors.RESET} Compatible: map matches dict")
+                logger.debug(f"    {Colors.MATCH}[OK]{Colors.RESET} Compatible: map matches dict")
                 compatible.append(alt)
             elif expected_type == 'array' and isinstance(actual_data, (list, tuple)):
-                logger.debug(f"    {Colors.MATCH}✓{Colors.RESET} Compatible: array matches list/tuple")
+                logger.debug(f"    {Colors.MATCH}[OK]{Colors.RESET} Compatible: array matches list/tuple")
                 compatible.append(alt)
             elif expected_type == 'bstr' and isinstance(actual_data, bytes):
-                logger.debug(f"    {Colors.MATCH}✓{Colors.RESET} Compatible: bstr matches bytes")
+                logger.debug(f"    {Colors.MATCH}[OK]{Colors.RESET} Compatible: bstr matches bytes")
                 compatible.append(alt)
             else:
-                logger.debug(f"    ✗ Incompatible: {expected_type} vs {actual_type}")
+                logger.debug(f"    [X] Incompatible: {expected_type} vs {actual_type}")
         
         # If we have compatible alternatives, try validation-based matching if validator available
         if compatible and validator:
@@ -688,15 +731,15 @@ class CDDLParser:
                 try:
                     result = validator._validate_type(actual_data, alt_type, alt)
                     if result and len(validator.validation_errors) == len(saved_errors):
-                        logger.debug(f"    {Colors.MATCH}✓ VALIDATION SUCCESS{Colors.RESET}: Selected '{alt}'")
+                        logger.debug(f"    {Colors.MATCH}[OK] VALIDATION SUCCESS{Colors.RESET}: Selected '{alt}'")
                         # Restore state and return
                         validator.validation_errors = saved_errors
                         validator.breadcrumb = saved_breadcrumb
                         return alt
                     else:
-                        logger.debug(f"    ✗ Validation failed")
+                        logger.debug(f"    [X] Validation failed")
                 except Exception as e:
-                    logger.debug(f"    ✗ Validation error: {e}")
+                    logger.debug(f"    [X] Validation error: {e}")
                 
                 # Restore state for next attempt
                 validator.validation_errors = saved_errors
@@ -1145,7 +1188,7 @@ class CBORAnalyzer:
                     value = data[key]
                     value_repr = self._format_value_for_log(value)
                     cbor_ctx = self._get_cbor_context(value)
-                    logger.debug(f"{Colors.MATCH}[{field_breadcrumb}] ✓{Colors.RESET} Field present: " +
+                    logger.debug(f"{Colors.MATCH}[{field_breadcrumb}] [OK]{Colors.RESET} Field present: " +
                                f"key={key}, type={field_type}, value={value_repr}{cbor_ctx}")
                     
                     # Basic type checking for primitives
@@ -1280,10 +1323,10 @@ class CBORAnalyzer:
                     
                 elif not is_optional:
                     error_msg = f"Missing required field '{field_name}' (key {key}) in type '{type_name}'"
-                    logger.error(f"{Colors.MISMATCH}[{field_breadcrumb}] ✗ MISSING:{Colors.RESET} {error_msg}")
+                    logger.error(f"{Colors.MISMATCH}[{field_breadcrumb}] [X] MISSING:{Colors.RESET} {error_msg}")
                     self.validation_errors.append(error_msg)
                 else:
-                    logger.debug(f"{Colors.DEBUG}[{field_breadcrumb}] ○{Colors.RESET} Optional field not present")
+                    logger.debug(f"{Colors.DEBUG}[{field_breadcrumb}] [.]{Colors.RESET} Optional field not present")
                 
                 self._pop_breadcrumb()
             
@@ -1382,6 +1425,7 @@ class EDNGenerator:
         if isinstance(value, dict):
             return self._generate_map(value, type_name, annotate)
         elif isinstance(value, (list, tuple)):
+            logger.debug(f"EDN: Generating array with type_name='{type_name}'")
             return self._generate_array(value, type_name, annotate)
         elif isinstance(value, bytes):
             return self._generate_bytes(value)
@@ -1466,12 +1510,29 @@ class EDNGenerator:
         
         # Check if type_name is an inline array definition: [ + type ] or [ * type ]
         element_type = None
+        element_types_by_index = {}  # For structured arrays like [type1, type2]
+        
         if type_name:
             import re
+            # Try inline array: [ + type ] or [ * type ]
             array_match = re.match(r'^\[\s*([+*]?)\s*(.+?)\s*\]$', type_name)
             if array_match:
                 element_type = array_match.group(2).strip()
                 logger.debug(f"EDN: Inline array type detected, element type: {element_type}")
+            else:
+                # Try to get array type definition for structured arrays
+                # e.g., reference-triple-record = [environment-map, [ + measurement-map ]]
+                logger.debug(f"EDN: Checking if '{type_name}' is a structured array type")
+                type_def = self.cddl.get_type(type_name)
+                if type_def and type_def.get('type') == 'array':
+                    # Check if it has element_types (structured array)
+                    if 'element_types' in type_def and type_def['element_types']:
+                        element_types_by_index = type_def.get('element_types', {})
+                        logger.debug(f"EDN: Structured array type '{type_name}' with element types: {element_types_by_index}")
+                    else:
+                        logger.debug(f"EDN: Array type '{type_name}' has no element_types")
+                else:
+                    logger.debug(f"EDN: Type '{type_name}' is not an array type (type={type_def.get('type') if type_def else 'not found'})")
         
         lines = ["["]
         self.indent_level += 1
@@ -1479,9 +1540,20 @@ class EDNGenerator:
         for i, value in enumerate(data):
             indent = self.indent_str * self.indent_level
             
+            # Determine the type for this specific element
+            resolved_element_type = None
+            
+            # First check if we have a type for this specific index (structured arrays)
+            if element_types_by_index and i in element_types_by_index:
+                resolved_element_type = element_types_by_index[i]
+                logger.debug(f"EDN: Array element [{i}] has indexed type: {resolved_element_type}")
+            elif element_type:
+                # For uniform arrays, all elements have the same type
+                resolved_element_type = element_type
+                logger.debug(f"EDN: Array element [{i}] using uniform type: {resolved_element_type}")
+            
             # For inline arrays with type choices, resolve the type for each element
-            resolved_element_type = element_type
-            if element_type and element_type.startswith('$'):
+            if resolved_element_type and resolved_element_type.startswith('$'):
                 # It's a type choice - need to resolve it
                 # Unwrap tagged tuple for type resolution
                 resolution_data = value
@@ -1489,10 +1561,35 @@ class EDNGenerator:
                     resolution_data = value  # Keep tuple for tag matching
                 
                 # Try to resolve the type choice based on the actual data
-                resolved = self.cddl.resolve_type_choice_for_data(element_type, resolution_data)
+                resolved = self.cddl.resolve_type_choice_for_data(resolved_element_type, resolution_data)
                 if resolved:
                     resolved_element_type = resolved
                     logger.debug(f"EDN: Resolved array element [{i}] type choice to: {resolved}")
+            elif resolved_element_type:
+                # Check if this type is itself a structured array
+                elem_type_def = self.cddl.get_type(resolved_element_type)
+                if elem_type_def and elem_type_def.get('type') == 'array' and isinstance(value, (list, tuple)):
+                    # It's a structured array - pass the type so it can use element_types
+                    logger.debug(f"EDN: Array element [{i}] type '{resolved_element_type}' is a structured array")
+                    # The type name stays as-is, _generate_value will handle it
+                elif resolved_element_type:
+                    # Not a type choice, but might be an alias - try to resolve
+                    resolved_alias = self.cddl.resolve_type_alias(resolved_element_type)
+                    if resolved_alias != resolved_element_type:
+                        logger.debug(f"EDN: Resolved array element [{i}] type alias {resolved_element_type} -> {resolved_alias}")
+                        resolved_element_type = resolved_alias
+                    else:
+                        # Check if we can get a type definition directly
+                        # This handles cases like 'comid-entity-map' which isn't an alias but 'entity-map' exists
+                        type_def = self.cddl.get_type(resolved_element_type)
+                        if not type_def and '-' in resolved_element_type:
+                            # Try variants like removing prefix
+                            base_type = resolved_element_type.split('-', 1)[1] if resolved_element_type.count('-') > 0 else resolved_element_type
+                            if base_type != resolved_element_type:
+                                alt_type_def = self.cddl.get_type(base_type)
+                                if alt_type_def:
+                                    logger.debug(f"EDN: Using base type {base_type} for {resolved_element_type}")
+                                    resolved_element_type = base_type
             
             value_str = self._generate_value(value, resolved_element_type, annotate)
             comma = "," if i < len(data) - 1 else ""
