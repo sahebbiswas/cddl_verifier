@@ -60,6 +60,7 @@ class SimpleCBORDecoder:
         self.data = data
         self.pos = 0
         self.total_size = len(data)
+        self.structure_map: Dict[int, str] = {}  # Map offsets to descriptions
         
         # Log initial CBOR data
         if logger.isEnabledFor(logging.DEBUG):
@@ -76,8 +77,12 @@ class SimpleCBORDecoder:
             hex_start = ' '.join(f'{b:02x}' for b in data[:trim_at])
             return f"[@{offset:04x}] {hex_start} ... ({len(data)} bytes total)"
     
-    def decode(self) -> Any:
-        """Decode CBOR data."""
+    def decode(self, path: str = "") -> Any:
+        """Decode CBOR data.
+        
+        Args:
+            path: Current path in the data structure for tracking
+        """
         if self.pos >= len(self.data):
             raise ValueError("Unexpected end of data")
         
@@ -88,10 +93,14 @@ class SimpleCBORDecoder:
         major_type = initial_byte >> 5
         additional_info = initial_byte & 0x1F
         
-        # Log what we're decoding
+        # Log what we're decoding with path context
         if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"{Colors.CBOR}[@{start_pos:04x}] {initial_byte:02x}{Colors.RESET} " +
+            context = f" {Colors.CDDL}({path}){Colors.RESET}" if path else ""
+            logger.debug(f"{Colors.CBOR}[@{start_pos:04x}] {initial_byte:02x}{Colors.RESET}{context} " +
                         f"major_type={major_type} add_info={additional_info}")
+        
+        # Store structure information
+        self.structure_map[start_pos] = f"{path}: major_type={major_type}"
         
         if major_type == 0:  # unsigned integer
             return self._decode_int(additional_info)
@@ -109,19 +118,19 @@ class SimpleCBORDecoder:
             return result
         elif major_type == 4:  # array
             length = self._decode_int(additional_info)
-            return [self.decode() for _ in range(length)]
+            return [self.decode(f"{path}[{i}]" if path else f"[{i}]") for i in range(length)]
         elif major_type == 5:  # map
             length = self._decode_int(additional_info)
             result = {}
-            for _ in range(length):
-                key = self.decode()
-                value = self.decode()
+            for i in range(length):
+                key = self.decode(f"{path}[key{i}]" if path else f"[key{i}]")
+                value = self.decode(f"{path}.{key}" if path else f".{key}")
                 result[key] = value
             return result
         elif major_type == 6:  # tag
             tag_num = self._decode_int(additional_info)
             # Decode the tagged content
-            tagged_value = self.decode()
+            tagged_value = self.decode(f"{path}<tag{tag_num}>" if path else f"<tag{tag_num}>")
             # Return tuple (tag_num, value) to preserve tag information
             # For now, just return the value
             return tagged_value
@@ -196,11 +205,41 @@ class CDDLParser:
         self.type_aliases: Dict[str, str] = {}  # Store simple type aliases (name = other_name)
         self.parse()
         
+        # Add built-in CDDL primitive types
+        self._add_builtin_types()
+        
         # WORKAROUND: Manually add CBOR tag definitions that aren't being parsed
         # These should be parsed automatically, but there's a parsing condition bug
         self.type_aliases['tagged-unsigned-corim-map'] = '#6.501(unsigned-corim-map)'
         self.type_aliases['tagged-concise-swid-tag'] = '#6.505(bytes .cbor coswid.concise-swid-tag)'
         self.type_aliases['tagged-concise-mid-tag'] = '#6.506(bytes .cbor concise-mid-tag)'
+    
+    def _add_builtin_types(self):
+        """Add CDDL built-in primitive types."""
+        # Map CDDL standard names to our internal type names
+        builtin_primitives = {
+            'text': 'tstr',
+            'bytes': 'bstr',
+            'int': 'int',
+            'uint': 'uint',
+            'nint': 'int',  # negative int
+            'bool': 'bool',
+            'true': 'bool',
+            'false': 'bool',
+            'nil': 'nil',
+            'null': 'nil',
+            'undefined': 'undefined',
+            'float': 'float',
+            'float16': 'float',
+            'float32': 'float',
+            'float64': 'float',
+            'any': 'any',
+        }
+        
+        for builtin_name, internal_type in builtin_primitives.items():
+            if builtin_name not in self.type_aliases:
+                self.type_aliases[builtin_name] = internal_type
+                logger.debug(f"Added built-in type: {builtin_name} -> {internal_type}")
     
     def parse(self):
         """Parse CDDL content to extract type definitions."""
@@ -740,6 +779,8 @@ class CBORAnalyzer:
         self.cddl = cddl_parser
         self.validation_errors: List[str] = []
         self.breadcrumb: List[str] = []  # Track CDDL path for logging
+        self.cbor_bytes: Optional[bytes] = None  # Raw CBOR bytes for offset tracking
+        self.offset_map: Dict[int, int] = {}  # Map data id() to byte offset
     
     def _push_breadcrumb(self, component: str):
         """Add a component to the CDDL breadcrumb."""
@@ -756,6 +797,127 @@ class CBORAnalyzer:
             return "/"
         return "/" + "/".join(self.breadcrumb)
     
+    def _get_cbor_context(self, value: Any) -> str:
+        """Get CBOR byte context for a value if available."""
+        if not self.cbor_bytes:
+            return ""
+        
+        # Try to find this value's offset in our map
+        value_id = id(value)
+        if value_id in self.offset_map:
+            offset = self.offset_map[value_id]
+            if offset < len(self.cbor_bytes):
+                # Show a few bytes around this offset
+                start = max(0, offset)
+                end = min(len(self.cbor_bytes), offset + 4)
+                hex_bytes = ' '.join(f'{b:02x}' for b in self.cbor_bytes[start:end])
+                return f" {Colors.CBOR}[@{offset:04x}:{hex_bytes}]{Colors.RESET}"
+        
+        return ""
+    
+    def _build_offset_map(self, cbor_bytes: bytes, data: Any, offset: int = 0):
+        """Build a map of Python object IDs to CBOR byte offsets.
+        
+        This is a simplified approach - walks the data structure and estimates offsets.
+        """
+        try:
+            if offset >= len(cbor_bytes):
+                return offset
+            
+            initial_byte = cbor_bytes[offset]
+            major_type = initial_byte >> 5
+            additional_info = initial_byte & 0x1F
+            
+            # Store this value's offset
+            self.offset_map[id(data)] = offset
+            
+            current_offset = offset + 1
+            
+            # For maps and arrays, recursively process children
+            if major_type == 5 and isinstance(data, dict):  # map
+                # Decode length
+                length = additional_info
+                if additional_info == 24:
+                    length = cbor_bytes[current_offset] if current_offset < len(cbor_bytes) else 0
+                    current_offset += 1
+                elif additional_info == 25:
+                    if current_offset + 1 < len(cbor_bytes):
+                        length = int.from_bytes(cbor_bytes[current_offset:current_offset+2], 'big')
+                    current_offset += 2
+                
+                # Process each key-value pair
+                for key, value in data.items():
+                    # Process key
+                    current_offset = self._skip_cbor_item(cbor_bytes, current_offset)
+                    # Process value
+                    if current_offset < len(cbor_bytes):
+                        current_offset = self._build_offset_map(cbor_bytes, value, current_offset)
+                
+                return current_offset
+            
+            elif major_type == 4 and isinstance(data, (list, tuple)):  # array
+                # Similar logic for arrays
+                length = additional_info
+                if additional_info == 24:
+                    length = cbor_bytes[current_offset] if current_offset < len(cbor_bytes) else 0
+                    current_offset += 1
+                
+                for item in data:
+                    if current_offset < len(cbor_bytes):
+                        current_offset = self._build_offset_map(cbor_bytes, item, current_offset)
+                
+                return current_offset
+            
+            else:
+                # For primitives, skip to next item
+                return self._skip_cbor_item(cbor_bytes, offset)
+        
+        except Exception as e:
+            logger.debug(f"Error building offset map: {e}")
+            return offset
+    
+    def _skip_cbor_item(self, cbor_bytes: bytes, offset: int) -> int:
+        """Skip a CBOR item and return the offset of the next item."""
+        if offset >= len(cbor_bytes):
+            return offset
+        
+        initial_byte = cbor_bytes[offset]
+        major_type = initial_byte >> 5
+        additional_info = initial_byte & 0x1F
+        
+        offset += 1
+        
+        # Decode length/value based on additional info
+        if additional_info < 24:
+            value_length = 0
+        elif additional_info == 24:
+            value_length = 1
+        elif additional_info == 25:
+            value_length = 2
+        elif additional_info == 26:
+            value_length = 4
+        elif additional_info == 27:
+            value_length = 8
+        else:
+            value_length = 0
+        
+        offset += value_length
+        
+        # For strings and byte strings, skip the actual data
+        if major_type in [2, 3]:  # byte string or text string
+            if additional_info < 24:
+                data_length = additional_info
+            elif additional_info == 24 and offset - 1 < len(cbor_bytes):
+                data_length = cbor_bytes[offset - 1]
+            elif additional_info == 25 and offset - 2 < len(cbor_bytes):
+                data_length = int.from_bytes(cbor_bytes[offset-2:offset], 'big')
+            else:
+                data_length = 0
+            
+            offset += data_length
+        
+        return offset
+    
     def validate(self, data: Any, type_name: str = None, cbor_bytes: bytes = None) -> bool:
         """Validate CBOR data against CDDL schema.
         
@@ -766,6 +928,7 @@ class CBORAnalyzer:
         """
         self.validation_errors = []
         self.breadcrumb = []  # Reset breadcrumb
+        self.cbor_bytes = cbor_bytes  # Store for offset tracking
         
         logger.info("=" * 60)
         logger.info("VALIDATION STARTED")
@@ -777,6 +940,9 @@ class CBORAnalyzer:
             if len(cbor_bytes) > 16:
                 hex_preview += f" ... ({len(cbor_bytes)} bytes total)"
             logger.debug(f"{Colors.CBOR}CBOR bytes:{Colors.RESET} {hex_preview}")
+            
+            # Parse CBOR structure for offset mapping
+            self._build_offset_map(cbor_bytes, data)
         
         if type_name:
             logger.info(f"Root type: {Colors.CDDL}'{type_name}'{Colors.RESET}")
@@ -842,10 +1008,18 @@ class CBORAnalyzer:
         logger.info("No type specified, skipping validation")
         return True
     
-    def _validate_type(self, data: Any, type_def: Dict, type_name: str) -> bool:
-        """Validate data against a specific type definition."""
+    def _validate_type(self, data: Any, type_def: Dict, type_name: str, cbor_offset: int = None) -> bool:
+        """Validate data against a specific type definition.
+        
+        Args:
+            data: The CBOR data to validate
+            type_def: The CDDL type definition
+            type_name: Name of the type
+            cbor_offset: Optional CBOR byte offset for this data
+        """
         breadcrumb = self._get_breadcrumb()
-        logger.debug(f"{Colors.CDDL}[{breadcrumb}]{Colors.RESET} Validating type '{type_name}'")
+        offset_str = f"{Colors.CBOR}[@{cbor_offset:04x}]{Colors.RESET} " if cbor_offset is not None else ""
+        logger.debug(f"{offset_str}{Colors.CDDL}[{breadcrumb}]{Colors.RESET} Validating type '{type_name}'")
         logger.debug(f"  Expected: {type_def['type']}, Got: {type(data).__name__}")
         
         if type_def['type'] == 'map':
@@ -870,8 +1044,9 @@ class CBORAnalyzer:
                 if key in data:
                     value = data[key]
                     value_repr = self._format_value_for_log(value)
+                    cbor_ctx = self._get_cbor_context(value)
                     logger.debug(f"{Colors.MATCH}[{field_breadcrumb}] ✓{Colors.RESET} Field present: " +
-                               f"key={key}, type={field_type}, value={value_repr}")
+                               f"key={key}, type={field_type}, value={value_repr}{cbor_ctx}")
                     
                     # Basic type checking for primitives
                     type_mismatch = False
