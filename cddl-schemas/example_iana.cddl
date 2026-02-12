@@ -1,0 +1,16 @@
+; Example CDDL Schema with IANA Registered Parameters
+; This demonstrates the &( keyname : keyindex ) => value syntax
+
+message = {
+  &( msg_type : 1 ) => uint,
+  &( payload : 2 ) => tstr,
+  &( timestamp : 3 ) => uint,
+  &( sender : 4 ) => tstr,
+  &( priority : 5 ) => uint ?,
+}
+
+credential = {
+  &( username : 0 ) => tstr,
+  &( password : 1 ) => tstr,
+  &( expires : 2 ) => uint ?,
+}

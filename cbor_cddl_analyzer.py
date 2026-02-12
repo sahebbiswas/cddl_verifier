@@ -208,11 +208,8 @@ class CDDLParser:
         # Add built-in CDDL primitive types
         self._add_builtin_types()
         
-        # WORKAROUND: Manually add CBOR tag definitions that aren't being parsed
-        # These should be parsed automatically, but there's a parsing condition bug
-        self.type_aliases['tagged-unsigned-corim-map'] = '#6.501(unsigned-corim-map)'
-        self.type_aliases['tagged-concise-swid-tag'] = '#6.505(bytes .cbor coswid.concise-swid-tag)'
-        self.type_aliases['tagged-concise-mid-tag'] = '#6.506(bytes .cbor concise-mid-tag)'
+        # Note: CBOR tag definitions like tagged-unsigned-corim-map = #6.501(...)
+        # are parsed automatically as type aliases
     
     def _add_builtin_types(self):
         """Add CDDL built-in primitive types."""
@@ -295,7 +292,7 @@ class CDDLParser:
             # Handle group definitions (name = ( ... ))
             # Note: Groups can span multiple lines, ending with )
             # Must NOT confuse with IANA parameters &( ... )
-            if '=' in line and '(' in line and not line_normalized.startswith('&') and not '{' in line and not '[' in line and '/=' not in line:
+            if '=' in line and '(' in line and not line_normalized.startswith('&') and not '{' in line and not '[' in line and '/=' not in line and '#6.' not in line:
                 # Check if this looks like a group (not a simple assignment)
                 # Groups have format: name = ( fields )
                 equals_pos = line.index('=')
@@ -583,13 +580,22 @@ class CDDLParser:
                     # Store in registered params for global lookup
                     self.registered_params[keyindex] = keyname
                     
+                    # Extract .size constraint if present
+                    size_constraint = self.extract_size_constraint(value_type)
+                    
                     # Store in current fields
-                    current_fields[keyindex] = {
+                    field_info = {
                         'name': keyname,
                         'type': value_type,
                         'optional': optional,
                         'registered': True
                     }
+                    
+                    if size_constraint:
+                        field_info['size_constraint'] = size_constraint
+                        logger.debug(f"Field {keyname} has size constraint: {size_constraint}")
+                    
+                    current_fields[keyindex] = field_info
                 except ValueError:
                     pass  # Skip if keyindex is not a number
         except (ValueError, IndexError):
@@ -622,6 +628,43 @@ class CDDLParser:
             inner_type = match.group(2).strip()
             logger.debug(f"Extracted .cbor control: {base_type} contains CBOR-encoded {inner_type}")
             return (base_type, inner_type)
+        return None
+    
+    def extract_size_constraint(self, type_string: str) -> Optional[dict]:
+        """Extract .size constraint from type string.
+        
+        Returns dict with:
+        - 'min': minimum length (or None)
+        - 'max': maximum length (or None)
+        - 'exact': exact length (or None)
+        
+        Examples:
+        - 'bytes .size 16' -> {'exact': 16}
+        - 'text .size (8..64)' -> {'min': 8, 'max': 64}
+        - 'bstr .size (16..)' -> {'min': 16, 'max': None}
+        - 'tstr .size (..100)' -> {'min': None, 'max': 100}
+        """
+        import re
+        # Match: .size N (exact)
+        match = re.search(r'\.size\s+(\d+)(?!\.)' , type_string)
+        if match:
+            return {'exact': int(match.group(1)), 'min': None, 'max': None}
+        
+        # Match: .size (M..N) (range)
+        match = re.search(r'\.size\s+\((\d+)\.\.(\d+)\)', type_string)
+        if match:
+            return {'exact': None, 'min': int(match.group(1)), 'max': int(match.group(2))}
+        
+        # Match: .size (M..) (at least M)
+        match = re.search(r'\.size\s+\((\d+)\.\.\)', type_string)
+        if match:
+            return {'exact': None, 'min': int(match.group(1)), 'max': None}
+        
+        # Match: .size (..N) (at most N)
+        match = re.search(r'\.size\s+\(\.\.(\d+)\)', type_string)
+        if match:
+            return {'exact': None, 'min': None, 'max': int(match.group(1))}
+        
         return None
     
     def extract_cbor_tag(self, type_string: str) -> Optional[Tuple[int, str]]:
@@ -1232,10 +1275,37 @@ class CBORAnalyzer:
                         if not isinstance(value, str):
                             type_mismatch = True
                             logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected tstr, got {type(value).__name__}")
+                        elif 'size_constraint' in field:
+                            # Validate size constraint
+                            size = field['size_constraint']
+                            length = len(value)
+                            if size.get('exact') is not None and length != size['exact']:
+                                type_mismatch = True
+                                logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected exactly {size['exact']}, got {length}")
+                            elif size.get('min') is not None and length < size['min']:
+                                type_mismatch = True
+                                logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected at least {size['min']}, got {length}")
+                            elif size.get('max') is not None and length > size['max']:
+                                type_mismatch = True
+                                logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected at most {size['max']}, got {length}")
                     elif field_type == 'bstr':
                         if not isinstance(value, bytes):
                             type_mismatch = True
                             logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected bstr, got {type(value).__name__}")
+                        elif 'size_constraint' in field:
+                            # Validate size constraint
+                            size = field['size_constraint']
+                            length = len(value)
+                            if size.get('exact') is not None and length != size['exact']:
+                                type_mismatch = True
+                                logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected exactly {size['exact']} bytes, got {length}")
+                            elif size.get('min') is not None and length < size['min']:
+                                type_mismatch = True
+                                logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected at least {size['min']} bytes, got {length}")
+                            elif size.get('max') is not None and length > size['max']:
+                                type_mismatch = True
+                                logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected at most {size['max']} bytes, got {length}")
+
                     elif field_type and not field_type.startswith('$'):
                         # It's a structured type - check basic structure
                         nested_type_def = self.cddl.get_type(field_type)
