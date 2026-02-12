@@ -1388,6 +1388,12 @@ class EDNGenerator:
         self.indent_level = 0
         self.indent_str = "  "
     
+    def _indent_content(self, content: str) -> str:
+        """Indent each line of content by one level."""
+        lines = content.split('\n')
+        indent = self.indent_str
+        return '\n'.join(indent + line if line.strip() else line for line in lines)
+    
     def generate(self, data: Any, type_name: str = None, annotate: bool = True) -> str:
         """Generate EDN representation of CBOR data."""
         self.indent_level = 0
@@ -1412,15 +1418,96 @@ class EDNGenerator:
                             nested_decoder = SimpleCBORDecoder(inner_value)
                             nested_data = nested_decoder.decode()
                             logger.debug(f"EDN: Successfully decoded nested CBOR")
-                            # Generate EDN for the decoded nested data
-                            return self._generate_value(nested_data, inner_type, annotate)
+                            
+                            # Save current indent level
+                            saved_indent = self.indent_level
+                            
+                            # Generate EDN for the decoded nested data (starts at indent 0)
+                            self.indent_level = 0
+                            nested_edn = self._generate_value(nested_data, inner_type, annotate)
+                            
+                            # Restore indent level
+                            self.indent_level = saved_indent
+                            
+                            # Now indent the nested content to fit within bytes(...)
+                            # bytes( should be at current indent + 1
+                            # content should be at current indent + 2
+                            # ) should be at current indent + 1
+                            
+                            base_indent = self.indent_str * (self.indent_level + 1)
+                            content_indent = self.indent_str * (self.indent_level + 2)
+                            
+                            # Indent each line of nested content
+                            nested_lines = nested_edn.split('\n')
+                            indented_nested = []
+                            for line in nested_lines:
+                                if line.strip():
+                                    indented_nested.append(content_indent + line)
+                                else:
+                                    indented_nested.append(line)
+                            
+                            # Build bytes(...) wrapper
+                            bytes_wrapped = [base_indent + "bytes("]
+                            bytes_wrapped.extend(indented_nested)
+                            bytes_wrapped.append(base_indent + ")")
+                            bytes_content = '\n'.join(bytes_wrapped)
+                            
+                            # Wrap in tag notation: tag_number(content)
+                            # Tag should be at current indent
+                            # bytes(...) is already indented properly within it
+                            tag_indent = self.indent_str * self.indent_level
+                            
+                            if annotate and type_name != inner_type:
+                                # Add type annotation comment showing the tagged type
+                                tag_comment = f"/ {type_name} / "
+                                result = f"{tag_indent}{tag_comment}{tag_num}(\n{bytes_content}\n{tag_indent})"
+                                return result
+                            else:
+                                result = f"{tag_indent}{tag_num}(\n{bytes_content}\n{tag_indent})"
+                                return result
                         except Exception as e:
                             logger.warning(f"EDN: Failed to decode nested CBOR: {e}")
                             # Fall back to hex representation
                             return self._generate_bytes(inner_value)
             
-            # For other tagged data, unwrap and continue
-            return self._generate_value(inner_value, type_name, annotate)
+            # For other tagged data (non-.cbor), wrap and continue
+            # Save and reset indent for inner content generation
+            saved_indent = self.indent_level
+            self.indent_level = 0
+            inner_edn = self._generate_value(inner_value, type_name, annotate)
+            self.indent_level = saved_indent
+            
+            # Wrap in tag notation with proper indentation
+            tag_indent = self.indent_str * self.indent_level
+            content_indent = self.indent_str * (self.indent_level + 1)
+            
+            if '\n' in inner_edn:
+                # Multi-line content - indent each line
+                lines = inner_edn.split('\n')
+                indented_lines = []
+                for line in lines:
+                    if line.strip():
+                        indented_lines.append(content_indent + line)
+                    else:
+                        indented_lines.append(line)
+                
+                # Build result with proper indentation
+                if annotate and type_name:
+                    tag_annotation = f"/ {type_name} / "
+                    result = f"{tag_indent}{tag_annotation}{tag_num}(\n"
+                else:
+                    result = f"{tag_indent}{tag_num}(\n"
+                
+                result += '\n'.join(indented_lines)
+                result += f"\n{tag_indent})"
+                return result
+            else:
+                # Single-line content
+                if annotate and type_name:
+                    tag_annotation = f"/ {type_name} / "
+                    return f"{tag_indent}{tag_annotation}{tag_num}({inner_edn})"
+                else:
+                    return f"{tag_indent}{tag_num}({inner_edn})"
         
         if isinstance(value, dict):
             return self._generate_map(value, type_name, annotate)
@@ -1447,7 +1534,13 @@ class EDNGenerator:
         
         type_def = self.cddl.get_type(type_name) if type_name else None
         
-        lines = ["{"]
+        # Add type name header if we have one and annotations are enabled
+        # Format: / type / {
+        type_header = ""
+        if type_name and annotate and type_name not in ['map', 'dict']:
+            type_header = f"/ {type_name} / "
+        
+        lines = [type_header + "{"]
         self.indent_level += 1
         
         for i, (key, value) in enumerate(data.items()):
@@ -1478,25 +1571,25 @@ class EDNGenerator:
                 key_str = f'{key_str} / {field_name} /'
                 annotation = ""
             else:  # keyindex format (default)
-                # Format: 0: value  / name /
+                # Format: / name / 0: value
                 if isinstance(key, str):
                     key_str = f'"{key}"'
                 else:
                     key_str = str(key)
                 
-                # Add annotation comment
+                # Add annotation prefix
                 annotation = ""
                 if is_registered and field_name and annotate:
-                    annotation = f"  / {field_name} /"
+                    annotation = f"/ {field_name} / "
                 elif field_name and field_name != str(key) and not is_registered and annotate:
                     # Regular field with comment name different from key
-                    annotation = f"  / {field_name} /"
+                    annotation = f"/ {field_name} / "
             
             # Recursively generate value with type information for nested structures
             value_str = self._generate_value(value, field_type, annotate)
             
             comma = "," if i < len(data) - 1 else ""
-            lines.append(f"{indent}{key_str}: {value_str}{comma}{annotation}")
+            lines.append(f"{indent}{annotation}{key_str}: {value_str}{comma}")
         
         self.indent_level -= 1
         lines.append(self.indent_str * self.indent_level + "}")
@@ -1534,7 +1627,14 @@ class EDNGenerator:
                 else:
                     logger.debug(f"EDN: Type '{type_name}' is not an array type (type={type_def.get('type') if type_def else 'not found'})")
         
-        lines = ["["]
+        # Add type name header if we have a structured array type and annotations are enabled
+        # Format: / type / [
+        type_header = ""
+        if type_name and annotate and not type_name.startswith('['):
+            # It's a named array type (not inline array syntax)
+            type_header = f"/ {type_name} / "
+        
+        lines = [type_header + "["]
         self.indent_level += 1
         
         for i, value in enumerate(data):
