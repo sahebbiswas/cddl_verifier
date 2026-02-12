@@ -1401,10 +1401,58 @@ class EDNGenerator:
     
     def _generate_value(self, value: Any, type_name: str = None, annotate: bool = True) -> str:
         """Generate EDN for a value."""
+        logger.debug(f"EDN: _generate_value called with type_name='{type_name}'")
+        
+        # Resolve type choice to actual matched type
+        if type_name and type_name.startswith('$'):
+            # It's a type choice - resolve to the actual type that matches the data
+            resolved = self.cddl.resolve_type_choice_for_data(type_name, value)
+            if resolved:
+                logger.debug(f"EDN: Resolved type choice {type_name} -> {resolved}")
+                type_name = resolved
+        elif type_name:
+            # Check if this type is an alias and resolve to final type
+            resolved = self.cddl.resolve_type_alias(type_name)
+            logger.debug(f"EDN: Checked alias for '{type_name}', got '{resolved}'")
+            if resolved != type_name and resolved in self.cddl.type_choices:
+                # It's an alias to a choice - resolve the choice
+                final_resolved = self.cddl.resolve_type_choice_for_data(resolved, value)
+                if final_resolved:
+                    logger.debug(f"EDN: Resolved alias+choice {type_name} -> {resolved} -> {final_resolved}")
+                    type_name = final_resolved
+        
         # Handle CBOR tagged tuples (tag_num, value)
         if isinstance(value, tuple) and len(value) == 2 and isinstance(value[0], int):
             tag_num = value[0]
             inner_value = value[1]
+            
+            # Determine the actual tag type name and inner type name
+            # If type_name is a tagged type definition, extract the inner type
+            tag_type_name = type_name
+            inner_type_name = type_name
+            
+            if type_name:
+                # Check if type_name is itself a tag definition (e.g., "tagged-unsigned-corim-map")
+                # We should look up its definition to find the inner type
+                type_def = self.cddl.get_type(type_name)
+                
+                # Try to extract inner type from tag notation in aliases
+                # e.g., tagged-unsigned-corim-map = #6.501(unsigned-corim-map)
+                if type_name in self.cddl.type_aliases:
+                    alias_value = self.cddl.type_aliases[type_name]
+                    tag_info = self.cddl.extract_cbor_tag(alias_value)
+                    if tag_info:
+                        extracted_tag_num, extracted_inner = tag_info
+                        if extracted_tag_num == tag_num:
+                            # This is the right tag type
+                            inner_type_name = extracted_inner
+                            logger.debug(f"EDN: Tag {tag_num}: outer type='{tag_type_name}', inner type='{inner_type_name}'")
+                            
+                            # Further resolve the inner type if it's an alias
+                            resolved_inner = self.cddl.resolve_type_alias(inner_type_name)
+                            if resolved_inner != inner_type_name:
+                                logger.debug(f"EDN: Resolved inner type alias {inner_type_name} -> {resolved_inner}")
+                                inner_type_name = resolved_inner
             
             # Check if this type has .cbor control (nested CBOR in bytes)
             if type_name:
@@ -1419,7 +1467,7 @@ class EDNGenerator:
                             nested_data = nested_decoder.decode()
                             logger.debug(f"EDN: Successfully decoded nested CBOR")
                             
-                            # Save current indent level
+                            # Save current indent level - this is where the tag sits in parent
                             saved_indent = self.indent_level
                             
                             # Generate EDN for the decoded nested data (starts at indent 0)
@@ -1430,11 +1478,14 @@ class EDNGenerator:
                             self.indent_level = saved_indent
                             
                             # Now indent the nested content to fit within bytes(...)
-                            # bytes( should be at current indent + 1
-                            # content should be at current indent + 2
-                            # ) should be at current indent + 1
+                            # Tag opening is at saved_indent (added by parent)
+                            # bytes( should be at saved_indent + 1
+                            # content should be at saved_indent + 2
+                            # ) for bytes at saved_indent + 1
+                            # ) for tag at saved_indent
                             
-                            base_indent = self.indent_str * (self.indent_level + 1)
+                            tag_indent = self.indent_str * self.indent_level
+                            bytes_indent = self.indent_str * (self.indent_level + 1)
                             content_indent = self.indent_str * (self.indent_level + 2)
                             
                             # Indent each line of nested content
@@ -1446,24 +1497,21 @@ class EDNGenerator:
                                 else:
                                     indented_nested.append(line)
                             
-                            # Build bytes(...) wrapper
-                            bytes_wrapped = [base_indent + "bytes("]
+                            # Build bytes(...) wrapper with absolute indentation
+                            bytes_wrapped = [bytes_indent + "bytes("]
                             bytes_wrapped.extend(indented_nested)
-                            bytes_wrapped.append(base_indent + ")")
+                            bytes_wrapped.append(bytes_indent + ")")
                             bytes_content = '\n'.join(bytes_wrapped)
                             
-                            # Wrap in tag notation: tag_number(content)
-                            # Tag should be at current indent
-                            # bytes(...) is already indented properly within it
-                            tag_indent = self.indent_str * self.indent_level
-                            
-                            if annotate and type_name != inner_type:
+                            # Tag annotation and opening - NO prefix (parent adds it to first line)
+                            # But all subsequent lines have full indentation
+                            if annotate and tag_type_name:
                                 # Add type annotation comment showing the tagged type
-                                tag_comment = f"/ {type_name} / "
-                                result = f"{tag_indent}{tag_comment}{tag_num}(\n{bytes_content}\n{tag_indent})"
+                                tag_comment = f"/ {tag_type_name} / "
+                                result = f"{tag_comment}{tag_num}(\n{bytes_content}\n{tag_indent})"
                                 return result
                             else:
-                                result = f"{tag_indent}{tag_num}(\n{bytes_content}\n{tag_indent})"
+                                result = f"{tag_num}(\n{bytes_content}\n{tag_indent})"
                                 return result
                         except Exception as e:
                             logger.warning(f"EDN: Failed to decode nested CBOR: {e}")
@@ -1474,15 +1522,18 @@ class EDNGenerator:
             # Save and reset indent for inner content generation
             saved_indent = self.indent_level
             self.indent_level = 0
-            inner_edn = self._generate_value(inner_value, type_name, annotate)
+            inner_edn = self._generate_value(inner_value, inner_type_name, annotate)
             self.indent_level = saved_indent
             
-            # Wrap in tag notation with proper indentation
+            # Wrap in tag notation with absolute indentation
+            # Tag opening at saved_indent (parent adds to first line)
+            # Content at saved_indent + 1
+            # Closing at saved_indent
             tag_indent = self.indent_str * self.indent_level
             content_indent = self.indent_str * (self.indent_level + 1)
             
             if '\n' in inner_edn:
-                # Multi-line content - indent each line
+                # Multi-line content - indent each line with absolute indentation
                 lines = inner_edn.split('\n')
                 indented_lines = []
                 for line in lines:
@@ -1491,23 +1542,24 @@ class EDNGenerator:
                     else:
                         indented_lines.append(line)
                 
-                # Build result with proper indentation
-                if annotate and type_name:
-                    tag_annotation = f"/ {type_name} / "
-                    result = f"{tag_indent}{tag_annotation}{tag_num}(\n"
+                # Build result - first line has no prefix (parent adds it)
+                # All subsequent lines have full absolute indentation
+                if annotate and tag_type_name:
+                    tag_annotation = f"/ {tag_type_name} / "
+                    result = f"{tag_annotation}{tag_num}(\n"
                 else:
-                    result = f"{tag_indent}{tag_num}(\n"
+                    result = f"{tag_num}(\n"
                 
                 result += '\n'.join(indented_lines)
                 result += f"\n{tag_indent})"
                 return result
             else:
                 # Single-line content
-                if annotate and type_name:
-                    tag_annotation = f"/ {type_name} / "
-                    return f"{tag_indent}{tag_annotation}{tag_num}({inner_edn})"
+                if annotate and tag_type_name:
+                    tag_annotation = f"/ {tag_type_name} / "
+                    return f"{tag_annotation}{tag_num}({inner_edn})"
                 else:
-                    return f"{tag_indent}{tag_num}({inner_edn})"
+                    return f"{tag_num}({inner_edn})"
         
         if isinstance(value, dict):
             return self._generate_map(value, type_name, annotate)
@@ -1757,7 +1809,6 @@ Examples:
     parser.add_argument('cbor_file', type=Path, help='Path to CBOR data file')
     parser.add_argument('-o', '--output', type=Path, help='Output EDN file (default: stdout)')
     parser.add_argument('-t', '--type', help='Root type name from CDDL for validation')
-    parser.add_argument('-v', '--validate', action='store_true', help='Validate CBOR against CDDL')
     parser.add_argument('-a', '--annotate', action='store_true', default=True, 
                         help='Annotate EDN with field names from CDDL (default: True)')
     parser.add_argument('--no-annotate', action='store_false', dest='annotate',
@@ -1846,9 +1897,9 @@ Examples:
     cbor_bytes = args.cbor_file.read_bytes()  # Keep raw bytes for logging
     cbor_data = load_cbor(args.cbor_file)
     
-    # Validate if requested
-    if args.validate:
-        print("Validating CBOR against CDDL...", file=sys.stderr)
+    # Validate if type is specified
+    if args.type:
+        print(f"Validating CBOR against CDDL (type: {args.type})...", file=sys.stderr)
         analyzer = CBORAnalyzer(cddl)
         
         if analyzer.validate(cbor_data, args.type, cbor_bytes):
