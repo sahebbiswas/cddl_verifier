@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-CBOR-CDDL Analyzer and EDN Generator (Standalone Version)
+CBOR-CDDL Analyzer and EDN Generator
 
-This version includes basic CBOR decoding without external dependencies.
-For full functionality, install cbor2: pip install cbor2
+Analyzes CBOR data against CDDL schemas and generates annotated EDN output.
+For full CBOR support, use simple_cbor module or install cbor2: pip install cbor2
 """
 
 import argparse
@@ -12,6 +12,14 @@ import struct
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
+
+# Import CBOR encoder/decoder from separate module
+try:
+    from simple_cbor import SimpleCBORDecoder, SimpleCBOREncoder
+    HAS_SIMPLE_CBOR = True
+except ImportError:
+    HAS_SIMPLE_CBOR = False
+    # Will use inline fallback decoder below if simple_cbor not available
 
 # ANSI color codes for terminal output
 class Colors:
@@ -53,8 +61,10 @@ logger.addHandler(handler)
 logger.setLevel(logging.WARNING)  # Default level
 
 
-class SimpleCBORDecoder:
-    """Simple CBOR decoder for basic data types."""
+# Inline CBOR decoder (fallback if simple_cbor module not available)
+if not HAS_SIMPLE_CBOR:
+    class SimpleCBORDecoder:
+        """Simple CBOR decoder for basic data types."""
     
     def __init__(self, data: bytes):
         self.data = data
@@ -1275,9 +1285,9 @@ class CBORAnalyzer:
                         if not isinstance(value, str):
                             type_mismatch = True
                             logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected tstr, got {type(value).__name__}")
-                        elif 'size_constraint' in field:
+                        elif 'size_constraint' in field_info:
                             # Validate size constraint
-                            size = field['size_constraint']
+                            size = field_info['size_constraint']
                             length = len(value)
                             if size.get('exact') is not None and length != size['exact']:
                                 type_mismatch = True
@@ -1292,9 +1302,9 @@ class CBORAnalyzer:
                         if not isinstance(value, bytes):
                             type_mismatch = True
                             logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected bstr, got {type(value).__name__}")
-                        elif 'size_constraint' in field:
+                        elif 'size_constraint' in field_info:
                             # Validate size constraint
-                            size = field['size_constraint']
+                            size = field_info['size_constraint']
                             length = len(value)
                             if size.get('exact') is not None and length != size['exact']:
                                 type_mismatch = True
