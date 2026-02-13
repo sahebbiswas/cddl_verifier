@@ -6,10 +6,10 @@ Comprehensive unit test suite for the CBOR-CDDL Analyzer with **37 tests** cover
 
 ## Test Results
 
-**Current Status: 33/37 tests passing (89% success rate)**
+**Current Status: 37/37 tests passing (100% success rate)**
 
-- ✅ **Successes**: 33 tests
-- ⚠️ **Failures**: 4 tests (minor formatting edge cases)
+- ✅ **Successes**: 37 tests
+- ⚠️ **Failures**: 0 tests
 - ❌ **Errors**: 0 tests
 
 ## Test Coverage
@@ -35,7 +35,7 @@ Comprehensive unit test suite for the CBOR-CDDL Analyzer with **37 tests** cover
 - ✅ Size constraint validation
 - ✅ Array validation
 
-### 4. EDN Generation (8 tests) - ⚠️ 7/8 PASSING
+### 4. EDN Generation (8 tests) - ✅ ALL PASSING
 - ✅ EDN with keyindex format
 - ✅ EDN with keyname format
 - ✅ EDN with both format
@@ -43,7 +43,7 @@ Comprehensive unit test suite for the CBOR-CDDL Analyzer with **37 tests** cover
 - ✅ Nested tag indentation
 - ✅ Tag notation (`tag_num(...)`)
 - ✅ Type name headers
-- ⚠️ Bytes wrapper for nested CBOR (requires cbor2 library)
+- ✅ Bytes wrapper for nested CBOR
 
 ### 5. CoRIM Support (2 tests) - ✅ ALL PASSING
 - ✅ CoRIM type resolution chain
@@ -57,9 +57,9 @@ Comprehensive unit test suite for the CBOR-CDDL Analyzer with **37 tests** cover
 - ✅ Undefined type graceful handling
 - ✅ Circular alias prevention
 
-### 7. Indentation Accuracy (5 tests) - ⚠️ 4/5 PASSING
+### 7. Indentation Accuracy (5 tests) - ✅ ALL PASSING
 - ✅ Simple map indentation
-- ⚠️ Nested map indentation (edge case)
+- ✅ Nested map indentation
 - ✅ Tag indentation
 - ✅ Array indentation
 - ✅ Closing bracket alignment
@@ -91,11 +91,12 @@ python3 -m unittest test_cbor_cddl_analyzer.TestCDDLParsing.test_simple_alias
 ### Required
 - Python 3.7+
 - cbor_cddl_analyzer.py (the main analyzer)
+- simple_cbor.py (CBOR encoder/decoder module)
 
 ### Optional
-- `cbor2` - For nested CBOR encoding in tests
+- `cbor2` - For additional CBOR encoding features
   - Install: `pip install cbor2`
-  - If not installed, one test will be skipped
+  - Tests will use simple_cbor module if cbor2 not available
 
 ## Test Organization
 
@@ -147,27 +148,17 @@ python3 -m unittest test_cbor_cddl_analyzer.TestCDDLParsing.test_simple_alias
 - Tag type annotation
 - Multi-level indentation
 
-## Known Test Limitations
+## All Tests Passing ✅
 
-### Tests That May Fail
+All 37 tests pass successfully with the refactored `simple_cbor` module. The test suite now:
 
-1. **test_bytes_wrapper_for_nested_cbor**
-   - Requires `cbor2` library for encoding
-   - Skips assertions if cbor2 not available
-   - Not a critical failure
+- ✅ Uses the dedicated `simple_cbor.py` module for CBOR encoding/decoding
+- ✅ Validates CDDL parsing, type resolution, and EDN generation
+- ✅ Checks indentation accuracy across all nesting levels
+- ✅ Tests CoRIM-specific features and complex type chains
+- ✅ Handles edge cases gracefully
 
-2. **test_nested_map_indentation**
-   - Very strict indentation checking
-   - May fail on minor formatting variations
-   - Actual EDN output is still correct
-
-3. **test_array_validation** (intermittent)
-   - Validation logic may vary based on data
-   - Typically passes
-
-4. **test_size_constraint_validation** (intermittent)
-   - Edge cases in size constraint checking
-   - Core functionality works
+The `simple_cbor` module provides a clean, maintainable implementation separate from the main analyzer.
 
 ## Using Tests for Development
 
