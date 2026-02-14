@@ -2,19 +2,18 @@
 """
 Unit Tests for simple_cbor module
 
-Comprehensive tests for CBOR encoding, decoding, and diagnostic dumping.
+Comprehensive tests for the unified CBOR class with encoding, decoding,
+and diagnostic dumping all in one.
 """
 
 import sys
 import unittest
 import struct
 from simple_cbor import (
-    SimpleCBOREncoder,
-    SimpleCBORDecoder,
+    CBOR,
     cbor_encode,
     cbor_decode,
-    cbor_diag_dump,
-    CBORDiagnosticDumper
+    cbor_diag_dump
 )
 
 
@@ -23,140 +22,114 @@ class TestCBOREncoding(unittest.TestCase):
     
     def test_encode_small_uint(self):
         """Test encoding small unsigned integers (0-23)"""
-        encoder = SimpleCBOREncoder()
-        
         # 0-23 encoded in single byte
-        self.assertEqual(encoder.encode(0), b'\x00')
-        self.assertEqual(encoder.encode(1), b'\x01')
-        self.assertEqual(encoder.encode(23), b'\x17')
+        self.assertEqual(cbor_encode(0), b'\x00')
+        self.assertEqual(cbor_encode(1), b'\x01')
+        self.assertEqual(cbor_encode(23), b'\x17')
     
     def test_encode_uint8(self):
         """Test encoding uint8 (24-255)"""
-        encoder = SimpleCBOREncoder()
-        
         # 24 requires additional byte
-        self.assertEqual(encoder.encode(24), b'\x18\x18')
-        self.assertEqual(encoder.encode(100), b'\x18\x64')
-        self.assertEqual(encoder.encode(255), b'\x18\xff')
+        self.assertEqual(cbor_encode(24), b'\x18\x18')
+        self.assertEqual(cbor_encode(100), b'\x18\x64')
+        self.assertEqual(cbor_encode(255), b'\x18\xff')
     
     def test_encode_uint16(self):
         """Test encoding uint16"""
-        encoder = SimpleCBOREncoder()
-        
-        self.assertEqual(encoder.encode(256), b'\x19\x01\x00')
-        self.assertEqual(encoder.encode(1000), b'\x19\x03\xe8')
-        self.assertEqual(encoder.encode(65535), b'\x19\xff\xff')
+        self.assertEqual(cbor_encode(256), b'\x19\x01\x00')
+        self.assertEqual(cbor_encode(1000), b'\x19\x03\xe8')
+        self.assertEqual(cbor_encode(65535), b'\x19\xff\xff')
     
     def test_encode_uint32(self):
         """Test encoding uint32"""
-        encoder = SimpleCBOREncoder()
-        
-        self.assertEqual(encoder.encode(65536), b'\x1a\x00\x01\x00\x00')
-        self.assertEqual(encoder.encode(1000000), b'\x1a\x00\x0f\x42\x40')
+        self.assertEqual(cbor_encode(65536), b'\x1a\x00\x01\x00\x00')
+        self.assertEqual(cbor_encode(1000000), b'\x1a\x00\x0f\x42\x40')
     
     def test_encode_negative_int(self):
         """Test encoding negative integers"""
-        encoder = SimpleCBOREncoder()
-        
         # -1 is encoded as 0x20
-        self.assertEqual(encoder.encode(-1), b'\x20')
-        self.assertEqual(encoder.encode(-10), b'\x29')
-        self.assertEqual(encoder.encode(-100), b'\x38\x63')
-        self.assertEqual(encoder.encode(-1000), b'\x39\x03\xe7')
+        self.assertEqual(cbor_encode(-1), b'\x20')
+        self.assertEqual(cbor_encode(-10), b'\x29')
+        self.assertEqual(cbor_encode(-100), b'\x38\x63')
+        self.assertEqual(cbor_encode(-1000), b'\x39\x03\xe7')
     
     def test_encode_bytes(self):
         """Test encoding byte strings"""
-        encoder = SimpleCBOREncoder()
-        
         # Empty bytes
-        self.assertEqual(encoder.encode(b''), b'\x40')
+        self.assertEqual(cbor_encode(b''), b'\x40')
         
         # Short bytes
-        self.assertEqual(encoder.encode(b'\x01\x02\x03'), b'\x43\x01\x02\x03')
+        self.assertEqual(cbor_encode(b'\x01\x02\x03'), b'\x43\x01\x02\x03')
         
         # 16 bytes
         data = b'\x00' * 16
         expected = b'\x50' + data
-        self.assertEqual(encoder.encode(data), expected)
+        self.assertEqual(cbor_encode(data), expected)
     
     def test_encode_text(self):
         """Test encoding text strings"""
-        encoder = SimpleCBOREncoder()
-        
         # Empty string
-        self.assertEqual(encoder.encode(''), b'\x60')
+        self.assertEqual(cbor_encode(''), b'\x60')
         
         # Short string
-        self.assertEqual(encoder.encode('a'), b'\x61a')
-        self.assertEqual(encoder.encode('hello'), b'\x65hello')
+        self.assertEqual(cbor_encode('a'), b'\x61a')
+        self.assertEqual(cbor_encode('hello'), b'\x65hello')
         
         # Unicode
-        result = encoder.encode('🎉')
+        result = cbor_encode('🎉')
         self.assertTrue(result.startswith(b'\x64'))  # Length 4 (UTF-8 encoding)
     
     def test_encode_array(self):
         """Test encoding arrays"""
-        encoder = SimpleCBOREncoder()
-        
         # Empty array
-        self.assertEqual(encoder.encode([]), b'\x80')
+        self.assertEqual(cbor_encode([]), b'\x80')
         
         # Single element
-        self.assertEqual(encoder.encode([1]), b'\x81\x01')
+        self.assertEqual(cbor_encode([1]), b'\x81\x01')
         
         # Multiple elements
-        self.assertEqual(encoder.encode([1, 2, 3]), b'\x83\x01\x02\x03')
+        self.assertEqual(cbor_encode([1, 2, 3]), b'\x83\x01\x02\x03')
         
         # Nested array
-        result = encoder.encode([1, [2, 3]])
+        result = cbor_encode([1, [2, 3]])
         self.assertEqual(result, b'\x82\x01\x82\x02\x03')
     
     def test_encode_map(self):
         """Test encoding maps"""
-        encoder = SimpleCBOREncoder()
-        
         # Empty map
-        self.assertEqual(encoder.encode({}), b'\xa0')
+        self.assertEqual(cbor_encode({}), b'\xa0')
         
         # Single entry
-        result = encoder.encode({0: 1})
+        result = cbor_encode({0: 1})
         self.assertEqual(result, b'\xa1\x00\x01')
         
         # Multiple entries (order matters in Python 3.7+)
-        result = encoder.encode({0: "a", 1: "b"})
+        result = cbor_encode({0: "a", 1: "b"})
         self.assertEqual(result, b'\xa2\x00\x61a\x01\x61b')
     
     def test_encode_tagged_value(self):
         """Test encoding tagged values"""
-        encoder = SimpleCBOREncoder()
-        
         # Tag 32 (URI)
-        result = encoder.encode((32, "http://example.com"))
+        result = cbor_encode((32, "http://example.com"))
         self.assertTrue(result.startswith(b'\xd8\x20'))  # Tag 32
         
         # Tag 501 (CoRIM)
-        result = encoder.encode((501, {0: "test"}))
+        result = cbor_encode((501, {0: "test"}))
         self.assertTrue(result.startswith(b'\xd9\x01\xf5'))  # Tag 501
     
     def test_encode_bool(self):
         """Test encoding booleans"""
-        encoder = SimpleCBOREncoder()
-        
-        self.assertEqual(encoder.encode(False), b'\xf4')
-        self.assertEqual(encoder.encode(True), b'\xf5')
+        self.assertEqual(cbor_encode(False), b'\xf4')
+        self.assertEqual(cbor_encode(True), b'\xf5')
     
     def test_encode_null(self):
         """Test encoding null"""
-        encoder = SimpleCBOREncoder()
-        
-        self.assertEqual(encoder.encode(None), b'\xf6')
+        self.assertEqual(cbor_encode(None), b'\xf6')
     
     def test_encode_float(self):
         """Test encoding floats"""
-        encoder = SimpleCBOREncoder()
-        
         # Float64
-        result = encoder.encode(3.14)
+        result = cbor_encode(3.14)
         self.assertEqual(len(result), 9)  # 1 byte header + 8 bytes value
         self.assertEqual(result[0], 0xfb)
 
@@ -534,6 +507,204 @@ class TestEdgeCases(unittest.TestCase):
         self.assertEqual(decoded[6], {0: 1})
 
 
+class TestUnifiedCBORInterface(unittest.TestCase):
+    """Test the unified CBOR class interface"""
+    
+    def test_create_and_encode(self):
+        """Test creating CBOR object and encoding"""
+        cbor = CBOR({0: "test", 1: 42})
+        cbor_bytes = cbor.encode()
+        
+        # Should be valid CBOR
+        decoded = cbor_decode(cbor_bytes)
+        self.assertEqual(decoded, {0: "test", 1: 42})
+    
+    def test_load_cbor_bytes(self):
+        """Test loading CBOR bytes"""
+        original = {0: "test", 1: [1, 2, 3]}
+        cbor_bytes = cbor_encode(original)
+        
+        # Load using CBOR.load()
+        cbor = CBOR.load(cbor_bytes)
+        self.assertEqual(cbor.data, original)
+    
+    def test_loads_convenience(self):
+        """Test CBOR.loads() convenience method"""
+        original = {0: "test"}
+        cbor_bytes = cbor_encode(original)
+        
+        data = CBOR.loads(cbor_bytes)
+        self.assertEqual(data, original)
+    
+    def test_modify_and_reencode(self):
+        """Test modifying data and re-encoding"""
+        cbor = CBOR({0: "original", 1: [1, 2]})
+        original_bytes = cbor.encode()
+        
+        # Modify
+        cbor[0] = "modified"
+        cbor[1].append(3)
+        
+        # Re-encode
+        new_bytes = cbor.encode()
+        
+        # Should be different
+        self.assertNotEqual(original_bytes, new_bytes)
+        
+        # New bytes should decode to modified data
+        decoded = cbor_decode(new_bytes)
+        self.assertEqual(decoded, {0: "modified", 1: [1, 2, 3]})
+    
+    def test_dictionary_interface(self):
+        """Test dictionary-like interface"""
+        cbor = CBOR({0: "a", 1: "b", 2: "c"})
+        
+        # __getitem__
+        self.assertEqual(cbor[0], "a")
+        self.assertEqual(cbor[1], "b")
+        
+        # __setitem__
+        cbor[0] = "modified"
+        self.assertEqual(cbor[0], "modified")
+        
+        # __contains__
+        self.assertTrue(0 in cbor)
+        self.assertTrue(1 in cbor)
+        self.assertFalse(99 in cbor)
+        
+        # __len__
+        self.assertEqual(len(cbor), 3)
+        
+        # __delitem__
+        del cbor[2]
+        self.assertEqual(len(cbor), 2)
+        self.assertFalse(2 in cbor)
+    
+    def test_list_interface(self):
+        """Test list-like interface"""
+        cbor = CBOR([1, 2, 3])
+        
+        # __getitem__
+        self.assertEqual(cbor[0], 1)
+        self.assertEqual(cbor[2], 3)
+        
+        # __setitem__
+        cbor[0] = 99
+        self.assertEqual(cbor[0], 99)
+        
+        # __len__
+        self.assertEqual(len(cbor), 3)
+        
+        # __iter__
+        result = [x for x in cbor]
+        self.assertEqual(result, [99, 2, 3])
+    
+    def test_diag_method(self):
+        """Test diagnostic dump method"""
+        cbor = CBOR({0: "test", 1: 42})
+        dump = cbor.diag()
+        
+        # Should contain key elements
+        self.assertIn('map(2)', dump)
+        self.assertIn('uint(0)', dump)
+        self.assertIn('uint(42)', dump)
+        self.assertIn('"test"', dump)
+        self.assertIn('#', dump)  # Has comments
+    
+    def test_diag_custom_indent(self):
+        """Test diagnostic dump with custom indent"""
+        cbor = CBOR([1, [2, 3]])
+        
+        dump1 = cbor.diag(indent="  ")
+        dump2 = cbor.diag(indent="    ")
+        
+        # Should be different
+        self.assertNotEqual(dump1, dump2)
+    
+    def test_repr_and_str(self):
+        """Test string representations"""
+        cbor = CBOR({0: "test"})
+        
+        # __repr__ should show data
+        repr_str = repr(cbor)
+        self.assertIn("CBOR", repr_str)
+        self.assertIn("test", repr_str)
+        
+        # __str__ should show diagnostic dump
+        str_str = str(cbor)
+        self.assertIn('#', str_str)
+        self.assertIn('map', str_str)
+    
+    def test_dumps_alias(self):
+        """Test dumps() as alias for encode()"""
+        cbor = CBOR({0: 1})
+        
+        encoded1 = cbor.encode()
+        encoded2 = cbor.dumps()
+        
+        self.assertEqual(encoded1, encoded2)
+    
+    def test_cache_invalidation(self):
+        """Test that cached bytes are invalidated on modification"""
+        cbor = CBOR({0: "original"})
+        
+        # Encode and cache
+        bytes1 = cbor.encode()
+        self.assertIsNotNone(cbor._cached_bytes)
+        
+        # Modify - should invalidate cache
+        cbor[0] = "modified"
+        self.assertIsNone(cbor._cached_bytes)
+        
+        # Re-encode should produce different bytes
+        bytes2 = cbor.encode()
+        self.assertNotEqual(bytes1, bytes2)
+    
+    def test_complex_modification(self):
+        """Test complex data structure modification"""
+        cbor = CBOR({
+            0: "id",
+            1: [1, 2, 3],
+            2: {0: True, 1: False}
+        })
+        
+        # Modify nested array
+        cbor[1].append(4)
+        
+        # Modify nested map
+        cbor[2][2] = None
+        
+        # Add new top-level key
+        cbor[3] = "new"
+        
+        # Verify modifications
+        self.assertEqual(cbor[1], [1, 2, 3, 4])
+        self.assertEqual(cbor[2], {0: True, 1: False, 2: None})
+        self.assertEqual(cbor[3], "new")
+        
+        # Encode and decode to verify
+        encoded = cbor.encode()
+        decoded = cbor_decode(encoded)
+        self.assertEqual(decoded, cbor.data)
+
+    
+    def test_mixed_type_array(self):
+        """Test arrays with mixed types"""
+        data = [1, "two", 3.0, True, None, b'\x00', {0: 1}]
+        encoded = cbor_encode(data)
+        decoded = cbor_decode(encoded)
+        
+        # Compare element by element (float comparison needs tolerance)
+        self.assertEqual(len(decoded), len(data))
+        self.assertEqual(decoded[0], 1)
+        self.assertEqual(decoded[1], "two")
+        self.assertAlmostEqual(decoded[2], 3.0)
+        self.assertEqual(decoded[3], True)
+        self.assertEqual(decoded[4], None)
+        self.assertEqual(decoded[5], b'\x00')
+        self.assertEqual(decoded[6], {0: 1})
+
+
 def run_tests():
     """Run all tests and return results"""
     loader = unittest.TestLoader()
@@ -545,6 +716,7 @@ def run_tests():
     suite.addTests(loader.loadTestsFromTestCase(TestRoundTrip))
     suite.addTests(loader.loadTestsFromTestCase(TestDiagnosticDump))
     suite.addTests(loader.loadTestsFromTestCase(TestEdgeCases))
+    suite.addTests(loader.loadTestsFromTestCase(TestUnifiedCBORInterface))
     
     # Run tests
     runner = unittest.TextTestRunner(verbosity=2)
