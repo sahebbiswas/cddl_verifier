@@ -1,8 +1,163 @@
-# Simple CBOR Module - Diagnostic Dump Feature
+# Simple CBOR Module - Complete Guide
 
 ## Overview
 
-The `simple_cbor` module now includes a powerful diagnostic dump feature that provides a pretty-printed, tree-like hex view of CBOR data with type descriptions.
+The `simple_cbor` module provides a unified interface for CBOR encoding, decoding, and inspection with diagnostic dumps.
+
+## Key Features
+
+✅ **Unified CBOR Class** - Single interface for all operations  
+✅ **Load & Modify** - Load CBOR, modify as Python objects, re-encode  
+✅ **Diagnostic Dumps** - Pretty-printed hex view with type descriptions  
+✅ **Dictionary/List Interface** - Access CBOR data like native Python types  
+✅ **Perfect Alignment** - Comments aligned at consistent column  
+✅ **Full Type Support** - All CBOR major types supported
+
+## Unified CBOR Interface
+
+### Quick Start
+
+```python
+from simple_cbor import CBOR
+
+# Load CBOR data
+cbor = CBOR.load(cbor_bytes)
+
+# View diagnostic dump
+print(cbor.diag())
+
+# Access data
+print(cbor[0])
+
+# Modify data
+cbor[0] = "new value"
+
+# Re-encode
+new_bytes = cbor.encode()
+```
+
+### Creating CBOR Objects
+
+```python
+# From Python data
+cbor = CBOR({0: "test", 1: [1, 2, 3]})
+
+# Load from bytes
+cbor = CBOR.load(cbor_bytes)
+
+# Quick decode (returns data, not CBOR object)
+data = CBOR.loads(cbor_bytes)
+```
+
+### Encoding and Decoding
+
+```python
+# Encode to bytes
+cbor = CBOR({0: "test"})
+cbor_bytes = cbor.encode()
+
+# Also available as dumps()
+cbor_bytes = cbor.dumps()
+
+# Decode from bytes
+cbor = CBOR.load(cbor_bytes)
+data = cbor.data  # Access decoded data
+```
+
+### Diagnostic Dumps
+
+Generate pretty-printed hex view with type descriptions:
+
+```python
+cbor = CBOR({0: "test", 1: 42})
+print(cbor.diag())
+```
+
+**Output:**
+```
+0000: a2                                              # map(2)
+0001:   00                                            # key: uint(0)
+0002:   64                                            # val: text(4)
+0003:     74657374                                    # "test"
+0007:   01                                            # key: uint(1)
+0008:   182a                                          # val: uint(42)
+```
+
+Custom indentation:
+```python
+print(cbor.diag(indent="    "))  # 4-space indentation
+```
+
+## Dictionary/List Interface
+
+Access CBOR data using familiar Python syntax:
+
+```python
+cbor = CBOR({0: "a", 1: "b", 2: [1, 2, 3]})
+
+# Get item
+value = cbor[0]  # "a"
+
+# Set item
+cbor[0] = "modified"
+
+# Delete item
+del cbor[1]
+
+# Check membership
+if 0 in cbor:
+    print("Key 0 exists")
+
+# Length
+count = len(cbor)  # 2 (after deletion)
+
+# Iterate
+for key in cbor:
+    print(key, cbor[key])
+```
+
+Works with arrays too:
+```python
+cbor = CBOR([1, 2, 3])
+
+# Access
+print(cbor[0])  # 1
+
+# Modify
+cbor[0] = 99
+
+# Iterate
+for item in cbor:
+    print(item)
+```
+
+## Complete Workflow Example
+
+```python
+from simple_cbor import CBOR
+
+# 1. Load existing CBOR file
+with open('data.cbor', 'rb') as f:
+    cbor = CBOR.load(f.read())
+
+# 2. Inspect structure
+print("Diagnostic dump:")
+print(cbor.diag())
+
+# 3. Modify data
+cbor[0] = "updated-id"
+cbor[1].append(42)
+
+# 4. Validate changes
+print("\nUpdated data:")
+print(cbor.data)
+
+# 5. Re-encode and save
+with open('updated.cbor', 'wb') as f:
+    f.write(cbor.encode())
+
+print("\nFile saved!")
+```
 
 ## Features
 
