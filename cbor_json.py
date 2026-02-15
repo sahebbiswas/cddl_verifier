@@ -41,16 +41,30 @@ class CBORJSONEncoder(json.JSONEncoder):
     
     def __init__(self, *args, typed: bool = False, **kwargs):
         """
-        Initialize encoder.
+        Create a JSON encoder that optionally preserves CBOR-specific types as annotated JSON.
         
-        Args:
-            typed: If True, add type annotations for CBOR-specific types
+        Parameters:
+            *args, **kwargs: Passed through to the base JSONEncoder initializer.
+            typed (bool): If True, encode CBOR-specific values (bytes, tags, NaN, Infinity, -Infinity) using explicit `$cbor` annotations; if False, emit JSON-friendly representations without type annotations.
         """
         super().__init__(*args, **kwargs)
         self.typed = typed
     
     def default(self, obj):
-        """Handle CBOR-specific types."""
+        """
+        Serialize CBOR-specific Python objects into JSON-friendly representations.
+        
+        Handles:
+        - bytes: when `self.typed` is True, returns an object with `"$cbor": "bytes"` and `"$value"` containing the base64 string; otherwise returns a base64 string.
+        - CBOR tags represented as two-element tuples `(tag_num, value)`: when `self.typed` is True, returns an object with `"$cbor": "tag"`, `"$tag"`, and `"$value"`; otherwise returns the inner `value`.
+        - Special float values: `NaN`, `Infinity`, and `-Infinity` are represented with typed annotations when `self.typed` is True; otherwise `NaN` becomes `None`, and infinities become the strings `"Infinity"` or `"-Infinity"`.
+        
+        Parameters:
+            obj: The object to serialize; may be bytes, a `(tag_num, value)` tuple, a float (including NaN/Infinity), or any other object handled by the base encoder.
+        
+        Returns:
+            A JSON-serializable representation of `obj` according to the rules above, or delegates to the superclass for other types.
+        """
         # Handle bytes
         if isinstance(obj, bytes):
             if self.typed:
@@ -92,29 +106,17 @@ class CBORJSONEncoder(json.JSONEncoder):
 def cbor_to_json(cbor_bytes: bytes, typed: bool = False, pretty: bool = False, 
                  indent: int = 2) -> str:
     """
-    Convert CBOR bytes to JSON string.
-    
-    Args:
-        cbor_bytes: CBOR encoded bytes
-        typed: If True, preserve CBOR-specific types with annotations
-        pretty: If True, pretty-print with indentation
-        indent: Number of spaces for indentation (if pretty=True)
-    
-    Returns:
-        JSON string
-    
-    Example:
-        >>> cbor_bytes = cbor_encode({0: "test", 1: b"data"})
-        >>> json_str = cbor_to_json(cbor_bytes, typed=True, pretty=True)
-        >>> print(json_str)
-        {
-          "0": "test",
-          "1": {
-            "$cbor": "bytes",
-            "$value": "ZGF0YQ=="
-          }
-        }
-    """
+                 Convert CBOR-encoded bytes into a JSON string.
+                 
+                 Parameters:
+                     cbor_bytes (bytes): CBOR-encoded input.
+                     typed (bool): If True, preserve CBOR-native types using JSON annotations (e.g., bytes, tags, special floats).
+                     pretty (bool): If True, produce human-readable JSON with indentation and sorted keys.
+                     indent (int): Number of spaces to use for indentation when pretty is True.
+                 
+                 Returns:
+                     json_str (str): JSON representation of the input CBOR data.
+                 """
     # Decode CBOR
     data = cbor_decode(cbor_bytes)
     
@@ -130,12 +132,24 @@ def cbor_to_json(cbor_bytes: bytes, typed: bool = False, pretty: bool = False,
 
 def _preprocess_for_json(obj: Any, typed: bool) -> Any:
     """
-    Pre-process CBOR data to make it JSON-compatible.
+    Convert a CBOR-native Python object into a JSON-compatible representation.
     
-    Converts:
-    - bytes → base64 string or typed annotation
-    - tagged tuples → value or typed annotation
-    - nested structures recursively
+    This performs recursive transformation of CBOR-specific constructs:
+    - bytes are encoded as base64 strings or as {"$cbor": "bytes", "$value": "<base64>"} when `typed` is True.
+    - CBOR tags represented as two-element tuples (tag_num, value) are replaced by the inner value or by
+      {"$cbor": "tag", "$tag": tag_num, "$value": ...} when `typed` is True.
+    - Special float values are converted to annotations when `typed` is True:
+      - NaN -> {"$cbor": "NaN"} (otherwise `None`)
+      - Infinity -> {"$cbor": "Infinity"} (otherwise "Infinity")
+      - -Infinity -> {"$cbor": "-Infinity"} (otherwise "-Infinity")
+    - dicts and lists are processed recursively; other scalar types are returned unchanged.
+    
+    Parameters:
+        obj (Any): A Python value decoded from CBOR (may include bytes, (tag_num, value) tuples, floats, dicts, lists, and scalars).
+        typed (bool): If True, preserve CBOR-specific types using explicit annotation objects; if False, convert to plain JSON-friendly values.
+    
+    Returns:
+        Any: A JSON-serializable Python structure representing the input with CBOR-specific constructs converted as described above.
     """
     # Handle bytes
     if isinstance(obj, bytes):
@@ -184,33 +198,16 @@ def _preprocess_for_json(obj: Any, typed: bool) -> Any:
 
 def json_to_cbor(json_str: str, canonical: bool = False) -> bytes:
     """
-    Convert JSON string to CBOR bytes.
+    Convert a JSON string (optionally containing CBOR annotations) into CBOR-encoded bytes.
     
-    Args:
-        json_str: JSON string
-        canonical: If True, use canonical CBOR encoding
+    Recognizes typed CBOR annotations in objects with a "$cbor" key (for example, bytes via {"$cbor": "bytes", "$value": "<base64>"} and tags via {"$cbor": "tag", "$tag": N, "$value": V}) and converts them to native CBOR types before encoding.
+    
+    Parameters:
+        json_str (str): JSON text to convert.
+        canonical (bool): If True, produce canonical CBOR encoding (deterministic ordering and encoding rules).
     
     Returns:
-        CBOR encoded bytes
-    
-    Supports typed JSON with CBOR annotations:
-        {
-          "$cbor": "bytes",
-          "$value": "base64data"
-        }
-        
-        {
-          "$cbor": "tag",
-          "$tag": 32,
-          "$value": "http://example.com"
-        }
-    
-    Example:
-        >>> json_str = '{"name": "test", "id": 42}'
-        >>> cbor_bytes = json_to_cbor(json_str)
-        >>> data = cbor_decode(cbor_bytes)
-        >>> print(data)
-        {'name': 'test', 'id': 42}
+        bytes: CBOR-encoded representation of the parsed and processed JSON data.
     """
     # Parse JSON
     data = json.loads(json_str)
@@ -271,17 +268,14 @@ def _process_cbor_annotations(obj: Any) -> Any:
 def cbor_file_to_json_file(cbor_path: str, json_path: str, 
                            typed: bool = False, pretty: bool = True):
     """
-    Convert CBOR file to JSON file.
-    
-    Args:
-        cbor_path: Path to input CBOR file
-        json_path: Path to output JSON file
-        typed: If True, preserve CBOR types
-        pretty: If True, pretty-print JSON
-    
-    Example:
-        >>> cbor_file_to_json_file('data.cbor', 'data.json', pretty=True)
-    """
+                           Convert a CBOR file to a JSON file, optionally preserving CBOR-specific types.
+                           
+                           Parameters:
+                               cbor_path (str): Path to the input CBOR file to read.
+                               json_path (str): Path to the output JSON file to write (overwrites if exists).
+                               typed (bool): If True, preserve CBOR-specific types in JSON using annotations.
+                               pretty (bool): If True, write human-readable pretty-printed JSON.
+                           """
     with open(cbor_path, 'rb') as f:
         cbor_bytes = f.read()
     
@@ -294,16 +288,13 @@ def cbor_file_to_json_file(cbor_path: str, json_path: str,
 def json_file_to_cbor_file(json_path: str, cbor_path: str, 
                            canonical: bool = False):
     """
-    Convert JSON file to CBOR file.
-    
-    Args:
-        json_path: Path to input JSON file
-        cbor_path: Path to output CBOR file
-        canonical: If True, use canonical CBOR encoding
-    
-    Example:
-        >>> json_file_to_cbor_file('data.json', 'data.cbor', canonical=True)
-    """
+                           Convert a JSON file to CBOR and write the resulting CBOR bytes to the specified output file.
+                           
+                           Parameters:
+                               json_path (str): Path to the input JSON file.
+                               cbor_path (str): Path to the output CBOR file to be written.
+                               canonical (bool): If True, produce canonical CBOR encoding.
+                           """
     with open(json_path, 'r') as f:
         json_str = f.read()
     

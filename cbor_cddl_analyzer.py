@@ -22,10 +22,21 @@ try:
     class SimpleCBORDecoder:
         """Compatibility wrapper around unified CBOR class."""
         def __init__(self, data: bytes):
+            """
+            Initialize the decoder with CBOR-encoded input.
+            
+            Parameters:
+                data (bytes): CBOR-encoded bytes to be decoded by this instance.
+            """
             self.data = data
         
         def decode(self, breadcrumb: str = "") -> Any:
-            """Decode CBOR data using unified CBOR class."""
+            """
+            Decode the stored CBOR byte sequence into its corresponding Python value.
+            
+            Returns:
+                The Python object produced by decoding the stored CBOR bytes (e.g., int, bytes, str, list, dict, or tagged tuple).
+            """
             return CBOR.loads(self.data)
     
 except ImportError:
@@ -115,10 +126,17 @@ if not HAS_SIMPLE_CBOR:
             return f"[@{offset:04x}] {hex_start} ... ({len(data)} bytes total)"
     
     def decode(self, path: str = "") -> Any:
-        """Decode CBOR data.
+        """
+        Decode the CBOR-encoded bytes stored in this decoder and return the corresponding Python value.
         
-        Args:
-            path: Current path in the data structure for tracking
+        Parameters:
+            path (str): Breadcrumb path used for structure tracking and debug output.
+        
+        Returns:
+            Any: The decoded Python value. CBOR tags are preserved as a tuple (tag_number, value).
+        
+        Raises:
+            ValueError: If the input ends unexpectedly or an unsupported CBOR major/additional type is encountered.
         """
         if self.pos >= len(self.data):
             raise ValueError("Unexpected end of data")
@@ -992,9 +1010,18 @@ class CBORAnalyzer:
         return ""
     
     def _build_offset_map(self, cbor_bytes: bytes, data: Any, offset: int = 0):
-        """Build a map of Python object IDs to CBOR byte offsets.
+        """
+        Map Python object ids for items in `data` to their corresponding byte offsets within `cbor_bytes`.
         
-        This is a simplified approach - walks the data structure and estimates offsets.
+        This recursively walks the decoded CBOR Python structure and records the starting CBOR byte index for each visited Python object in `self.offset_map` (keyed by id(object)). The function advances through `cbor_bytes` in parallel and returns the byte index immediately after the CBOR item or container it processed.
+        
+        Parameters:
+            cbor_bytes (bytes): Raw CBOR byte sequence being indexed.
+            data (Any): Decoded Python object (map, array, or primitive) corresponding to a CBOR item at `offset`.
+            offset (int): Byte index in `cbor_bytes` where `data`'s CBOR encoding begins.
+        
+        Returns:
+            int: Byte index in `cbor_bytes` immediately following the CBOR item or container for `data`. On error, returns the supplied `offset` unchanged.
         """
         try:
             if offset >= len(cbor_bytes):

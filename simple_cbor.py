@@ -144,7 +144,12 @@ class CBOR:
         return self._cached_bytes
     
     def dumps(self) -> bytes:
-        """Alias for encode()."""
+        """
+        Encode the CBOR wrapper's current data to CBOR byte sequence.
+        
+        Returns:
+            bytes: CBOR-encoded bytes representing the wrapper's current data.
+        """
         return self.encode()
     
     def _encode_item(self, obj: Any) -> bytes:
@@ -180,14 +185,33 @@ class CBOR:
             raise TypeError(f"Cannot encode type {type(obj).__name__}")
     
     def _encode_int(self, value: int) -> bytes:
-        """Encode an integer."""
+        """
+        Encode a Python integer into its CBOR byte representation.
+        
+        Negative integers use CBOR's negative-integer encoding (encoded value = -1 - value).
+        
+        Parameters:
+            value (int): The integer to encode.
+        
+        Returns:
+            bytes: CBOR-encoded bytes representing the integer.
+        """
         if value >= 0:
             return self._encode_uint(MAJOR_TYPE_UINT, value)
         else:
             return self._encode_uint(MAJOR_TYPE_NINT, -1 - value)
     
     def _encode_uint(self, major_type: int, value: int) -> bytes:
-        """Encode unsigned integer with given major type."""
+        """
+        Encode a non-negative integer under the specified CBOR major type.
+        
+        Parameters:
+            major_type (int): CBOR major type constant to use for the value's header.
+            value (int): Integer value greater than or equal to zero.
+        
+        Returns:
+            bytes: CBOR-encoded bytes for the given value using the appropriate additional-information form.
+        """
         initial_byte = major_type << 5
         
         if value < 24:
@@ -202,25 +226,53 @@ class CBOR:
             return bytes([initial_byte | 27]) + struct.pack('>Q', value)
     
     def _encode_bytes(self, value: bytes) -> bytes:
-        """Encode byte string (major type 2)."""
+        """
+        Encode a Python bytes object as a CBOR byte string using a definite-length header.
+        
+        Returns:
+            bytes: CBOR-encoded byte string containing a length prefix followed by `value`'s raw bytes.
+        """
         result = self._encode_uint(MAJOR_TYPE_BSTR, len(value))
         return result + value
     
     def _encode_string(self, value: str) -> bytes:
-        """Encode text string (major type 3)."""
+        """
+        Encode a Python string as a CBOR text string (major type 3) using UTF-8.
+        
+        Returns:
+            bytes: CBOR-encoded representation containing the type/length prefix followed by the UTF-8 encoded string bytes.
+        """
         utf8_bytes = value.encode('utf-8')
         result = self._encode_uint(MAJOR_TYPE_TSTR, len(utf8_bytes))
         return result + utf8_bytes
     
     def _encode_array(self, value: Union[list, tuple]) -> bytes:
-        """Encode array (major type 4)."""
+        """
+        Encode a Python list or tuple into a CBOR array byte sequence.
+        
+        Parameters:
+            value (list | tuple): Sequence whose elements will be encoded as CBOR array items in iteration order.
+        
+        Returns:
+            bytes: CBOR-encoded byte sequence representing the array with its encoded elements.
+        """
         result = self._encode_uint(MAJOR_TYPE_ARRAY, len(value))
         for item in value:
             result += self._encode_item(item)
         return result
     
     def _encode_map(self, value: dict) -> bytes:
-        """Encode map (major type 5)."""
+        """
+        Encode a Python dict into CBOR map bytes.
+        
+        When canonical encoding is enabled on the instance (self._canonical is True), keys are encoded first and map entries are ordered by the bytewise order of encoded keys to produce a deterministic representation. Otherwise, entries preserve the dict iteration order.
+        
+        Parameters:
+            value (dict): Mapping of keys to values to encode as a CBOR map.
+        
+        Returns:
+            bytes: CBOR byte sequence representing the map.
+        """
         result = self._encode_uint(MAJOR_TYPE_MAP, len(value))
         
         # Canonical encoding: sort keys by their encoded representation
@@ -247,7 +299,16 @@ class CBOR:
         return result
     
     def _encode_tag(self, tag_num: int, value: Any) -> bytes:
-        """Encode tagged value (major type 6)."""
+        """
+        Encode a CBOR tagged value.
+        
+        Parameters:
+            tag_num (int): CBOR tag number (non-negative integer) to apply to the value.
+            value (Any): The Python object to be encoded as the tagged item.
+        
+        Returns:
+            bytes: CBOR-encoded bytes containing the tag and the encoded value.
+        """
         result = self._encode_uint(MAJOR_TYPE_TAG, tag_num)
         result += self._encode_item(value)
         return result
@@ -271,7 +332,16 @@ class CBOR:
         return self._decode_item()
     
     def _decode_item(self) -> Any:
-        """Decode a single CBOR item."""
+        """
+        Decode and return the next CBOR item from the current decode buffer.
+        
+        Returns:
+            Any: The decoded Python value for the next CBOR item. Possible types include int, bytes, str,
+            list, dict, tuple of (tag_number, value) for tagged items, booleans, None, and floats.
+        
+        Raises:
+            ValueError: If the input ends unexpectedly or an unknown CBOR major type is encountered.
+        """
         if self._decode_pos >= len(self._decode_data):
             raise ValueError("Unexpected end of data")
         
@@ -346,7 +416,19 @@ class CBOR:
         return map_dict
     
     def _decode_simple(self, additional_info: int) -> Any:
-        """Decode simple values."""
+        """
+        Decode a CBOR "simple" or floating-point additional-information code into its Python value.
+        
+        Parameters:
+            additional_info (int): The CBOR additional-information value extracted from the initial byte.
+        
+        Returns:
+            The decoded Python value: `False`, `True`, `None`, or a `float` for 16/32/64-bit float encodings.
+        
+        Raises:
+            NotImplementedError: If the additional info is the undefined value code (23).
+            ValueError: If the additional info is an unknown/unsupported simple value.
+        """
         if additional_info == SIMPLE_FALSE:
             return False
         elif additional_info == SIMPLE_TRUE:
@@ -410,7 +492,15 @@ class CBOR:
         return '\n'.join(self._diag_lines)
     
     def _diag_dump_item(self, label: str = "") -> None:
-        """Dump a single CBOR item with diagnostic info."""
+        """
+        Dump the next CBOR item from the internal diagnostic buffer and append formatted diagnostic lines.
+        
+        Parameters:
+            label (str): Optional prefix used in the diagnostic comment for this item. If provided, it will be shown alongside the dumped item.
+        
+        Notes:
+            If the buffer ends before a complete item can be read, an error line is appended describing the unexpected end of data.
+        """
         if self._diag_pos >= len(self._diag_data):
             self._diag_add_line(self._diag_pos, b'', "# ERROR: Unexpected end of data")
             return
@@ -441,7 +531,14 @@ class CBOR:
             self._diag_dump_simple(start_pos, additional_info, label)
     
     def _diag_dump_uint(self, start_pos: int, additional_info: int, label: str) -> None:
-        """Dump unsigned integer."""
+        """
+        Emit a diagnostic line for an unsigned integer found at the current diagnostic read position.
+        
+        Parameters:
+            start_pos (int): Byte offset in the diagnostic buffer where the integer's initial byte begins.
+            additional_info (int): CBOR additional-information value that encodes the integer's length or value.
+            label (str): Text prefix shown before the `uint(...)` annotation in the diagnostic output.
+        """
         value, end_pos = self._diag_read_uint(additional_info)
         hex_bytes = self._diag_data[start_pos:end_pos]
         self._diag_add_line(start_pos, hex_bytes, f"{label}uint({value})")
@@ -545,7 +642,14 @@ class CBOR:
         self._diag_current_indent -= 1
     
     def _diag_dump_simple(self, start_pos: int, additional_info: int, label: str) -> None:
-        """Dump simple values."""
+        """
+        Format and add a diagnostic line for a CBOR simple value or floating-point value.
+        
+        Parameters:
+        	start_pos (int): Byte offset in the diagnostic buffer where this item begins.
+        	additional_info (int): CBOR additional-info code that identifies the simple value or float width (uses SIMPLE_* constants).
+        	label (str): Prefix to prepend to the diagnostic comment for this item.
+        """
         if additional_info == SIMPLE_FALSE:
             self._diag_add_line(start_pos, bytes([0xf4]), f"{label}false")
         elif additional_info == SIMPLE_TRUE:
@@ -686,7 +790,15 @@ def cbor_encode(obj: Any, canonical: bool = False) -> bytes:
 
 
 def cbor_decode(data: bytes) -> Any:
-    """Decode CBOR bytes to Python object."""
+    """
+    Decode CBOR-encoded bytes into the corresponding Python object.
+    
+    Parameters:
+        data (bytes): CBOR-encoded input bytes.
+    
+    Returns:
+        Any: The Python object represented by the decoded CBOR data.
+    """
     return CBOR.loads(data)
 
 
