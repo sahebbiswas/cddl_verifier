@@ -11,11 +11,11 @@ import logging
 import struct
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 # Import CBOR encoder/decoder from separate module
 try:
-    from simple_cbor import SimpleCBORDecoder, SimpleCBOREncoder
+    from simple_cbor import CBOR
     HAS_SIMPLE_CBOR = True
 except ImportError:
     HAS_SIMPLE_CBOR = False
@@ -256,7 +256,6 @@ class CDDLParser:
         in_group = False
         current_group_name = None
         current_group_fields = []
-        in_array_def = False  # Track if we're in an array type definition
         pending_field_line = None  # Track incomplete field definitions (multi-line)
         
         for line in lines:
@@ -404,7 +403,6 @@ class CDDLParser:
                 type_name = line.split('=')[0].strip()
                 current_type = type_name
                 current_fields = {}
-                in_array_def = True
                 self.types[type_name] = {'fields': current_fields, 'type': 'array', 'element_types': {}}
             
             # Field definition (e.g., "name: tstr" or "0: tstr" or "0 : tstr")
@@ -472,7 +470,6 @@ class CDDLParser:
             # End of type definition
             elif line == '}' or line == ']':
                 current_type = None
-                in_array_def = False
         
         # Post-processing: Convert named array fields to indexed element_types
         for type_name, type_def in self.types.items():
@@ -987,14 +984,14 @@ class CBORAnalyzer:
             
             # For maps and arrays, recursively process children
             if major_type == 5 and isinstance(data, dict):  # map
-                # Decode length
-                length = additional_info
+                # Decode length (not currently used, but needed to advance offset)
+                _length = additional_info
                 if additional_info == 24:
-                    length = cbor_bytes[current_offset] if current_offset < len(cbor_bytes) else 0
+                    _length = cbor_bytes[current_offset] if current_offset < len(cbor_bytes) else 0
                     current_offset += 1
                 elif additional_info == 25:
                     if current_offset + 1 < len(cbor_bytes):
-                        length = int.from_bytes(cbor_bytes[current_offset:current_offset+2], 'big')
+                        _length = int.from_bytes(cbor_bytes[current_offset:current_offset+2], 'big')
                     current_offset += 2
                 
                 # Process each key-value pair
@@ -1008,10 +1005,10 @@ class CBORAnalyzer:
                 return current_offset
             
             elif major_type == 4 and isinstance(data, (list, tuple)):  # array
-                # Similar logic for arrays
-                length = additional_info
+                # Decode length (not currently used, but needed to advance offset)
+                _length = additional_info
                 if additional_info == 24:
-                    length = cbor_bytes[current_offset] if current_offset < len(cbor_bytes) else 0
+                    _length = cbor_bytes[current_offset] if current_offset < len(cbor_bytes) else 0
                     current_offset += 1
                 
                 for item in data:

@@ -23,7 +23,7 @@ References:
 """
 
 import struct
-from typing import Any, Union, Tuple, Dict, List, Optional
+from typing import Any, Union, Tuple, Dict, List
 
 
 class CBOR:
