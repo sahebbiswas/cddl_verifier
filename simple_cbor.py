@@ -25,6 +25,24 @@ References:
 import struct
 from typing import Any, Union, Tuple, Dict, List
 
+# CBOR Major Type Constants (RFC 8949)
+MAJOR_TYPE_UINT = 0      # Unsigned integer
+MAJOR_TYPE_NINT = 1      # Negative integer
+MAJOR_TYPE_BSTR = 2      # Byte string
+MAJOR_TYPE_TSTR = 3      # Text string
+MAJOR_TYPE_ARRAY = 4     # Array
+MAJOR_TYPE_MAP = 5       # Map
+MAJOR_TYPE_TAG = 6       # Tagged item
+MAJOR_TYPE_SIMPLE = 7    # Simple values (bool, null, float)
+
+# Simple Value Constants
+SIMPLE_FALSE = 20
+SIMPLE_TRUE = 21
+SIMPLE_NULL = 22
+SIMPLE_FLOAT16 = 25
+SIMPLE_FLOAT32 = 26
+SIMPLE_FLOAT64 = 27
+
 
 class CBOR:
     """
@@ -104,14 +122,25 @@ class CBOR:
     # ENCODING - Convert Python objects to CBOR bytes
     # ========================================================================
     
-    def encode(self) -> bytes:
+    def encode(self, canonical: bool = False) -> bytes:
         """
         Encode current data to CBOR bytes.
         
+        Args:
+            canonical: If True, use canonical (deterministic) encoding per RFC 8949 §4.2
+        
         Returns:
             CBOR encoded bytes
+        
+        Canonical encoding rules (RFC 8949 Section 4.2):
+        - Integers use shortest form
+        - Map keys sorted by encoded byte comparison
+        - Definite-length encoding only
+        - No duplicate map keys
         """
+        self._canonical = canonical
         self._cached_bytes = self._encode_item(self.data)
+        self._canonical = False  # Reset
         return self._cached_bytes
     
     def dumps(self) -> bytes:
@@ -153,9 +182,9 @@ class CBOR:
     def _encode_int(self, value: int) -> bytes:
         """Encode an integer."""
         if value >= 0:
-            return self._encode_uint(0, value)
+            return self._encode_uint(MAJOR_TYPE_UINT, value)
         else:
-            return self._encode_uint(1, -1 - value)
+            return self._encode_uint(MAJOR_TYPE_NINT, -1 - value)
     
     def _encode_uint(self, major_type: int, value: int) -> bytes:
         """Encode unsigned integer with given major type."""
@@ -174,33 +203,52 @@ class CBOR:
     
     def _encode_bytes(self, value: bytes) -> bytes:
         """Encode byte string (major type 2)."""
-        result = self._encode_uint(2, len(value))
+        result = self._encode_uint(MAJOR_TYPE_BSTR, len(value))
         return result + value
     
     def _encode_string(self, value: str) -> bytes:
         """Encode text string (major type 3)."""
         utf8_bytes = value.encode('utf-8')
-        result = self._encode_uint(3, len(utf8_bytes))
+        result = self._encode_uint(MAJOR_TYPE_TSTR, len(utf8_bytes))
         return result + utf8_bytes
     
     def _encode_array(self, value: Union[list, tuple]) -> bytes:
         """Encode array (major type 4)."""
-        result = self._encode_uint(4, len(value))
+        result = self._encode_uint(MAJOR_TYPE_ARRAY, len(value))
         for item in value:
             result += self._encode_item(item)
         return result
     
     def _encode_map(self, value: dict) -> bytes:
         """Encode map (major type 5)."""
-        result = self._encode_uint(5, len(value))
-        for key, val in value.items():
-            result += self._encode_item(key)
-            result += self._encode_item(val)
+        result = self._encode_uint(MAJOR_TYPE_MAP, len(value))
+        
+        # Canonical encoding: sort keys by their encoded representation
+        if hasattr(self, '_canonical') and self._canonical:
+            # Encode all keys and sort by byte comparison
+            encoded_pairs = []
+            for key, val in value.items():
+                encoded_key = self._encode_item(key)
+                encoded_val = self._encode_item(val)
+                encoded_pairs.append((encoded_key, encoded_val))
+            
+            # Sort by encoded key bytes
+            encoded_pairs.sort(key=lambda x: x[0])
+            
+            # Concatenate sorted pairs
+            for encoded_key, encoded_val in encoded_pairs:
+                result += encoded_key + encoded_val
+        else:
+            # Standard encoding: maintain dict order
+            for key, val in value.items():
+                result += self._encode_item(key)
+                result += self._encode_item(val)
+        
         return result
     
     def _encode_tag(self, tag_num: int, value: Any) -> bytes:
         """Encode tagged value (major type 6)."""
-        result = self._encode_uint(6, tag_num)
+        result = self._encode_uint(MAJOR_TYPE_TAG, tag_num)
         result += self._encode_item(value)
         return result
     
@@ -233,27 +281,27 @@ class CBOR:
         major_type = (initial_byte >> 5) & 0x07
         additional_info = initial_byte & 0x1f
         
-        if major_type == 0:  # Unsigned integer
+        if major_type == MAJOR_TYPE_UINT:
             return self._decode_uint(additional_info)
-        elif major_type == 1:  # Negative integer
+        elif major_type == MAJOR_TYPE_NINT:
             value = self._decode_uint(additional_info)
             return -1 - value
-        elif major_type == 2:  # Byte string
+        elif major_type == MAJOR_TYPE_BSTR:
             length = self._decode_length(additional_info)
             return self._read_bytes(length)
-        elif major_type == 3:  # Text string
+        elif major_type == MAJOR_TYPE_TSTR:
             length = self._decode_length(additional_info)
             bytes_data = self._read_bytes(length)
             return bytes_data.decode('utf-8')
-        elif major_type == 4:  # Array
+        elif major_type == MAJOR_TYPE_ARRAY:
             return self._decode_array(additional_info)
-        elif major_type == 5:  # Map
+        elif major_type == MAJOR_TYPE_MAP:
             return self._decode_map(additional_info)
-        elif major_type == 6:  # Tagged item
+        elif major_type == MAJOR_TYPE_TAG:
             tag_num = self._decode_uint(additional_info)
             tagged_value = self._decode_item()
             return (tag_num, tagged_value)
-        elif major_type == 7:  # Simple values
+        elif major_type == MAJOR_TYPE_SIMPLE:
             return self._decode_simple(additional_info)
         else:
             raise ValueError(f"Unknown major type: {major_type}")
@@ -299,21 +347,21 @@ class CBOR:
     
     def _decode_simple(self, additional_info: int) -> Any:
         """Decode simple values."""
-        if additional_info == 20:
+        if additional_info == SIMPLE_FALSE:
             return False
-        elif additional_info == 21:
+        elif additional_info == SIMPLE_TRUE:
             return True
-        elif additional_info == 22:
+        elif additional_info == SIMPLE_NULL:
             return None
         elif additional_info == 23:
             raise NotImplementedError("Undefined value not supported")
-        elif additional_info == 25:  # Float 16
+        elif additional_info == SIMPLE_FLOAT16:
             bytes_data = self._read_bytes(2)
             return struct.unpack('>e', bytes_data)[0] if hasattr(struct, 'unpack') else 0.0
-        elif additional_info == 26:  # Float 32
+        elif additional_info == SIMPLE_FLOAT32:
             bytes_data = self._read_bytes(4)
             return struct.unpack('>f', bytes_data)[0]
-        elif additional_info == 27:  # Float 64
+        elif additional_info == SIMPLE_FLOAT64:
             bytes_data = self._read_bytes(8)
             return struct.unpack('>d', bytes_data)[0]
         else:
@@ -375,21 +423,21 @@ class CBOR:
         additional_info = initial_byte & 0x1f
         
         # Dispatch based on major type
-        if major_type == 0:
+        if major_type == MAJOR_TYPE_UINT:
             self._diag_dump_uint(start_pos, additional_info, label)
-        elif major_type == 1:
+        elif major_type == MAJOR_TYPE_NINT:
             self._diag_dump_nint(start_pos, additional_info, label)
-        elif major_type == 2:
+        elif major_type == MAJOR_TYPE_BSTR:
             self._diag_dump_bstr(start_pos, additional_info, label)
-        elif major_type == 3:
+        elif major_type == MAJOR_TYPE_TSTR:
             self._diag_dump_tstr(start_pos, additional_info, label)
-        elif major_type == 4:
+        elif major_type == MAJOR_TYPE_ARRAY:
             self._diag_dump_array(start_pos, additional_info, label)
-        elif major_type == 5:
+        elif major_type == MAJOR_TYPE_MAP:
             self._diag_dump_map(start_pos, additional_info, label)
-        elif major_type == 6:
+        elif major_type == MAJOR_TYPE_TAG:
             self._diag_dump_tag(start_pos, additional_info, label)
-        elif major_type == 7:
+        elif major_type == MAJOR_TYPE_SIMPLE:
             self._diag_dump_simple(start_pos, additional_info, label)
     
     def _diag_dump_uint(self, start_pos: int, additional_info: int, label: str) -> None:
@@ -498,22 +546,22 @@ class CBOR:
     
     def _diag_dump_simple(self, start_pos: int, additional_info: int, label: str) -> None:
         """Dump simple values."""
-        if additional_info == 20:
+        if additional_info == SIMPLE_FALSE:
             self._diag_add_line(start_pos, bytes([0xf4]), f"{label}false")
-        elif additional_info == 21:
+        elif additional_info == SIMPLE_TRUE:
             self._diag_add_line(start_pos, bytes([0xf5]), f"{label}true")
-        elif additional_info == 22:
+        elif additional_info == SIMPLE_NULL:
             self._diag_add_line(start_pos, bytes([0xf6]), f"{label}null")
-        elif additional_info == 25:  # Float 16
+        elif additional_info == SIMPLE_FLOAT16:
             float_bytes = self._diag_read_bytes(2)
             all_bytes = self._diag_data[start_pos:self._diag_pos]
             self._diag_add_line(start_pos, all_bytes, f"{label}float16")
-        elif additional_info == 26:  # Float 32
+        elif additional_info == SIMPLE_FLOAT32:
             float_bytes = self._diag_read_bytes(4)
             value = struct.unpack('>f', float_bytes)[0]
             all_bytes = self._diag_data[start_pos:self._diag_pos]
             self._diag_add_line(start_pos, all_bytes, f"{label}float32({value})")
-        elif additional_info == 27:  # Float 64
+        elif additional_info == SIMPLE_FLOAT64:
             float_bytes = self._diag_read_bytes(8)
             value = struct.unpack('>d', float_bytes)[0]
             all_bytes = self._diag_data[start_pos:self._diag_pos]
@@ -623,9 +671,18 @@ class CBOR:
 # CONVENIENCE FUNCTIONS
 # ============================================================================
 
-def cbor_encode(obj: Any) -> bytes:
-    """Encode Python object to CBOR bytes."""
-    return CBOR(obj).encode()
+def cbor_encode(obj: Any, canonical: bool = False) -> bytes:
+    """
+    Encode Python object to CBOR bytes.
+    
+    Args:
+        obj: Python object to encode
+        canonical: If True, use canonical (deterministic) encoding per RFC 8949 §4.2
+    
+    Returns:
+        CBOR encoded bytes
+    """
+    return CBOR(obj).encode(canonical=canonical)
 
 
 def cbor_decode(data: bytes) -> Any:

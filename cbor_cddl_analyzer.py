@@ -17,6 +17,17 @@ from typing import Any, Dict, List, Optional, Tuple
 try:
     from simple_cbor import CBOR
     HAS_SIMPLE_CBOR = True
+    
+    # Compatibility wrapper for existing code that uses SimpleCBORDecoder
+    class SimpleCBORDecoder:
+        """Compatibility wrapper around unified CBOR class."""
+        def __init__(self, data: bytes):
+            self.data = data
+        
+        def decode(self, breadcrumb: str = "") -> Any:
+            """Decode CBOR data using unified CBOR class."""
+            return CBOR.loads(self.data)
+    
 except ImportError:
     HAS_SIMPLE_CBOR = False
     # Will use inline fallback decoder below if simple_cbor not available
@@ -59,6 +70,22 @@ handler = logging.StreamHandler(sys.stderr)
 handler.setFormatter(ColoredFormatter())
 logger.addHandler(handler)
 logger.setLevel(logging.WARNING)  # Default level
+
+
+# CBOR Major Type Constants (RFC 8949)
+MAJOR_TYPE_UINT = 0      # Unsigned integer
+MAJOR_TYPE_NINT = 1      # Negative integer
+MAJOR_TYPE_BSTR = 2      # Byte string
+MAJOR_TYPE_TSTR = 3      # Text string
+MAJOR_TYPE_ARRAY = 4     # Array
+MAJOR_TYPE_MAP = 5       # Map
+MAJOR_TYPE_TAG = 6       # Tagged item
+MAJOR_TYPE_SIMPLE = 7    # Simple values (bool, null, float)
+
+# Simple Value Constants
+SIMPLE_FALSE = 20
+SIMPLE_TRUE = 21
+SIMPLE_NULL = 22
 
 
 # Inline CBOR decoder (fallback if simple_cbor module not available)
@@ -112,24 +139,24 @@ if not HAS_SIMPLE_CBOR:
         # Store structure information
         self.structure_map[start_pos] = f"{path}: major_type={major_type}"
         
-        if major_type == 0:  # unsigned integer
+        if major_type == MAJOR_TYPE_UINT:
             return self._decode_int(additional_info)
-        elif major_type == 1:  # negative integer
+        elif major_type == MAJOR_TYPE_NINT:
             return -1 - self._decode_int(additional_info)
-        elif major_type == 2:  # byte string
+        elif major_type == MAJOR_TYPE_BSTR:
             length = self._decode_int(additional_info)
             result = self.data[self.pos:self.pos + length]
             self.pos += length
             return result
-        elif major_type == 3:  # text string
+        elif major_type == MAJOR_TYPE_TSTR:
             length = self._decode_int(additional_info)
             result = self.data[self.pos:self.pos + length].decode('utf-8')
             self.pos += length
             return result
-        elif major_type == 4:  # array
+        elif major_type == MAJOR_TYPE_ARRAY:
             length = self._decode_int(additional_info)
             return [self.decode(f"{path}[{i}]" if path else f"[{i}]") for i in range(length)]
-        elif major_type == 5:  # map
+        elif major_type == MAJOR_TYPE_MAP:
             length = self._decode_int(additional_info)
             result = {}
             for i in range(length):
@@ -137,19 +164,19 @@ if not HAS_SIMPLE_CBOR:
                 value = self.decode(f"{path}.{key}" if path else f".{key}")
                 result[key] = value
             return result
-        elif major_type == 6:  # tag
+        elif major_type == MAJOR_TYPE_TAG:
             tag_num = self._decode_int(additional_info)
             # Decode the tagged content
             tagged_value = self.decode(f"{path}<tag{tag_num}>" if path else f"<tag{tag_num}>")
             # Return tuple (tag_num, value) to preserve tag information
             logger.debug(f"{Colors.CBOR}Tag {tag_num} wrapping:{Colors.RESET} {type(tagged_value).__name__}")
             return (tag_num, tagged_value)
-        elif major_type == 7:  # special
-            if additional_info == 20:
+        elif major_type == MAJOR_TYPE_SIMPLE:
+            if additional_info == SIMPLE_FALSE:
                 return False
-            elif additional_info == 21:
+            elif additional_info == SIMPLE_TRUE:
                 return True
-            elif additional_info == 22:
+            elif additional_info == SIMPLE_NULL:
                 return None
             elif additional_info == 25:  # float16
                 return self._decode_float16()
@@ -983,7 +1010,7 @@ class CBORAnalyzer:
             current_offset = offset + 1
             
             # For maps and arrays, recursively process children
-            if major_type == 5 and isinstance(data, dict):  # map
+            if major_type == MAJOR_TYPE_MAP and isinstance(data, dict):
                 # Decode length (not currently used, but needed to advance offset)
                 _length = additional_info
                 if additional_info == 24:
@@ -1004,7 +1031,7 @@ class CBORAnalyzer:
                 
                 return current_offset
             
-            elif major_type == 4 and isinstance(data, (list, tuple)):  # array
+            elif major_type == MAJOR_TYPE_ARRAY and isinstance(data, (list, tuple)):
                 # Decode length (not currently used, but needed to advance offset)
                 _length = additional_info
                 if additional_info == 24:
