@@ -783,12 +783,19 @@ class CBOR:
         Returns:
             self for method chaining
         
+        Raises:
+            TypeError: If data is not a dict
+        
         Example:
             >>> cbor = CBOR({"a": 1, "b": 2})
             >>> cbor.delete("a")
             >>> cbor.data
             {'b': 2}
         """
+        if not isinstance(self.data, dict):
+            raise TypeError(
+                f"delete() requires data to be a dict, not {type(self.data).__name__!r}"
+            )
         del self.data[key]
         self._cached_bytes = None
         return self
