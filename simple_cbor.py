@@ -23,6 +23,7 @@ References:
 """
 
 import struct
+import copy as copy_module
 from typing import Any, Union, Tuple, Dict, List, Optional
 
 # CBOR Major Type Constants (RFC 8949)
@@ -953,8 +954,7 @@ class CBOR:
             >>> cbor1.data  # unchanged
             {'a': 1}
         """
-        import copy
-        return CBOR(copy.deepcopy(self.data))
+        return CBOR(copy_module.deepcopy(self.data))
     
     def merge(self, other: 'CBOR') -> 'CBOR':
         """
