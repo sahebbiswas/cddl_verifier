@@ -23,7 +23,8 @@ References:
 """
 
 import struct
-from typing import Any, Union, Tuple, Dict, List
+import copy as copy_module
+from typing import Any, Union, Tuple, Dict, List, Optional
 
 # CBOR Major Type Constants (RFC 8949)
 MAJOR_TYPE_UINT = 0      # Unsigned integer
@@ -665,6 +666,434 @@ class CBOR:
     def __iter__(self):
         """Iterate over data."""
         return iter(self.data) if hasattr(self.data, '__iter__') else iter([])
+    
+    # ========================================================================
+    # BUILDER PATTERN METHODS - Fluent API for construction
+    # ========================================================================
+    
+    def set(self, key, value) -> 'CBOR':
+        """
+        Set a key-value pair (fluent interface).
+        
+        Args:
+            key: Dictionary key, or integer index when data is a list
+            value: Value to set
+        
+        Returns:
+            self for method chaining
+        
+        Raises:
+            TypeError: If data is not a dict or list, or key is not an int for a list
+        
+        Example:
+            >>> cbor = CBOR({}).set("name", "Alice").set("age", 30)
+            >>> cbor.data
+            {'name': 'Alice', 'age': 30}
+        """
+        if isinstance(self.data, dict):
+            self.data[key] = value
+        elif isinstance(self.data, list):
+            if not isinstance(key, int):
+                raise TypeError(
+                    f"set() requires an integer index for a list, got {type(key).__name__!r}"
+                )
+            self.data[key] = value
+        else:
+            raise TypeError(
+                f"set() requires data to be a dict or list, not {type(self.data).__name__!r}"
+            )
+        self._cached_bytes = None
+        return self
+    
+    def append(self, value) -> 'CBOR':
+        """
+        Append value to array (fluent interface).
+        
+        Args:
+            value: Value to append
+        
+        Returns:
+            self for method chaining
+        
+        Example:
+            >>> cbor = CBOR([]).append(1).append(2).append(3)
+            >>> cbor.data
+            [1, 2, 3]
+        """
+        if not isinstance(self.data, list):
+            raise TypeError("append() requires data to be a list")
+        self.data.append(value)
+        self._cached_bytes = None
+        return self
+    
+    def extend(self, values) -> 'CBOR':
+        """
+        Extend array with multiple values (fluent interface).
+        
+        Args:
+            values: Iterable of values to add
+        
+        Returns:
+            self for method chaining
+        
+        Example:
+            >>> cbor = CBOR([1, 2]).extend([3, 4, 5])
+            >>> cbor.data
+            [1, 2, 3, 4, 5]
+        """
+        if not isinstance(self.data, list):
+            raise TypeError("extend() requires data to be a list")
+        self.data.extend(values)
+        self._cached_bytes = None
+        return self
+    
+    def update(self, other: Optional[dict] = None, **kwargs) -> 'CBOR':
+        """
+        Update map with another dict (fluent interface).
+        
+        Args:
+            other: Dictionary to merge
+            **kwargs: Additional key-value pairs
+        
+        Returns:
+            self for method chaining
+        
+        Example:
+            >>> cbor = CBOR({"a": 1})
+            >>> cbor.update({"b": 2}, c=3)
+            >>> cbor.data
+            {'a': 1, 'b': 2, 'c': 3}
+        """
+        if not isinstance(self.data, dict):
+            raise TypeError("update() requires data to be a dict")
+        if other:
+            self.data.update(other)
+        if kwargs:
+            self.data.update(kwargs)
+        self._cached_bytes = None
+        return self
+    
+    def delete(self, key) -> 'CBOR':
+        """
+        Delete a key (fluent interface).
+        
+        Args:
+            key: Key to delete
+        
+        Returns:
+            self for method chaining
+        
+        Raises:
+            TypeError: If data is not a dict
+        
+        Example:
+            >>> cbor = CBOR({"a": 1, "b": 2})
+            >>> cbor.delete("a")
+            >>> cbor.data
+            {'b': 2}
+        """
+        if not isinstance(self.data, dict):
+            raise TypeError(
+                f"delete() requires data to be a dict, not {type(self.data).__name__!r}"
+            )
+        del self.data[key]
+        self._cached_bytes = None
+        return self
+    
+    def get(self, key, default=None):
+        """
+        Get value with default fallback.
+        
+        Args:
+            key: Key to retrieve
+            default: Default value if key not found
+        
+        Returns:
+            Value at key or default
+        
+        Example:
+            >>> cbor = CBOR({"name": "Alice"})
+            >>> cbor.get("name")
+            'Alice'
+            >>> cbor.get("age", 0)
+            0
+        """
+        if isinstance(self.data, dict):
+            return self.data.get(key, default)
+        elif isinstance(self.data, list) and isinstance(key, int):
+            try:
+                return self.data[key]
+            except IndexError:
+                return default
+        return default
+    
+    def keys(self):
+        """Get dictionary keys."""
+        if isinstance(self.data, dict):
+            return self.data.keys()
+        return []
+    
+    def values(self):
+        """Get dictionary values."""
+        if isinstance(self.data, dict):
+            return self.data.values()
+        return []
+    
+    def items(self):
+        """Get dictionary items."""
+        if isinstance(self.data, dict):
+            return self.data.items()
+        return []
+    
+    # ========================================================================
+    # NESTED ACCESS HELPERS
+    # ========================================================================
+    
+    def get_nested(self, path: str, separator: str = ".", default=None):
+        """
+        Get nested value using path notation.
+        
+        Args:
+            path: Dot-separated path (e.g., "user.address.city")
+            separator: Path separator (default: ".")
+            default: Default value if path not found
+        
+        Returns:
+            Value at path or default
+        
+        Example:
+            >>> cbor = CBOR({"user": {"name": "Alice", "address": {"city": "NYC"}}})
+            >>> cbor.get_nested("user.address.city")
+            'NYC'
+            >>> cbor.get_nested("user.age", default=0)
+            0
+        """
+        keys = path.split(separator)
+        current = self.data
+        
+        for key in keys:
+            if isinstance(current, dict):
+                if key not in current:
+                    return default
+                current = current[key]
+            elif isinstance(current, list):
+                try:
+                    index = int(key)
+                    current = current[index]
+                except (ValueError, IndexError):
+                    return default
+            else:
+                return default
+        
+        return current
+    
+    def set_nested(self, path: str, value, separator: str = ".", create: bool = True) -> 'CBOR':
+        """
+        Set nested value using path notation.
+        
+        Args:
+            path: Dot-separated path (e.g., "user.address.city").
+                  Must be non-empty. Numeric segments (e.g., "0", "2") are
+                  treated as integer indices when the current container is a
+                  list, or when create=True and the next segment is numeric
+                  (a list is created instead of a dict in that case).
+            value: Value to set
+            separator: Path separator (default: ".")
+            create: If True, create intermediate dicts or lists as needed.
+                    When a numeric segment targets a list index that is out
+                    of range, the list is extended with None filler elements
+                    up to that index.
+        
+        Returns:
+            self for method chaining
+        
+        Raises:
+            ValueError: If path is empty.
+            KeyError:   If a dict key is missing and create=False.
+            IndexError: If a list index is out of range and create=False.
+            TypeError:  If the container type is incompatible with the key.
+        
+        Example:
+            >>> cbor = CBOR({})
+            >>> cbor.set_nested("user.address.city", "NYC")
+            >>> cbor.data
+            {'user': {'address': {'city': 'NYC'}}}
+            
+            >>> cbor = CBOR({"items": []})
+            >>> cbor.set_nested("items.0.name", "Alice")
+            >>> cbor.data
+            {'items': [{'name': 'Alice'}]}
+        """
+        if not path:
+            raise ValueError("set_nested() requires a non-empty path")
+
+        keys = path.split(separator)
+        current = self.data
+
+        # Navigate to the parent of the final key.
+        for i, key in enumerate(keys[:-1]):
+            next_key = keys[i + 1]  # look-ahead: tells us what the child needs to be
+            next_is_index = next_key.isdigit()
+
+            if isinstance(current, dict):
+                if key.isdigit():
+                    # Numeric string used as a plain dict key — keep as string.
+                    int_key = int(key)
+                    if int_key not in current and key not in current:
+                        if not create:
+                            raise KeyError(f"Path not found: {key!r}")
+                        # Create child: list if next segment is numeric, else dict.
+                        current[key] = [] if next_is_index else {}
+                    # Prefer the int form if it was stored that way.
+                    current = current.get(int_key, current.get(key))
+                else:
+                    if key not in current:
+                        if not create:
+                            raise KeyError(f"Path not found: {key!r}")
+                        current[key] = [] if next_is_index else {}
+                    current = current[key]
+
+            elif isinstance(current, list):
+                if not key.isdigit():
+                    raise TypeError(
+                        f"Cannot use non-integer key {key!r} to navigate a list"
+                    )
+                idx = int(key)
+                if idx >= len(current):
+                    if not create:
+                        raise IndexError(
+                            f"List index {idx} out of range (length {len(current)})"
+                        )
+                    # Extend with None filler up to the required index.
+                    current.extend([None] * (idx - len(current) + 1))
+                # Ensure the slot holds a suitable container for descent.
+                if current[idx] is None:
+                    current[idx] = [] if next_is_index else {}
+                current = current[idx]
+
+            else:
+                raise TypeError(
+                    f"Cannot navigate into {type(current).__name__!r} at segment {key!r}"
+                )
+
+        # Assign the final value.
+        final_key = keys[-1]
+        if isinstance(current, dict):
+            current[final_key] = value
+        elif isinstance(current, list):
+            if not final_key.isdigit():
+                raise TypeError(
+                    f"Cannot use non-integer key {final_key!r} to index a list"
+                )
+            idx = int(final_key)
+            if idx >= len(current):
+                if not create:
+                    raise IndexError(
+                        f"List index {idx} out of range (length {len(current)})"
+                    )
+                current.extend([None] * (idx - len(current) + 1))
+            current[idx] = value
+        else:
+            raise TypeError(
+                f"Cannot set value on {type(current).__name__!r} at key {final_key!r}"
+            )
+
+        self._cached_bytes = None
+        return self
+    
+    # ========================================================================
+    # UTILITY METHODS
+    # ========================================================================
+    
+    def clear(self) -> 'CBOR':
+        """
+        Clear all data.
+        
+        Returns:
+            self for method chaining
+        
+        Raises:
+            TypeError: If data is not a dict or list
+        
+        Example:
+            >>> cbor = CBOR({"a": 1, "b": 2})
+            >>> cbor.clear()
+            >>> cbor.data
+            {}
+        """
+        if isinstance(self.data, dict):
+            self.data.clear()
+            self._cached_bytes = None
+        elif isinstance(self.data, list):
+            self.data.clear()
+            self._cached_bytes = None
+        else:
+            raise TypeError(f"clear() requires data to be a dict or list, not {type(self.data).__name__}")
+        return self
+    
+    def copy(self) -> 'CBOR':
+        """
+        Create a deep copy of this CBOR object.
+        
+        Returns:
+            New CBOR object with copied data
+        
+        Example:
+            >>> cbor1 = CBOR({"a": 1})
+            >>> cbor2 = cbor1.copy()
+            >>> cbor2.set("b", 2)
+            >>> cbor1.data  # unchanged
+            {'a': 1}
+        """
+        return CBOR(copy_module.deepcopy(self.data))
+    
+    def merge(self, other: 'CBOR') -> 'CBOR':
+        """
+        Merge another CBOR object into this one.
+        
+        Args:
+            other: CBOR object to merge
+        
+        Returns:
+            self for method chaining
+        
+        Example:
+            >>> cbor1 = CBOR({"a": 1})
+            >>> cbor2 = CBOR({"b": 2})
+            >>> cbor1.merge(cbor2)
+            >>> cbor1.data
+            {'a': 1, 'b': 2}
+        """
+        if isinstance(self.data, dict) and isinstance(other.data, dict):
+            self.data.update(other.data)
+        elif isinstance(self.data, list) and isinstance(other.data, list):
+            self.data.extend(other.data)
+        else:
+            raise TypeError("Cannot merge incompatible types")
+        self._cached_bytes = None
+        return self
+    
+    def to_dict(self) -> dict:
+        """
+        Get data as dictionary (alias for .data if it's a dict).
+        
+        Returns:
+            Dictionary representation
+        """
+        if not isinstance(self.data, dict):
+            raise TypeError("Data is not a dictionary")
+        return self.data
+    
+    def to_list(self) -> list:
+        """
+        Get data as list (alias for .data if it's a list).
+        
+        Returns:
+            List representation
+        """
+        if not isinstance(self.data, list):
+            raise TypeError("Data is not a list")
+        return self.data
 
 
 # ============================================================================
