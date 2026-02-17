@@ -885,42 +885,112 @@ class CBOR:
         Set nested value using path notation.
         
         Args:
-            path: Dot-separated path (e.g., "user.address.city")
+            path: Dot-separated path (e.g., "user.address.city").
+                  Must be non-empty. Numeric segments (e.g., "0", "2") are
+                  treated as integer indices when the current container is a
+                  list, or when create=True and the next segment is numeric
+                  (a list is created instead of a dict in that case).
             value: Value to set
             separator: Path separator (default: ".")
-            create: If True, create intermediate dicts as needed
+            create: If True, create intermediate dicts or lists as needed.
+                    When a numeric segment targets a list index that is out
+                    of range, the list is extended with None filler elements
+                    up to that index.
         
         Returns:
             self for method chaining
+        
+        Raises:
+            ValueError: If path is empty.
+            KeyError:   If a dict key is missing and create=False.
+            IndexError: If a list index is out of range and create=False.
+            TypeError:  If the container type is incompatible with the key.
         
         Example:
             >>> cbor = CBOR({})
             >>> cbor.set_nested("user.address.city", "NYC")
             >>> cbor.data
             {'user': {'address': {'city': 'NYC'}}}
+            
+            >>> cbor = CBOR({"items": []})
+            >>> cbor.set_nested("items.0.name", "Alice")
+            >>> cbor.data
+            {'items': [{'name': 'Alice'}]}
         """
+        if not path:
+            raise ValueError("set_nested() requires a non-empty path")
+
         keys = path.split(separator)
         current = self.data
-        
-        # Navigate to parent
-        for key in keys[:-1]:
+
+        # Navigate to the parent of the final key.
+        for i, key in enumerate(keys[:-1]):
+            next_key = keys[i + 1]  # look-ahead: tells us what the child needs to be
+            next_is_index = next_key.isdigit()
+
             if isinstance(current, dict):
-                if key not in current:
-                    if create:
-                        current[key] = {}
-                    else:
-                        raise KeyError(f"Path not found: {key}")
-                current = current[key]
+                if key.isdigit():
+                    # Numeric string used as a plain dict key — keep as string.
+                    int_key = int(key)
+                    if int_key not in current and key not in current:
+                        if not create:
+                            raise KeyError(f"Path not found: {key!r}")
+                        # Create child: list if next segment is numeric, else dict.
+                        current[key] = [] if next_is_index else {}
+                    # Prefer the int form if it was stored that way.
+                    current = current.get(int_key, current.get(key))
+                else:
+                    if key not in current:
+                        if not create:
+                            raise KeyError(f"Path not found: {key!r}")
+                        current[key] = [] if next_is_index else {}
+                    current = current[key]
+
+            elif isinstance(current, list):
+                if not key.isdigit():
+                    raise TypeError(
+                        f"Cannot use non-integer key {key!r} to navigate a list"
+                    )
+                idx = int(key)
+                if idx >= len(current):
+                    if not create:
+                        raise IndexError(
+                            f"List index {idx} out of range (length {len(current)})"
+                        )
+                    # Extend with None filler up to the required index.
+                    current.extend([None] * (idx - len(current) + 1))
+                # Ensure the slot holds a suitable container for descent.
+                if current[idx] is None:
+                    current[idx] = [] if next_is_index else {}
+                current = current[idx]
+
             else:
-                raise TypeError(f"Cannot navigate through non-dict: {type(current)}")
-        
-        # Set final value
+                raise TypeError(
+                    f"Cannot navigate into {type(current).__name__!r} at segment {key!r}"
+                )
+
+        # Assign the final value.
         final_key = keys[-1]
         if isinstance(current, dict):
             current[final_key] = value
+        elif isinstance(current, list):
+            if not final_key.isdigit():
+                raise TypeError(
+                    f"Cannot use non-integer key {final_key!r} to index a list"
+                )
+            idx = int(final_key)
+            if idx >= len(current):
+                if not create:
+                    raise IndexError(
+                        f"List index {idx} out of range (length {len(current)})"
+                    )
+                current.extend([None] * (idx - len(current) + 1))
+            current[idx] = value
         else:
-            raise TypeError(f"Cannot set key on non-dict: {type(current)}")
-        
+            raise TypeError(
+                f"Cannot set value on {type(current).__name__!r} at key {final_key!r}"
+            )
+
         self._cached_bytes = None
         return self
     
