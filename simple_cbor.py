@@ -676,18 +676,32 @@ class CBOR:
         Set a key-value pair (fluent interface).
         
         Args:
-            key: Dictionary key or list index
+            key: Dictionary key, or integer index when data is a list
             value: Value to set
         
         Returns:
             self for method chaining
+        
+        Raises:
+            TypeError: If data is not a dict or list, or key is not an int for a list
         
         Example:
             >>> cbor = CBOR({}).set("name", "Alice").set("age", 30)
             >>> cbor.data
             {'name': 'Alice', 'age': 30}
         """
-        self.data[key] = value
+        if isinstance(self.data, dict):
+            self.data[key] = value
+        elif isinstance(self.data, list):
+            if not isinstance(key, int):
+                raise TypeError(
+                    f"set() requires an integer index for a list, got {type(key).__name__!r}"
+                )
+            self.data[key] = value
+        else:
+            raise TypeError(
+                f"set() requires data to be a dict or list, not {type(self.data).__name__!r}"
+            )
         self._cached_bytes = None
         return self
     
