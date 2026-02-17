@@ -23,7 +23,7 @@ References:
 """
 
 import struct
-from typing import Any, Union, Tuple, Dict, List
+from typing import Any, Union, Tuple, Dict, List, Optional
 
 # CBOR Major Type Constants (RFC 8949)
 MAJOR_TYPE_UINT = 0      # Unsigned integer
@@ -732,7 +732,7 @@ class CBOR:
         self._cached_bytes = None
         return self
     
-    def update(self, other: dict = None, **kwargs) -> 'CBOR':
+    def update(self, other: Optional[dict] = None, **kwargs) -> 'CBOR':
         """
         Update map with another dict (fluent interface).
         
@@ -920,6 +920,9 @@ class CBOR:
         Returns:
             self for method chaining
         
+        Raises:
+            TypeError: If data is not a dict or list
+        
         Example:
             >>> cbor = CBOR({"a": 1, "b": 2})
             >>> cbor.clear()
@@ -928,9 +931,12 @@ class CBOR:
         """
         if isinstance(self.data, dict):
             self.data.clear()
+            self._cached_bytes = None
         elif isinstance(self.data, list):
             self.data.clear()
-        self._cached_bytes = None
+            self._cached_bytes = None
+        else:
+            raise TypeError(f"clear() requires data to be a dict or list, not {type(self.data).__name__}")
         return self
     
     def copy(self) -> 'CBOR':

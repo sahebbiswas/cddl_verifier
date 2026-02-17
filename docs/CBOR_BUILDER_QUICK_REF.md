@@ -150,9 +150,9 @@ config["database"].update({"url": "postgres://...", "pool_size": 10})
 ## All Available Methods
 
 ### Construction
-- `CBOR(data)` - Create from Python object
-- `CBOR.load(bytes)` - Create from CBOR bytes
-- `CBOR.loads(bytes)` - Class method alias for load
+- `CBOR(data)` - Construct a CBOR instance from a Python object
+- `CBOR.load(bytes)` - Parse CBOR bytes and return a CBOR instance
+- `CBOR.loads(bytes)` - Decode CBOR bytes directly to the Python object (returns the decoded Python object, not a CBOR instance)
 
 ### Builder Pattern (returns self)
 - `.set(key, value)` - Set single key-value

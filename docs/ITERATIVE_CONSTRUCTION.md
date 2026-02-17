@@ -742,7 +742,7 @@ cbor = (CBOR({})
         .set("age", 30)
         .set("tags", []))
 
-cbor.append("admin")  # Or cbor["tags"].append("admin")
+cbor["tags"].append("admin")  # Append to the tags list
 cbor_bytes = cbor.encode()
 ```
 

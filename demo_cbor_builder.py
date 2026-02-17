@@ -65,7 +65,7 @@ def demo_fluent_api():
     user["roles"].extend(["admin", "developer"])
     
     print(f"Final result: {user.data}")
-    print(f"\nMuch more concise! ✨")
+    print("\nMuch more concise! ✨")
 
 
 def demo_nested_access():
@@ -209,11 +209,11 @@ def demo_corim_building():
     # Encode
     cbor_bytes = CBOR(tagged_corim).encode(canonical=True)
     
-    print(f"\nFinal CoRIM:")
+    print("\nFinal CoRIM:")
     print(f"  ID: {corim['id']}")
     print(f"  Tags: {len(corim['tags'])}")
     print(f"  Encoded size: {len(cbor_bytes)} bytes")
-    print(f"  Canonical: Yes (deterministic)")
+    print("  Canonical: Yes (deterministic)")
 
 
 def demo_modify_existing():
@@ -298,7 +298,8 @@ def demo_all_features():
     
     # Diagnostic dump
     print("\nCBOR Diagnostic Dump:")
-    print(app.diag()[:500] + "..." if len(app.diag()) > 500 else app.diag())
+    diag_str = app.diag()
+    print(diag_str[:500] + "..." if len(diag_str) > 500 else diag_str)
 
 
 def main():
