@@ -33,7 +33,7 @@ from cbor_cddl_analyzer import (
 
 # Import CBOR encoder/decoder
 try:
-    from simple_cbor import SimpleCBOREncoder, cbor_encode
+    from simple_cbor import cbor_encode
     HAS_CBOR_ENCODER = True
 except ImportError:
     # Try importing from main module
@@ -283,53 +283,72 @@ class TestCBORValidation(unittest.TestCase):
         self.assertTrue(analyzer.validate({0: "Alice"}, 'person'))
     
     def test_size_constraint_validation(self):
-        """Test size constraint validation"""
+        """Test .size constraints are enforced during validation.
+
+        Both exact sizes (bstr .size 16) and range sizes (tstr .size (1..10))
+        must be validated.  Data that violates a constraint must fail.
+        """
         cddl_text = """
         record = {
           &( uuid : 0 ) => bstr .size 16,
-          &( name : 1 ) => tstr .size (1..100),
+          &( name : 1 ) => tstr .size (1..10),
         }
         """
         cddl = CDDLParser(cddl_text)
         analyzer = CBORAnalyzer(cddl)
-        
-        # Valid
-        data = {0: b'x' * 16, 1: "Alice"}
-        result = analyzer.validate(data, 'record')
-        self.assertTrue(result, "Valid data should pass validation")
-        
-        # Invalid - wrong size (if size constraints are checked)
-        data = {0: b'x' * 20, 1: "Alice"}
-        # Note: Size constraint validation may not be fully implemented
-        # This test verifies the constraint is parsed, not necessarily enforced
-        analyzer.validation_errors = []  # Reset errors
-        result = analyzer.validate(data, 'record')
-        # Accept either pass or fail - as long as parsing worked
-        
-        # Invalid - out of range
-        data = {0: b'x' * 16, 1: "x" * 101}
-        analyzer.validation_errors = []
-        result = analyzer.validate(data, 'record')
-        # Accept either pass or fail
+
+        # Valid — exact bstr size and in-range tstr
+        self.assertTrue(
+            analyzer.validate({0: b'x' * 16, 1: "Alice"}, 'record'),
+            "Valid data should pass",
+        )
+
+        # Invalid — bstr too large
+        self.assertFalse(
+            CBORAnalyzer(cddl).validate({0: b'x' * 20, 1: "Alice"}, 'record'),
+            "bstr exceeding .size 16 should fail",
+        )
+
+        # Invalid — tstr too long (exceeds max of 10)
+        self.assertFalse(
+            CBORAnalyzer(cddl).validate({0: b'x' * 16, 1: "x" * 11}, 'record'),
+            "tstr exceeding .size max should fail",
+        )
+
+        # Invalid — tstr too short (below min of 1)
+        self.assertFalse(
+            CBORAnalyzer(cddl).validate({0: b'x' * 16, 1: ""}, 'record'),
+            "tstr below .size min should fail",
+        )
     
     def test_array_validation(self):
-        """Test array validation"""
+        """Test array occurrence and element-type validation.
+
+        [ + uint ] requires at least one element and every element must be a
+        non-negative integer.  Negative integers, strings, and empty arrays
+        must all fail.
+        """
         cddl_text = """
         numbers = [ + uint ]
         """
         cddl = CDDLParser(cddl_text)
-        analyzer = CBORAnalyzer(cddl)
-        
-        # Valid
-        result = analyzer.validate([1, 2, 3], 'numbers')
-        self.assertTrue(result, "Array of uints should validate")
-        
-        # Invalid - contains non-uint
-        # Note: Array element type validation may be partial
-        analyzer.validation_errors = []
-        result = analyzer.validate([1, "two", 3], 'numbers')
-        # This may pass or fail depending on validation implementation
-        # Just verify it doesn't crash
+
+        self.assertTrue(
+            CBORAnalyzer(cddl).validate([1, 2, 3], 'numbers'),
+            "Array of uints should validate",
+        )
+        self.assertFalse(
+            CBORAnalyzer(cddl).validate([], 'numbers'),
+            "Empty array must fail for + occurrence",
+        )
+        self.assertFalse(
+            CBORAnalyzer(cddl).validate([1, "two", 3], 'numbers'),
+            "String element must fail for uint array",
+        )
+        self.assertFalse(
+            CBORAnalyzer(cddl).validate([1, -1, 3], 'numbers'),
+            "Negative element must fail for uint array",
+        )
 
 
 class TestEDNGeneration(unittest.TestCase):
@@ -802,6 +821,205 @@ class TestIndentationAccuracy(unittest.TestCase):
                 self.assertEqual(leading_spaces % 2, 0)
 
 
+
+class TestValidationGapsCoverage(unittest.TestCase):
+    """Tests for previously uncovered validator behaviour.
+
+    Covers: extra/unknown fields, bool/null/float strict type checks,
+    optional-field wrong type, single-line type parse, and the
+    now-working bytes_wrapper_for_nested_cbor test.
+    """
+
+    # ── Extra / unknown fields ────────────────────────────────────────────────
+
+    def test_extra_field_fails_validation(self):
+        """Unknown map keys not present in the CDDL schema must fail.
+
+        A strict validator should reject data that contains keys the schema
+        does not define — they may indicate corrupted or unexpected payloads.
+        """
+        cddl = CDDLParser("""
+        person = {
+          &( name : 0 ) => tstr,
+          &( age  : 1 ) => uint,
+        }
+        """)
+        analyzer = CBORAnalyzer(cddl)
+        self.assertFalse(
+            analyzer.validate({0: "Alice", 1: 30, 99: "unexpected"}, "person"),
+            "Data with unknown key 99 should fail",
+        )
+        self.assertIn("99", str(analyzer.get_errors()), "Error message should mention the unknown key")
+
+    # ── bool strict type check ────────────────────────────────────────────────
+
+    def test_bool_rejects_integer_one(self):
+        """bool fields must reject plain integer 1.
+
+        In CBOR, True/False are major-type-7 simple values (bytes 0xF5/0xF4),
+        not unsigned integers (major type 0).  Python's bool is a subclass of
+        int, so isinstance(1, int) is True, but 1 is not a boolean.
+        """
+        cddl = CDDLParser("""
+        flags = {
+          &( active : 0 ) => bool,
+        }
+        """)
+        self.assertFalse(
+            CBORAnalyzer(cddl).validate({0: 1}, "flags"),
+            "Integer 1 must not satisfy a bool field",
+        )
+
+    def test_bool_accepts_true_and_false(self):
+        """bool fields must accept Python True and False."""
+        cddl = CDDLParser("""
+        flags = {
+          &( active : 0 ) => bool,
+        }
+        """)
+        self.assertTrue(CBORAnalyzer(cddl).validate({0: True},  "flags"))
+        self.assertTrue(CBORAnalyzer(cddl).validate({0: False}, "flags"))
+
+    # ── null / nil strict type check ─────────────────────────────────────────
+
+    def test_null_rejects_non_none(self):
+        """null fields must reject any non-None value."""
+        cddl = CDDLParser("""
+        envelope = {
+          &( payload : 0 ) => null,
+        }
+        """)
+        self.assertFalse(
+            CBORAnalyzer(cddl).validate({0: "something"}, "envelope"),
+            "String value must fail a null field",
+        )
+        self.assertFalse(
+            CBORAnalyzer(cddl).validate({0: 0}, "envelope"),
+            "Integer 0 must fail a null field",
+        )
+
+    def test_null_accepts_none(self):
+        """null fields must accept Python None."""
+        cddl = CDDLParser("""
+        envelope = {
+          &( payload : 0 ) => null,
+        }
+        """)
+        self.assertTrue(CBORAnalyzer(cddl).validate({0: None}, "envelope"))
+
+    # ── float strict type check ───────────────────────────────────────────────
+
+    def test_float_rejects_integer(self):
+        """float fields must reject plain Python int.
+
+        CBOR integers (major type 0/1) and floats (major type 7 simple) are
+        distinct on the wire and must not be silently coerced.
+        """
+        cddl = CDDLParser("""
+        measurement = {
+          &( value : 0 ) => float,
+        }
+        """)
+        self.assertFalse(
+            CBORAnalyzer(cddl).validate({0: 1}, "measurement"),
+            "Integer 1 must not satisfy a float field",
+        )
+
+    def test_float_accepts_float_value(self):
+        """float fields must accept Python float."""
+        cddl = CDDLParser("""
+        measurement = {
+          &( value : 0 ) => float,
+        }
+        """)
+        self.assertTrue(CBORAnalyzer(cddl).validate({0: 1.5}, "measurement"))
+
+    # ── optional field wrong-type check ──────────────────────────────────────
+
+    def test_optional_field_wrong_type_fails(self):
+        """Providing the wrong type for an optional field must still fail.
+
+        Absence is allowed; presence with the wrong type is not.
+        """
+        cddl = CDDLParser("""
+        person = {
+          &( name : 0 ) => tstr,
+          ? &( age : 1 ) => uint,
+        }
+        """)
+        # Optional field absent — valid
+        self.assertTrue(CBORAnalyzer(cddl).validate({0: "Alice"}, "person"))
+        # Optional field present with correct type — valid
+        self.assertTrue(CBORAnalyzer(cddl).validate({0: "Alice", 1: 30}, "person"))
+        # Optional field present with wrong type — invalid
+        self.assertFalse(
+            CBORAnalyzer(cddl).validate({0: "Alice", 1: "thirty"}, "person"),
+            "Optional field with wrong type must fail",
+        )
+
+    # ── array * (zero-or-more) occurrence ────────────────────────────────────
+
+    def test_star_occurrence_allows_empty_array(self):
+        """[ * uint ] must accept an empty array (zero-or-more)."""
+        cddl = CDDLParser("tags = [ * uint ]")
+        self.assertTrue(CBORAnalyzer(cddl).validate([], "tags"))
+
+    # ── single-line type definition parse ────────────────────────────────────
+
+    def test_single_line_type_not_parsed(self):
+        """Single-line inline definitions like 'x = { &(k:0)=>tstr }' are not
+        parsed as structured types by the current parser (multi-line form is
+        required).  This test documents the known limitation so it is visible
+        in the test suite.
+        """
+        # Single-line: parser does not extract a structured type
+        cddl_single = CDDLParser("record = { &( name : 0 ) => tstr }")
+        # Multi-line equivalent: parser correctly extracts the type
+        cddl_multi = CDDLParser("""
+        record = {
+          &( name : 0 ) => tstr,
+        }
+        """)
+        # The multi-line form must produce a parseable type
+        self.assertIn("record", cddl_multi.types,
+                      "Multi-line form should be parsed correctly")
+        # The single-line form currently produces no structured type
+        # (this is expected behaviour for the simplified parser)
+        self.assertNotIn("record", cddl_single.types,
+                         "Single-line form is not yet supported by the parser")
+
+    # ── bytes_wrapper_for_nested_cbor (previously always skipped) ────────────
+
+    def test_bytes_wrapper_for_nested_cbor_with_simple_cbor(self):
+        """bytes() wrapper for nested CBOR using the bundled simple_cbor encoder.
+
+        This test exercises the full path: encode inner CBOR with the bundled
+        encoder, wrap it in a CBOR tag, then verify EDN output shows the
+        bytes() wrapper and the decoded inner content.
+        """
+        try:
+            from simple_cbor import cbor_encode
+        except ImportError:
+            self.skipTest("simple_cbor.cbor_encode not available")
+
+        cddl_text = """
+        outer-type = #6.506(bytes .cbor inner-type)
+        inner-type = {
+          &( value : 0 ) => uint,
+        }
+        """
+        cddl = CDDLParser(cddl_text)
+        inner_cbor = cbor_encode({0: 42})
+        self.assertGreater(len(inner_cbor), 0, "cbor_encode must produce non-empty bytes")
+
+        data = (506, inner_cbor)
+        generator = EDNGenerator(cddl, edn_format='keyindex')
+        edn = generator.generate(data, 'outer-type')
+
+        self.assertIn("bytes(", edn, "EDN should contain bytes() wrapper")
+        self.assertIn("/ value / 0:", edn, "EDN should show inner field annotation")
+        self.assertIn("42", edn, "EDN should show inner value")
+
 def run_tests():
     """Run all tests and return results"""
     # Create test suite
@@ -816,6 +1034,7 @@ def run_tests():
     suite.addTests(loader.loadTestsFromTestCase(TestCoRIMSupport))
     suite.addTests(loader.loadTestsFromTestCase(TestEdgeCases))
     suite.addTests(loader.loadTestsFromTestCase(TestIndentationAccuracy))
+    suite.addTests(loader.loadTestsFromTestCase(TestValidationGapsCoverage))
     
     # Run tests
     runner = unittest.TextTestRunner(verbosity=2)
