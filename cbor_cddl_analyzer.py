@@ -371,15 +371,17 @@ class CDDLParser:
             
             # Handle group definitions (name = ( ... ))
             # Note: Groups can span multiple lines, ending with )
-            # Must NOT confuse with IANA parameters &( ... )
+            # Must NOT confuse with IANA parameters &( ... ) or annotations like .size (M..N)
             if '=' in line and '(' in line and not line_normalized.startswith('&') and not '{' in line and not '[' in line and '/=' not in line and '#6.' not in line:
                 # Check if this looks like a group (not a simple assignment)
-                # Groups have format: name = ( fields )
-                equals_pos = line.index('=')
-                paren_pos = line.index('(')
-                
-                # Make sure ( comes after =
-                if paren_pos > equals_pos:
+                # Groups have format: name = ( fields ) or name = (
+                # Annotations have format: name = type .constraint (value)
+                import re as _group_re
+                # Match "name = (" with optional whitespace
+                if _group_re.match(r'^[^=]+=\s*\(', line.strip()):
+                    # This is a group definition
+                    equals_pos = line.index('=')
+                    paren_pos = line.index('(')
                     group_name = line[:equals_pos].strip()
                     
                     # Clear current_type and current_fields to prevent pollution
@@ -440,10 +442,13 @@ class CDDLParser:
             
             # Simple type alias (e.g., "corim = concise-rim-type-choice")
             # Also includes CBOR tag notation: tagged-unsigned-corim-map = #6.501(unsigned-corim-map)
+            # Also includes annotated primitives: short-text = tstr .size (1..10)
             # Must come before type definition checks
             if '=' in line and '{' not in line and '[' not in line and '/=' not in line and '//=' not in line:
-                # Exclude lines that look like group definitions: name = (
-                if not (line.rstrip().endswith('(') or '= (' in line):
+                # Exclude lines that look like group definitions: name = (content)
+                # but allow .size (M..N) annotations which have '(' later in the line
+                import re as _alias_re
+                if not _alias_re.match(r'^[^=]+=\s*\(', line.strip()):
                     # Check if this is an alias (name = something)
                     parts = line.split('=', 1)
                     if len(parts) == 2:
@@ -1429,11 +1434,12 @@ class CBORAnalyzer:
                                 logger.error(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Failed to decode nested CBOR: {e}")
                                 self.validation_errors.append(f"Failed to decode nested CBOR in field '{field_name}': {e}")
                     
-                    # field_type may contain the full CDDL annotation string
-                    # (e.g. 'bstr .size 16') so extract just the base type word.
+                    # field_type may contain user alias + annotation (e.g. 'my-text .size 16')
+                    # Resolve alias first, then extract base type.
                     import re as _ft_re
-                    _base_type = _ft_re.split(r'[\s.]', field_type)[0] if field_type else ''
-                    # Normalize CDDL aliases to their canonical base types
+                    _resolved = self.cddl.resolve_type_alias(field_type) if field_type else field_type
+                    _base_type = _ft_re.split(r'[\s.]', _resolved)[0] if _resolved else ''
+                    # Normalize CDDL built-in aliases to their canonical base types
                     _alias_map = {
                         'text': 'tstr', 'bytes': 'bstr', 'true': 'bool', 'false': 'bool',
                         'nint': 'int', 'float16': 'float', 'float32': 'float', 'float64': 'float',
@@ -1469,36 +1475,38 @@ class CBORAnalyzer:
                         if not isinstance(value, str):
                             type_mismatch = True
                             logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected tstr, got {type(value).__name__}")
-                        elif 'size_constraint' in field_info:
-                            # Validate size constraint
-                            size = field_info['size_constraint']
-                            length = len(value)
-                            if size.get('exact') is not None and length != size['exact']:
-                                type_mismatch = True
-                                logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected exactly {size['exact']}, got {length}")
-                            elif size.get('min') is not None and length < size['min']:
-                                type_mismatch = True
-                                logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected at least {size['min']}, got {length}")
-                            elif size.get('max') is not None and length > size['max']:
-                                type_mismatch = True
-                                logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected at most {size['max']}, got {length}")
+                        else:
+                            # Check size constraint from inline annotation or resolved alias
+                            size = field_info.get('size_constraint') or self.cddl.extract_size_constraint(_resolved)
+                            if size:
+                                length = len(value)
+                                if size.get('exact') is not None and length != size['exact']:
+                                    type_mismatch = True
+                                    logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected exactly {size['exact']}, got {length}")
+                                elif size.get('min') is not None and length < size['min']:
+                                    type_mismatch = True
+                                    logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected at least {size['min']}, got {length}")
+                                elif size.get('max') is not None and length > size['max']:
+                                    type_mismatch = True
+                                    logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected at most {size['max']}, got {length}")
                     elif field_type == 'bstr' or _base_type == 'bstr':
                         if not isinstance(value, bytes):
                             type_mismatch = True
                             logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected bstr, got {type(value).__name__}")
-                        elif 'size_constraint' in field_info:
-                            # Validate size constraint
-                            size = field_info['size_constraint']
-                            length = len(value)
-                            if size.get('exact') is not None and length != size['exact']:
-                                type_mismatch = True
-                                logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected exactly {size['exact']} bytes, got {length}")
-                            elif size.get('min') is not None and length < size['min']:
-                                type_mismatch = True
-                                logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected at least {size['min']} bytes, got {length}")
-                            elif size.get('max') is not None and length > size['max']:
-                                type_mismatch = True
-                                logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected at most {size['max']} bytes, got {length}")
+                        else:
+                            # Check size constraint from inline annotation or resolved alias
+                            size = field_info.get('size_constraint') or self.cddl.extract_size_constraint(_resolved)
+                            if size:
+                                length = len(value)
+                                if size.get('exact') is not None and length != size['exact']:
+                                    type_mismatch = True
+                                    logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected exactly {size['exact']} bytes, got {length}")
+                                elif size.get('min') is not None and length < size['min']:
+                                    type_mismatch = True
+                                    logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected at least {size['min']} bytes, got {length}")
+                                elif size.get('max') is not None and length > size['max']:
+                                    type_mismatch = True
+                                    logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected at most {size['max']} bytes, got {length}")
 
                     elif field_type and not field_type.startswith('$'):
                         # It's a structured type - check basic structure
@@ -1633,10 +1641,12 @@ class CBORAnalyzer:
                 # Check element type: per-index pattern takes precedence over repeating
                 elem_type = element_types.get(i) if i in element_types else repeating_type
                 if elem_type:
+                    # Resolve user alias first
+                    resolved_elem = self.cddl.resolve_type_alias(elem_type) if elem_type else elem_type
                     # Extract base type and any .size constraint
                     import re as _elem_re
-                    base_elem_type = _elem_re.split(r'[\s.]', elem_type)[0] if elem_type else ''
-                    size_constraint = self.cddl.extract_size_constraint(elem_type)
+                    base_elem_type = _elem_re.split(r'[\s.]', resolved_elem)[0] if resolved_elem else ''
+                    size_constraint = self.cddl.extract_size_constraint(resolved_elem)
 
                     # Check primitive type first
                     elem_valid = self._check_primitive_type(item, base_elem_type)
@@ -1665,6 +1675,14 @@ class CBORAnalyzer:
                                 )
                                 logger.error(f"{Colors.MISMATCH}[{item_breadcrumb}]{Colors.RESET} {error_msg}")
                                 self.validation_errors.append(error_msg)
+                    # elem_valid is None → structured type (map, array, choice)
+                    elif elem_valid is None:
+                        nested_type_def = self.cddl.get_type(base_elem_type, item)
+                        if nested_type_def:
+                            logger.debug(f"{Colors.CDDL}[{item_breadcrumb}]{Colors.RESET} Recursing into nested type: {base_elem_type}")
+                            self._validate_type(item, nested_type_def, base_elem_type)
+                        else:
+                            logger.warning(f"{Colors.WARNING}[{item_breadcrumb}]{Colors.RESET} Unknown element type: {base_elem_type}")
 
                 self._pop_breadcrumb()
         
@@ -1682,7 +1700,9 @@ class CBORAnalyzer:
                        'bstr', 'float', 'int', 'nil', or 'null'.
         """
         resolved = self.cddl.resolve_type_alias(type_name)
-        t = resolved if resolved != type_name else type_name
+        # Strip any CDDL annotations (.size, etc.) to get just the base type
+        import re as _cpt_re
+        t = _cpt_re.split(r'[\s.]', resolved)[0] if resolved else type_name
         if t == 'uint':
             if not isinstance(value, int) or isinstance(value, bool):
                 return False
