@@ -230,9 +230,53 @@ if not HAS_SIMPLE_CBOR:
 
 
 class CDDLParser:
-    """Simple CDDL parser for extracting type definitions and field names."""
+    """Parse a CDDL schema and expose its type structure for validation and EDN generation.
+
+    The parser handles a practical subset of RFC 8610 (CDDL) that covers the
+    constructs used in CoRIM, CoSWID, and similar IETF attestation schemas.
+
+    Supported constructs
+    --------------------
+    * Named map types:     ``person = { &(name:0)=>tstr, &(age:1)=>uint }``
+    * Named array types:   ``tags = [ + tstr ]``  (with ``+``, ``*`` occurrence)
+    * Type aliases:        ``name = tstr``
+    * CBOR tag notation:   ``wrapped = #6.501(inner-map)``
+    * ``.cbor`` control:   ``payload = bytes .cbor inner-type``
+    * ``.size`` constraints: ``id = bstr .size 16``  /  ``label = tstr .size (1..64)``
+    * Type choices:        ``$kind /= option-a``
+    * Socket extensions:   ``$$ext //= extra-field``
+    * IANA registered params: ``&( keyname : keyindex ) => type``
+    * Optional fields:     ``? &( field : 0 ) => type``
+    * Multi-line fields and continuation lines
+
+    Limitations
+    -----------
+    * Single-line map/array bodies (``record = { &(k:0)=>tstr }``) are not
+      parsed as structured types; use the multi-line form.
+    * Advanced CDDL validators (``.regexp``, ``.lt``, etc.) are not evaluated.
+
+    Attributes
+    ----------
+    types : dict
+        Parsed type definitions keyed by type name.
+    type_aliases : dict
+        Simple name → target-name alias table, including built-in primitives.
+    type_choices : dict
+        Maps ``$choice-name`` to the list of its alternatives.
+    registered_params : dict
+        Maps integer keyindex to human-readable keyname.
+    """
     
     def __init__(self, cddl_content: str):
+        """Initialise the parser and immediately parse *cddl_content*.
+
+        Args:
+            cddl_content: Raw CDDL schema text.  May be empty (``""``), in
+                which case only the built-in primitive aliases are available.
+
+        After construction the parsed data is available through the instance
+        attributes described in the class docstring.
+        """
         self.content = cddl_content
         self.types: Dict[str, Dict] = {}
         self.groups: Dict[str, List] = {}  # Store group definitions
@@ -327,15 +371,17 @@ class CDDLParser:
             
             # Handle group definitions (name = ( ... ))
             # Note: Groups can span multiple lines, ending with )
-            # Must NOT confuse with IANA parameters &( ... )
+            # Must NOT confuse with IANA parameters &( ... ) or annotations like .size (M..N)
             if '=' in line and '(' in line and not line_normalized.startswith('&') and not '{' in line and not '[' in line and '/=' not in line and '#6.' not in line:
                 # Check if this looks like a group (not a simple assignment)
-                # Groups have format: name = ( fields )
-                equals_pos = line.index('=')
-                paren_pos = line.index('(')
-                
-                # Make sure ( comes after =
-                if paren_pos > equals_pos:
+                # Groups have format: name = ( fields ) or name = (
+                # Annotations have format: name = type .constraint (value)
+                import re as _group_re
+                # Match "name = (" with optional whitespace
+                if _group_re.match(r'^[^=]+=\s*\(', line.strip()):
+                    # This is a group definition
+                    equals_pos = line.index('=')
+                    paren_pos = line.index('(')
                     group_name = line[:equals_pos].strip()
                     
                     # Clear current_type and current_fields to prevent pollution
@@ -396,10 +442,13 @@ class CDDLParser:
             
             # Simple type alias (e.g., "corim = concise-rim-type-choice")
             # Also includes CBOR tag notation: tagged-unsigned-corim-map = #6.501(unsigned-corim-map)
+            # Also includes annotated primitives: short-text = tstr .size (1..10)
             # Must come before type definition checks
             if '=' in line and '{' not in line and '[' not in line and '/=' not in line and '//=' not in line:
-                # Exclude lines that look like group definitions: name = (
-                if not (line.rstrip().endswith('(') or '= (' in line):
+                # Exclude lines that look like group definitions: name = (content)
+                # but allow .size (M..N) annotations which have '(' later in the line
+                import re as _alias_re
+                if not _alias_re.match(r'^[^=]+=\s*\(', line.strip()):
                     # Check if this is an alias (name = something)
                     parts = line.split('=', 1)
                     if len(parts) == 2:
@@ -425,13 +474,31 @@ class CDDLParser:
                 current_fields = {}
                 self.types[type_name] = {'fields': current_fields, 'type': 'map'}
             
-            # Array type definition (e.g., "items = [")
+            # Array type definition (e.g., "items = [" or "numbers = [ + uint ]")
             elif '=' in line and '[' in line and '/=' not in line and '//=' not in line:
+                import re as _re
                 type_name = line.split('=')[0].strip()
                 current_type = type_name
                 current_fields = {}
-                self.types[type_name] = {'fields': current_fields, 'type': 'array', 'element_types': {}}
-            
+                # Try to extract inline occurrence and element type: [ + uint ], [ * tstr ]
+                inline_match = _re.match(r'.*=\s*\[\s*([+*]?)\s*([^\]]+?)\s*\]', line)
+                if inline_match:
+                    inline_occurrence = inline_match.group(1).strip()  # '+', '*', or ''
+                    inline_elem_type  = inline_match.group(2).strip()
+                    self.types[type_name] = {
+                        'fields': current_fields,
+                        'type': 'array',
+                        'element_types': {0: inline_elem_type},
+                        'occurrence': inline_occurrence,
+                    }
+                    current_type = None  # Single-line definition — no body to parse
+                else:
+                    self.types[type_name] = {
+                        'fields': current_fields,
+                        'type': 'array',
+                        'element_types': {},
+                        'occurrence': '',
+                    }
             # Field definition (e.g., "name: tstr" or "0: tstr" or "0 : tstr")
             # Also handles named array fields (e.g., "environment: environment-map")
             elif ':' in line and current_type and '=>' not in line:
@@ -501,12 +568,13 @@ class CDDLParser:
         # Post-processing: Convert named array fields to indexed element_types
         for type_name, type_def in self.types.items():
             if type_def.get('type') == 'array' and 'fields' in type_def:
-                # Convert named fields to indexed positions
                 fields = type_def['fields']
+                if not fields:
+                    # element_types was already set by inline parse; do not overwrite
+                    continue
                 element_types = {}
                 for idx, (field_name, field_info) in enumerate(fields.items()):
                     element_type = field_info.get('type', '')
-                    # Fix incomplete array syntax (missing closing bracket)
                     if element_type.startswith('[') and not element_type.endswith(']'):
                         element_type = element_type + ' ]'
                     element_types[idx] = element_type
@@ -636,7 +704,25 @@ class CDDLParser:
             pass  # Skip malformed lines
     
     def resolve_type_alias(self, type_name: str, max_depth: int = 10) -> str:
-        """Resolve a type alias to its actual type, following the chain."""
+        """Follow the alias chain for *type_name* and return the terminal type.
+
+        Stops after *max_depth* hops to prevent infinite loops on circular
+        definitions.  If the chain cannot be fully resolved within *max_depth*
+        steps, the last successfully resolved name is returned.
+
+        Args:
+            type_name:  The name to resolve (e.g., ``"unsigned-corim-map"``).
+            max_depth:  Maximum alias hops before giving up (default 10).
+
+        Returns:
+            The terminal type name after alias resolution, or *type_name*
+            itself if it is not an alias.
+
+        Example::
+
+            cddl = CDDLParser("a = b\nb = tstr")
+            cddl.resolve_type_alias("a")  # → "tstr"
+        """
         resolved = type_name
         depth = 0
         logger.debug(f"Resolving type alias: {type_name}")
@@ -949,9 +1035,34 @@ class CDDLParser:
 
 
 class CBORAnalyzer:
-    """Analyzes CBOR data against CDDL schema."""
-    
+    """Validate decoded CBOR data against a parsed CDDL schema.
+
+    Uses a :class:`CDDLParser` instance for all schema lookups.  Call
+    :meth:`validate` with decoded Python data and the root CDDL type name;
+    inspect :meth:`get_errors` for a list of human-readable error messages
+    when validation fails.
+
+    Type checking enforced
+    ----------------------
+    * ``tstr`` / ``bstr`` — Python ``str`` / ``bytes`` (with optional
+      ``.size`` constraints enforced)
+    * ``uint`` — non-negative Python ``int`` (``bool`` rejected)
+    * ``int``  — any Python ``int`` (``bool`` rejected)
+    * ``bool`` — Python ``bool`` only (``int`` rejected)
+    * ``null`` / ``nil`` — Python ``None`` only
+    * ``float`` — Python ``float`` (``int`` rejected)
+    * Required field presence and optional field absence
+    * Unknown map keys (not in schema) → validation error
+    * Array ``+`` occurrence → at-least-one element required
+    * Array element primitive types (for ``[ + type ]`` / ``[ * type ]``)
+    """
+
     def __init__(self, cddl_parser: CDDLParser):
+        """Initialise the analyzer with a parsed CDDL schema.
+
+        Args:
+            cddl_parser: A :class:`CDDLParser` instance holding the schema.
+        """
         self.cddl = cddl_parser
         self.validation_errors: List[str] = []
         self.breadcrumb: List[str] = []  # Track CDDL path for logging
@@ -1095,12 +1206,34 @@ class CBORAnalyzer:
         return offset
     
     def validate(self, data: Any, type_name: str = None, cbor_bytes: bytes = None) -> bool:
-        """Validate CBOR data against CDDL schema.
-        
+        """Validate decoded CBOR *data* against the named CDDL type.
+
+        Resets :attr:`validation_errors` at the start of each call, so the
+        instance may be reused across multiple validation calls.
+
         Args:
-            data: Decoded CBOR data
-            type_name: Root type name for validation
-            cbor_bytes: Optional raw CBOR bytes for hex logging
+            data:       Decoded CBOR data (``dict``, ``list``, scalar, or
+                        tagged ``(tag_num, value)`` tuple).
+            type_name:  Root CDDL type name.  If ``None`` the call returns
+                        ``True`` immediately (no-op).
+            cbor_bytes: Optional raw CBOR bytes used only for offset
+                        annotations in debug logging; not required for
+                        validation.
+
+        Returns:
+            ``True`` if the data conforms to the schema, ``False`` otherwise.
+            Call :meth:`get_errors` to retrieve the list of error messages.
+
+        Raises:
+            Nothing — all errors are recorded internally.
+
+        Example::
+
+            cddl = CDDLParser(schema_text)
+            analyzer = CBORAnalyzer(cddl)
+            if not analyzer.validate(decoded_data, "my-type"):
+                for err in analyzer.get_errors():
+                    print(err)
         """
         self.validation_errors = []
         self.breadcrumb = []  # Reset breadcrumb
@@ -1301,44 +1434,79 @@ class CBORAnalyzer:
                                 logger.error(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Failed to decode nested CBOR: {e}")
                                 self.validation_errors.append(f"Failed to decode nested CBOR in field '{field_name}': {e}")
                     
-                    elif field_type == 'uint' or field_type == 'int':
-                        if not isinstance(value, int):
+                    # field_type may contain user alias + annotation (e.g. 'my-text .size 16')
+                    # Resolve alias first, then extract base type.
+                    import re as _ft_re
+                    _resolved = self.cddl.resolve_type_alias(field_type) if field_type else field_type
+                    _base_type = _ft_re.split(r'[\s.]', _resolved)[0] if _resolved else ''
+                    # Normalize CDDL built-in aliases to their canonical base types
+                    _alias_map = {
+                        'text': 'tstr', 'bytes': 'bstr', 'true': 'bool', 'false': 'bool',
+                        'nint': 'int', 'float16': 'float', 'float32': 'float', 'float64': 'float',
+                        'nil': 'null', 'undefined': 'null'
+                    }
+                    _base_type = _alias_map.get(_base_type, _base_type)
+
+                    if _base_type in ('uint', 'int'):
+                        # bool is a subclass of int in Python; reject it because CBOR
+                        # booleans (major type 7) and integers (major type 0/1) are
+                        # distinct wire types.  Also reject negative values for uint.
+                        if not isinstance(value, int) or isinstance(value, bool):
                             type_mismatch = True
-                            logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected {field_type}, got {type(value).__name__}")
-                    elif field_type == 'tstr':
+                            logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected {_base_type}, got {type(value).__name__}")
+                        elif _base_type == 'uint' and value < 0:
+                            type_mismatch = True
+                            logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected uint (>=0), got {value}")
+                    elif _base_type == 'bool':
+                        if not isinstance(value, bool):
+                            type_mismatch = True
+                            logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected bool, got {type(value).__name__}")
+                    elif _base_type in ('nil', 'null'):
+                        if value is not None:
+                            type_mismatch = True
+                            logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected null/nil, got {type(value).__name__}")
+                    elif _base_type == 'float':
+                        # Accept float only; reject plain int — CBOR integers and floats
+                        # are different major types on the wire.
+                        if not isinstance(value, float):
+                            type_mismatch = True
+                            logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected float, got {type(value).__name__}")
+                    elif field_type == 'tstr' or _base_type == 'tstr':
                         if not isinstance(value, str):
                             type_mismatch = True
                             logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected tstr, got {type(value).__name__}")
-                        elif 'size_constraint' in field_info:
-                            # Validate size constraint
-                            size = field_info['size_constraint']
-                            length = len(value)
-                            if size.get('exact') is not None and length != size['exact']:
-                                type_mismatch = True
-                                logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected exactly {size['exact']}, got {length}")
-                            elif size.get('min') is not None and length < size['min']:
-                                type_mismatch = True
-                                logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected at least {size['min']}, got {length}")
-                            elif size.get('max') is not None and length > size['max']:
-                                type_mismatch = True
-                                logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected at most {size['max']}, got {length}")
-                    elif field_type == 'bstr':
+                        else:
+                            # Check size constraint from inline annotation or resolved alias
+                            size = field_info.get('size_constraint') or self.cddl.extract_size_constraint(_resolved)
+                            if size:
+                                length = len(value)
+                                if size.get('exact') is not None and length != size['exact']:
+                                    type_mismatch = True
+                                    logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected exactly {size['exact']}, got {length}")
+                                elif size.get('min') is not None and length < size['min']:
+                                    type_mismatch = True
+                                    logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected at least {size['min']}, got {length}")
+                                elif size.get('max') is not None and length > size['max']:
+                                    type_mismatch = True
+                                    logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected at most {size['max']}, got {length}")
+                    elif field_type == 'bstr' or _base_type == 'bstr':
                         if not isinstance(value, bytes):
                             type_mismatch = True
                             logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected bstr, got {type(value).__name__}")
-                        elif 'size_constraint' in field_info:
-                            # Validate size constraint
-                            size = field_info['size_constraint']
-                            length = len(value)
-                            if size.get('exact') is not None and length != size['exact']:
-                                type_mismatch = True
-                                logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected exactly {size['exact']} bytes, got {length}")
-                            elif size.get('min') is not None and length < size['min']:
-                                type_mismatch = True
-                                logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected at least {size['min']} bytes, got {length}")
-                            elif size.get('max') is not None and length > size['max']:
-                                type_mismatch = True
-                                logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected at most {size['max']} bytes, got {length}")
+                        else:
+                            # Check size constraint from inline annotation or resolved alias
+                            size = field_info.get('size_constraint') or self.cddl.extract_size_constraint(_resolved)
+                            if size:
+                                length = len(value)
+                                if size.get('exact') is not None and length != size['exact']:
+                                    type_mismatch = True
+                                    logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected exactly {size['exact']} bytes, got {length}")
+                                elif size.get('min') is not None and length < size['min']:
+                                    type_mismatch = True
+                                    logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected at least {size['min']} bytes, got {length}")
+                                elif size.get('max') is not None and length > size['max']:
+                                    type_mismatch = True
+                                    logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected at most {size['max']} bytes, got {length}")
 
                     elif field_type and not field_type.startswith('$'):
                         # It's a structured type - check basic structure
@@ -1439,7 +1607,9 @@ class CBORAnalyzer:
             actual_keys = set(data.keys())
             extra_keys = actual_keys - defined_keys
             if extra_keys:
-                logger.warning(f"{Colors.WARNING}[{breadcrumb}]{Colors.RESET} Extra fields not in schema: {extra_keys}")
+                error_msg = f"Unknown fields not in schema for type '{type_name}': {extra_keys}"
+                logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
+                self.validation_errors.append(error_msg)
         
         elif type_def['type'] == 'array':
             if not isinstance(data, (list, tuple)):
@@ -1450,17 +1620,110 @@ class CBORAnalyzer:
             
             logger.debug(f"{Colors.CDDL}[{breadcrumb}]{Colors.RESET} Array has {len(data)} elements")
             
-            # Validate array elements
+            # Enforce + occurrence (at-least-one) for the top-level array type
+            occurrence = type_def.get('occurrence', '')
+            if occurrence == '+' and len(data) == 0:
+                error_msg = f"Array type '{type_name}' requires at least one element (+ occurrence)"
+                logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
+                self.validation_errors.append(error_msg)
+
+            # Validate element types
+            element_types = type_def.get('element_types', {})
+            # Single repeating element type uses index 0 as the pattern
+            repeating_type = element_types.get(0) if element_types else None
+
             for i, item in enumerate(data):
                 self._push_breadcrumb(f"[{i}]")
                 item_breadcrumb = self._get_breadcrumb()
                 item_repr = self._format_value_for_log(item)
                 logger.debug(f"{Colors.CDDL}[{item_breadcrumb}]{Colors.RESET} Element: {item_repr}")
+
+                # Check element type: per-index pattern takes precedence over repeating
+                elem_type = element_types.get(i) if i in element_types else repeating_type
+                if elem_type:
+                    # Resolve user alias first
+                    resolved_elem = self.cddl.resolve_type_alias(elem_type) if elem_type else elem_type
+                    # Extract base type and any .size constraint
+                    import re as _elem_re
+                    base_elem_type = _elem_re.split(r'[\s.]', resolved_elem)[0] if resolved_elem else ''
+                    size_constraint = self.cddl.extract_size_constraint(resolved_elem)
+
+                    # Check primitive type first
+                    elem_valid = self._check_primitive_type(item, base_elem_type)
+                    if elem_valid is False:
+                        error_msg = (
+                            f"Array element [{i}] of '{type_name}' has wrong type: "
+                            f"expected {base_elem_type}, got {type(item).__name__}"
+                        )
+                        logger.error(f"{Colors.MISMATCH}[{item_breadcrumb}]{Colors.RESET} {error_msg}")
+                        self.validation_errors.append(error_msg)
+                    # Enforce size constraint if primitive check passed
+                    elif elem_valid is True and size_constraint:
+                        if base_elem_type in ('tstr', 'bstr') and isinstance(item, (str, bytes)):
+                            length = len(item)
+                            size_ok = True
+                            if size_constraint.get('exact') is not None:
+                                size_ok = (length == size_constraint['exact'])
+                            elif size_constraint.get('min') is not None and length < size_constraint['min']:
+                                size_ok = False
+                            elif size_constraint.get('max') is not None and length > size_constraint['max']:
+                                size_ok = False
+                            if not size_ok:
+                                error_msg = (
+                                    f"Array element [{i}] violates size constraint: "
+                                    f"expected {size_constraint}, got length {length}"
+                                )
+                                logger.error(f"{Colors.MISMATCH}[{item_breadcrumb}]{Colors.RESET} {error_msg}")
+                                self.validation_errors.append(error_msg)
+                    # elem_valid is None → structured type (map, array, choice)
+                    elif elem_valid is None:
+                        nested_type_def = self.cddl.get_type(base_elem_type, item)
+                        if nested_type_def:
+                            logger.debug(f"{Colors.CDDL}[{item_breadcrumb}]{Colors.RESET} Recursing into nested type: {base_elem_type}")
+                            self._validate_type(item, nested_type_def, base_elem_type)
+                        else:
+                            logger.warning(f"{Colors.WARNING}[{item_breadcrumb}]{Colors.RESET} Unknown element type: {base_elem_type}")
+
                 self._pop_breadcrumb()
         
         return len(self.validation_errors) == 0
     
-    def _format_value_for_log(self, value: Any, max_len: int = 50) -> str:
+    def _check_primitive_type(self, value, type_name):
+        """Check whether value matches the named CDDL primitive type.
+
+        Returns True if compatible, False if definitely incompatible, and None
+        if type_name is not a recognised primitive (caller should recurse).
+
+        Args:
+            value:     The Python value decoded from CBOR.
+            type_name: A CDDL primitive name such as 'uint', 'tstr', 'bool',
+                       'bstr', 'float', 'int', 'nil', or 'null'.
+        """
+        resolved = self.cddl.resolve_type_alias(type_name)
+        # Strip any CDDL annotations (.size, etc.) to get just the base type
+        import re as _cpt_re
+        t = _cpt_re.split(r'[\s.]', resolved)[0] if resolved else type_name
+        if t == 'uint':
+            if not isinstance(value, int) or isinstance(value, bool):
+                return False
+            return value >= 0
+        if t == 'int':
+            return isinstance(value, int) and not isinstance(value, bool)
+        if t == 'bool':
+            return isinstance(value, bool)
+        if t in ('nil', 'null'):
+            return value is None
+        if t == 'float':
+            return isinstance(value, float)
+        if t == 'tstr':
+            return isinstance(value, str)
+        if t == 'bstr':
+            return isinstance(value, bytes)
+        if t == 'any':
+            return True
+        return None
+
+    def _format_value_for_log(self, value, max_len=50):
         """Format a value for logging, with truncation."""
         if isinstance(value, bytes):
             hex_str = ' '.join(f'{b:02x}' for b in value[:4])
@@ -1476,19 +1739,51 @@ class CBORAnalyzer:
         elif isinstance(value, dict):
             return f"{{{len(value)} fields}}"
         else:
-            return repr(value)
-    
+            return str(value)
     def get_errors(self) -> List[str]:
-        """Get validation errors."""
+        """Return the list of validation error messages from the last :meth:`validate` call.
+
+        Returns an empty list when the last call succeeded.  The list is
+        reset at the start of every :meth:`validate` call.
+        """
         return self.validation_errors
 
 
 class EDNGenerator:
-    """Generates annotated EDN (Extended Diagnostic Notation) from CBOR data."""
-    
+    """Generate annotated EDN (Extended Diagnostic Notation) from decoded CBOR data.
+
+    EDN is the human-readable form of CBOR defined in RFC 8949 §8.  This
+    generator enriches plain EDN with field-name comments derived from the
+    CDDL schema.
+
+    EDN format options
+    ------------------
+    ``'keyindex'`` (default)
+        Keys are shown as integers with the field name as a comment::
+
+            / name / 0: "Alice",
+
+    ``'keyname'``
+        Keys are replaced by their CDDL names as quoted strings::
+
+            "name": "Alice",
+
+    ``'both'``
+        Both the integer key and the name are shown::
+
+            0 / name /: "Alice",
+    """
+
     def __init__(self, cddl_parser: CDDLParser, edn_format: str = 'keyindex'):
+        """Initialise the generator.
+
+        Args:
+            cddl_parser: Parsed CDDL schema for field-name lookup.
+            edn_format:  Output format — ``'keyindex'``, ``'keyname'``, or
+                         ``'both'``.  Defaults to ``'keyindex'``.
+        """
         self.cddl = cddl_parser
-        self.edn_format = edn_format  # 'keyindex', 'keyname', or 'both'
+        self.edn_format = edn_format
         self.indent_level = 0
         self.indent_str = "  "
     
@@ -1499,7 +1794,29 @@ class EDNGenerator:
         return '\n'.join(indent + line if line.strip() else line for line in lines)
     
     def generate(self, data: Any, type_name: str = None, annotate: bool = True) -> str:
-        """Generate EDN representation of CBOR data."""
+        """Generate an annotated EDN string for *data*.
+
+        Args:
+            data:       Decoded CBOR data — ``dict``, ``list``, scalar, bytes,
+                        or a ``(tag_num, value)`` tuple for tagged items.
+            type_name:  Root CDDL type name used to look up field annotations.
+                        Pass ``None`` to generate plain unannotated EDN.
+            annotate:   When ``False``, suppress all field-name comments.
+                        Defaults to ``True``.
+
+        Returns:
+            A multi-line EDN string with field annotations.
+
+        Example::
+
+            cddl = CDDLParser(schema_text)
+            gen  = EDNGenerator(cddl, edn_format='keyindex')
+            print(gen.generate({0: "Alice", 1: 30}, "person"))
+            # / person / {
+            #   / name / 0: "Alice",
+            #   / age  / 1: 30,
+            # }
+        """
         self.indent_level = 0
         return self._generate_value(data, type_name, annotate)
     
@@ -1864,7 +2181,18 @@ class EDNGenerator:
 
 
 def load_cddl(filepath: Path) -> CDDLParser:
-    """Load and parse CDDL file."""
+    """Load a CDDL schema file from *filepath* and return a :class:`CDDLParser`.
+
+    Args:
+        filepath: Path to the ``.cddl`` file.
+
+    Returns:
+        A fully parsed :class:`CDDLParser` instance ready for validation or
+        EDN generation.
+
+    Exits:
+        Calls ``sys.exit(1)`` on any I/O or parse error (CLI helper).
+    """
     try:
         content = filepath.read_text(encoding='utf-8')
         return CDDLParser(content)
@@ -1874,7 +2202,20 @@ def load_cddl(filepath: Path) -> CDDLParser:
 
 
 def load_cbor(filepath: Path) -> Any:
-    """Load CBOR file."""
+    """Load and decode a CBOR binary file from *filepath*.
+
+    Tries ``cbor2.load`` first; falls back to the bundled
+    :class:`SimpleCBORDecoder` if ``cbor2`` is not installed.
+
+    Args:
+        filepath: Path to the ``.cbor`` binary file.
+
+    Returns:
+        The decoded Python object (``dict``, ``list``, scalar, etc.).
+
+    Exits:
+        Calls ``sys.exit(1)`` on any I/O or decode error (CLI helper).
+    """
     try:
         # Try to use cbor2 if available
         try:
