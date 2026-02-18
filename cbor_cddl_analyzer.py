@@ -1433,6 +1433,13 @@ class CBORAnalyzer:
                     # (e.g. 'bstr .size 16') so extract just the base type word.
                     import re as _ft_re
                     _base_type = _ft_re.split(r'[\s.]', field_type)[0] if field_type else ''
+                    # Normalize CDDL aliases to their canonical base types
+                    _alias_map = {
+                        'text': 'tstr', 'bytes': 'bstr', 'true': 'bool', 'false': 'bool',
+                        'nint': 'int', 'float16': 'float', 'float32': 'float', 'float64': 'float',
+                        'nil': 'null', 'undefined': 'null'
+                    }
+                    _base_type = _alias_map.get(_base_type, _base_type)
 
                     if _base_type in ('uint', 'int'):
                         # bool is a subclass of int in Python; reject it because CBOR
@@ -1623,16 +1630,41 @@ class CBORAnalyzer:
                 item_repr = self._format_value_for_log(item)
                 logger.debug(f"{Colors.CDDL}[{item_breadcrumb}]{Colors.RESET} Element: {item_repr}")
 
-                # Check element type when a repeating type pattern is available
-                if repeating_type:
-                    elem_valid = self._check_primitive_type(item, repeating_type)
+                # Check element type: per-index pattern takes precedence over repeating
+                elem_type = element_types.get(i) if i in element_types else repeating_type
+                if elem_type:
+                    # Extract base type and any .size constraint
+                    import re as _elem_re
+                    base_elem_type = _elem_re.split(r'[\s.]', elem_type)[0] if elem_type else ''
+                    size_constraint = self.cddl.extract_size_constraint(elem_type)
+
+                    # Check primitive type first
+                    elem_valid = self._check_primitive_type(item, base_elem_type)
                     if elem_valid is False:
                         error_msg = (
                             f"Array element [{i}] of '{type_name}' has wrong type: "
-                            f"expected {repeating_type}, got {type(item).__name__}"
+                            f"expected {base_elem_type}, got {type(item).__name__}"
                         )
                         logger.error(f"{Colors.MISMATCH}[{item_breadcrumb}]{Colors.RESET} {error_msg}")
                         self.validation_errors.append(error_msg)
+                    # Enforce size constraint if primitive check passed
+                    elif elem_valid is True and size_constraint:
+                        if base_elem_type in ('tstr', 'bstr') and isinstance(item, (str, bytes)):
+                            length = len(item)
+                            size_ok = True
+                            if size_constraint.get('exact') is not None:
+                                size_ok = (length == size_constraint['exact'])
+                            elif size_constraint.get('min') is not None and length < size_constraint['min']:
+                                size_ok = False
+                            elif size_constraint.get('max') is not None and length > size_constraint['max']:
+                                size_ok = False
+                            if not size_ok:
+                                error_msg = (
+                                    f"Array element [{i}] violates size constraint: "
+                                    f"expected {size_constraint}, got length {length}"
+                                )
+                                logger.error(f"{Colors.MISMATCH}[{item_breadcrumb}]{Colors.RESET} {error_msg}")
+                                self.validation_errors.append(error_msg)
 
                 self._pop_breadcrumb()
         

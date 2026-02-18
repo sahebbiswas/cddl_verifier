@@ -46,7 +46,7 @@ python cbor_cddl_analyzer.py schema.cddl data.cbor --show-types
 | `-v / --validate` | Validate CBOR against the schema |
 | `--no-annotate` | Disable field-name comments in EDN |
 | `--show-types` | Print parsed types and exit |
-| `--format {keyindex,keyname,both}` | EDN key format (default: `keyindex`) |
+| `--edn-format {keyindex,keyname,both}` | EDN key format (default: `keyindex`) |
 
 ## Python API
 
