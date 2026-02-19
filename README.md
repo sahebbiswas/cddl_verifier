@@ -51,10 +51,6 @@ python cbor_cddl_analyzer.py schema.cddl data.cbor --show-types
 python cbor_cddl_analyzer.py schema.cddl data.cbor --type corim-map --verbose
 ```
 
-> **Validation is triggered by `--type`.**  When a root type name is supplied the tool
-> validates the CBOR against that type and reports errors before generating EDN.  There
-> is no separate `--validate` flag.
-
 ### CLI options
 
 | Flag | Description |
@@ -127,7 +123,7 @@ print(gen.generate(data, "person"))
 }
 ```
 
-See [EDN_FORMATTING_IMPROVEMENTS.md](EDN_FORMATTING_IMPROVEMENTS.md) for details on
+See [EDN_FORMATTING_IMPROVEMENTS.md](docs/EDN_FORMATTING_IMPROVEMENTS.md) for details on
 annotation placement and the `bytes<N>(...)` wrapper used for nested CBOR fields.
 
 ---
@@ -208,8 +204,8 @@ alternative based on the data structure.
 ### IANA registered parameters and CoRIM
 
 The analyzer is tested against real CoRIM and CoSWID CDDL schemas.  See
-[CORIM_SUPPORT.md](CORIM_SUPPORT.md) for the full list of supported features and
-[IANA_ANNOTATIONS_STATUS.md](IANA_ANNOTATIONS_STATUS.md) for annotation behaviour at
+[CORIM_SUPPORT.md](docs/CORIM_SUPPORT.md) for the full list of supported features and
+[IANA_ANNOTATIONS_STATUS.md](docs/IANA_ANNOTATIONS_STATUS.md) for annotation behaviour at
 every nesting level.
 
 ---
@@ -266,8 +262,8 @@ cbor[1].append(42)
 raw = cbor.encode(canonical=True)
 ```
 
-See [CBOR_BUILDER_QUICK_REF.md](CBOR_BUILDER_QUICK_REF.md) and
-[ITERATIVE_CONSTRUCTION.md](ITERATIVE_CONSTRUCTION.md) for the full builder API
+See [CBOR_BUILDER_QUICK_REF.md](docs/CBOR_BUILDER_QUICK_REF.md) and
+[ITERATIVE_CONSTRUCTION.md](docs/ITERATIVE_CONSTRUCTION.md) for the full builder API
 including nested access (`get_nested` / `set_nested`), merge, copy, and dict/list
 methods.
 
@@ -291,7 +287,7 @@ print(CBOR({0: "test", 1: 42}).diag())
 0008:   182a    # val: uint(42)
 ```
 
-See [CBOR_DIAGNOSTIC_DUMP.md](CBOR_DIAGNOSTIC_DUMP.md) for the full output format
+See [CBOR_DIAGNOSTIC_DUMP.md](docs/CBOR_DIAGNOSTIC_DUMP.md) for the full output format
 reference including byte strings, tags, and special values.
 
 ### Canonical encoding
@@ -304,7 +300,7 @@ assert h1 == h2   # always identical
 ```
 
 Canonical encoding is required for CoRIM signing and any application that hashes or
-compares CBOR bytes. See [CANONICAL_AND_JSON.md](CANONICAL_AND_JSON.md) for details.
+compares CBOR bytes. See [CANONICAL_AND_JSON.md](docs/CANONICAL_AND_JSON.md) for details.
 
 ---
 
@@ -366,7 +362,7 @@ python cbor_json.py to-json  input.cbor output.json --pretty --typed
 python cbor_json.py to-cbor  input.json output.cbor --canonical
 ```
 
-See [CANONICAL_AND_JSON.md](CANONICAL_AND_JSON.md) for the full API reference and
+See [CANONICAL_AND_JSON.md](docs/CANONICAL_AND_JSON.md) for the full API reference and
 round-trip examples.
 
 ---
