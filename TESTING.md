@@ -56,7 +56,7 @@ python3 tests/test_simple_cbor.py
 
 ## Project layout
 
-```
+```text
 .
 ├── cbor_cddl_analyzer.py
 ├── simple_cbor.py
@@ -90,7 +90,7 @@ without needing its own path manipulation.
 ### GitHub Actions
 
 ```yaml
-# .github/workflows/tests.yml
+# .github/workflows/ci.yml
 name: Tests
 on: [push, pull_request]
 
@@ -142,6 +142,9 @@ Add a method to the relevant `TestCase` class, or create a new class in the
 appropriate file:
 
 ```python
+import unittest
+from cbor_cddl_analyzer import CDDLParser, CBORAnalyzer
+
 class TestMyFeature(unittest.TestCase):
 
     def test_basic_case(self):

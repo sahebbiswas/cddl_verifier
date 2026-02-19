@@ -16,7 +16,9 @@ from pathlib import Path
 # When run directly (python3 tests/test_foo.py), add the repo root to
 # sys.path so source modules are importable. pytest handles this via
 # tests/conftest.py instead.
-sys.path.insert(0, str(Path(__file__).parent.parent))
+_repo_root = str(Path(__file__).parent.parent)
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
 
 import unittest
 import json
