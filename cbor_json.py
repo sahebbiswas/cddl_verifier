@@ -129,7 +129,7 @@ def cbor_to_json(cbor_bytes: bytes, typed: bool = False, pretty: bool = False,
     if pretty:
         return json.dumps(processed, indent=indent, sort_keys=sort_keys, ensure_ascii=False)
     else:
-        return json.dumps(processed, ensure_ascii=False)
+        return json.dumps(processed, sort_keys=sort_keys, ensure_ascii=False)
 
 
 def _preprocess_for_json(obj: Any, typed: bool) -> Any:

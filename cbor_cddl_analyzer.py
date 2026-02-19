@@ -2385,7 +2385,7 @@ Examples:
     cbor_bytes = args.cbor_file.read_bytes()
     try:
         cbor_data = CBOR.loads(cbor_bytes)
-    except Exception as _e:
+    except Exception as _e:  # noqa: BLE001 — catch-all needed: loader raises ValueError/NotImplementedError/UnicodeDecodeError depending on input
         print(f"Error decoding CBOR: {_e}", file=sys.stderr)
         sys.exit(1)
     

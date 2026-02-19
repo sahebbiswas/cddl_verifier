@@ -673,7 +673,7 @@ class CBOR:
         """String representation as diagnostic dump."""
         try:
             return self.diag()
-        except Exception:
+        except Exception:  # noqa: BLE001 — intentional broad catch to ensure __str__ never raises
             return repr(self.data)
     
     def __getitem__(self, key):
