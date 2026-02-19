@@ -89,8 +89,8 @@ class CBORJSONEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-def cbor_to_json(cbor_bytes: bytes, typed: bool = False, pretty: bool = False, 
-                 indent: int = 2) -> str:
+def cbor_to_json(cbor_bytes: bytes, typed: bool = False, pretty: bool = False,
+                 indent: int = 2, sort_keys: bool = False) -> str:
     """
     Convert CBOR bytes to JSON string.
     
@@ -99,6 +99,10 @@ def cbor_to_json(cbor_bytes: bytes, typed: bool = False, pretty: bool = False,
         typed: If True, preserve CBOR-specific types with annotations
         pretty: If True, pretty-print with indentation
         indent: Number of spaces for indentation (if pretty=True)
+        sort_keys: Sort JSON object keys alphabetically (default: False).
+            Note: CBOR integer keys become strings in JSON, so sorting is
+            lexicographic ("1","10","2") rather than numeric (1,2,10).
+            Leave False to preserve insertion order.
     
     Returns:
         JSON string
@@ -123,7 +127,7 @@ def cbor_to_json(cbor_bytes: bytes, typed: bool = False, pretty: bool = False,
     
     # Convert to JSON
     if pretty:
-        return json.dumps(processed, indent=indent, sort_keys=True, ensure_ascii=False)
+        return json.dumps(processed, indent=indent, sort_keys=sort_keys, ensure_ascii=False)
     else:
         return json.dumps(processed, ensure_ascii=False)
 

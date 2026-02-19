@@ -8,6 +8,7 @@ For full CBOR support, use simple_cbor module or install cbor2: pip install cbor
 
 import argparse
 import logging
+import re
 import struct
 import sys
 from pathlib import Path
@@ -210,11 +211,18 @@ if not HAS_SIMPLE_CBOR:
         raise ValueError(f"Invalid additional info for integer: {additional_info}")
     
     def _decode_float16(self) -> float:
-        """Decode float16."""
-        # Simple conversion, not fully IEEE 754 compliant
+        """Decode IEEE 754 half-precision (float16) per RFC 8949 §3.3."""
         bits = struct.unpack('>H', self.data[self.pos:self.pos + 2])[0]
         self.pos += 2
-        return float(bits)  # Simplified
+        exp  = (bits >> 10) & 0x1F
+        mant =  bits        & 0x3FF
+        sign = -1.0 if (bits >> 15) else 1.0
+        if exp == 0:    # subnormal
+            return sign * (2.0 ** -14) * (mant / 1024.0)
+        elif exp == 31: # infinity or NaN
+            return sign * (float('inf') if mant == 0 else float('nan'))
+        else:           # normal
+            return sign * (2.0 ** (exp - 15)) * (1.0 + mant / 1024.0)
     
     def _decode_float32(self) -> float:
         """Decode float32."""
@@ -376,9 +384,8 @@ class CDDLParser:
                 # Check if this looks like a group (not a simple assignment)
                 # Groups have format: name = ( fields ) or name = (
                 # Annotations have format: name = type .constraint (value)
-                import re as _group_re
                 # Match "name = (" with optional whitespace
-                if _group_re.match(r'^[^=]+=\s*\(', line.strip()):
+                if re.match(r'^[^=]+=\s*\(', line.strip()):
                     # This is a group definition
                     equals_pos = line.index('=')
                     paren_pos = line.index('(')
@@ -447,8 +454,7 @@ class CDDLParser:
             if '=' in line and '{' not in line and '[' not in line and '/=' not in line and '//=' not in line:
                 # Exclude lines that look like group definitions: name = (content)
                 # but allow .size (M..N) annotations which have '(' later in the line
-                import re as _alias_re
-                if not _alias_re.match(r'^[^=]+=\s*\(', line.strip()):
+                if not re.match(r'^[^=]+=\s*\(', line.strip()):
                     # Check if this is an alias (name = something)
                     parts = line.split('=', 1)
                     if len(parts) == 2:
@@ -476,12 +482,11 @@ class CDDLParser:
             
             # Array type definition (e.g., "items = [" or "numbers = [ + uint ]")
             elif '=' in line and '[' in line and '/=' not in line and '//=' not in line:
-                import re as _re
                 type_name = line.split('=')[0].strip()
                 current_type = type_name
                 current_fields = {}
                 # Try to extract inline occurrence and element type: [ + uint ], [ * tstr ]
-                inline_match = _re.match(r'.*=\s*\[\s*([+*]?)\s*([^\]]+?)\s*\]', line)
+                inline_match = re.match(r'.*=\s*\[\s*([+*]?)\s*([^\]]+?)\s*\]', line)
                 if inline_match:
                     inline_occurrence = inline_match.group(1).strip()  # '+', '*', or ''
                     inline_elem_type  = inline_match.group(2).strip()
@@ -740,7 +745,6 @@ class CDDLParser:
         E.g., 'bytes .cbor concise-mid-tag' -> ('bytes', 'concise-mid-tag')
               'bstr .cbor my-type' -> ('bstr', 'my-type')
         """
-        import re
         # Match: (bytes|bstr) .cbor type-name
         match = re.match(r'(bytes?|bstr)\s+\.cbor\s+(.+)', type_string.strip())
         if match:
@@ -764,7 +768,6 @@ class CDDLParser:
         - 'bstr .size (16..)' -> {'min': 16, 'max': None}
         - 'tstr .size (..100)' -> {'min': None, 'max': 100}
         """
-        import re
         # Match: .size N (exact)
         match = re.search(r'\.size\s+(\d+)(?!\.)' , type_string)
         if match:
@@ -792,7 +795,6 @@ class CDDLParser:
         
         E.g., '#6.501(unsigned-corim-map)' -> (501, 'unsigned-corim-map')
         """
-        import re
         match = re.match(r'#6\.(\d+)\(([^)]+)\)', type_string.strip())
         if match:
             tag_num = int(match.group(1))
@@ -1205,6 +1207,29 @@ class CBORAnalyzer:
         
         return offset
     
+    def _validate_root(self, data: Any, type_name: str) -> bool:
+        """Internal dispatcher — validate *data* without resetting validation_errors.
+
+        :meth:`validate` resets :attr:`validation_errors` and :attr:`breadcrumb` at
+        entry, then delegates to this method.  Type-choice auto-resolution uses
+        this helper so that any errors already on the list are not wiped.
+
+        Args:
+            data:      Decoded CBOR data.
+            type_name: Resolved CDDL type name (past alias/choice lookup).
+
+        Returns:
+            ``True`` if no new errors were added.
+        """
+        type_def = self.cddl.get_type(type_name, data)
+        if not type_def:
+            self.validation_errors.append(f"Type '{type_name}' not found in CDDL")
+            return False
+        self._push_breadcrumb(type_name)
+        result = self._validate_type(data, type_def, type_name)
+        self._pop_breadcrumb()
+        return result
+
     def validate(self, data: Any, type_name: str = None, cbor_bytes: bytes = None) -> bool:
         """Validate decoded CBOR *data* against the named CDDL type.
 
@@ -1277,7 +1302,7 @@ class CBORAnalyzer:
                         selected = self.cddl.resolve_type_choice_for_data(resolved, data, validator=self)
                         if selected:
                             logger.info(f"{Colors.MATCH}Auto-selected: {selected}{Colors.RESET}")
-                            return self.validate(data, selected, cbor_bytes)
+                            return self._validate_root(data, selected)
                         
                         self.validation_errors.append(
                             f"Type '{type_name}' resolves to type choice '{resolved}' with alternatives: {', '.join(choices)}. "
@@ -1436,9 +1461,8 @@ class CBORAnalyzer:
                     
                     # field_type may contain user alias + annotation (e.g. 'my-text .size 16')
                     # Resolve alias first, then extract base type.
-                    import re as _ft_re
                     _resolved = self.cddl.resolve_type_alias(field_type) if field_type else field_type
-                    _base_type = _ft_re.split(r'[\s.]', _resolved)[0] if _resolved else ''
+                    _base_type = re.split(r'[\s.]', _resolved)[0] if _resolved else ''
                     # Normalize CDDL built-in aliases to their canonical base types
                     _alias_map = {
                         'text': 'tstr', 'bytes': 'bstr', 'true': 'bool', 'false': 'bool',
@@ -1525,7 +1549,6 @@ class CBORAnalyzer:
                     # Recursively validate nested structures
                     if field_type and field_type not in ['tstr', 'uint', 'int', 'bstr', 'bool', 'float', 'any']:
                         # Check if field_type is an inline array definition: [ + type ] or [ * type ]
-                        import re
                         array_match = re.match(r'^\[\s*([+*]?)\s*(.+?)\s*\]$', field_type)
                         if array_match:
                             # It's an inline array definition
@@ -1644,8 +1667,7 @@ class CBORAnalyzer:
                     # Resolve user alias first
                     resolved_elem = self.cddl.resolve_type_alias(elem_type) if elem_type else elem_type
                     # Extract base type and any .size constraint
-                    import re as _elem_re
-                    base_elem_type = _elem_re.split(r'[\s.]', resolved_elem)[0] if resolved_elem else ''
+                    base_elem_type = re.split(r'[\s.]', resolved_elem)[0] if resolved_elem else ''
                     size_constraint = self.cddl.extract_size_constraint(resolved_elem)
 
                     # Check primitive type first
@@ -1701,8 +1723,7 @@ class CBORAnalyzer:
         """
         resolved = self.cddl.resolve_type_alias(type_name)
         # Strip any CDDL annotations (.size, etc.) to get just the base type
-        import re as _cpt_re
-        t = _cpt_re.split(r'[\s.]', resolved)[0] if resolved else type_name
+        t = re.split(r'[\s.]', resolved)[0] if resolved else type_name
         if t == 'uint':
             if not isinstance(value, int) or isinstance(value, bool):
                 return False
@@ -1793,6 +1814,17 @@ class EDNGenerator:
         indent = self.indent_str
         return '\n'.join(indent + line if line.strip() else line for line in lines)
     
+    @staticmethod
+    def _edn_str(s: str) -> str:
+        """Return *s* as a properly escaped EDN text string literal."""
+        escaped = (s
+                   .replace('\\', '\\\\')
+                   .replace('"', '\\"')
+                   .replace('\n', '\\n')
+                   .replace('\r', '\\r')
+                   .replace('\t', '\\t'))
+        return '"' + escaped + '"'
+
     def generate(self, data: Any, type_name: str = None, annotate: bool = True) -> str:
         """Generate an annotated EDN string for *data*.
 
@@ -1818,7 +1850,10 @@ class EDNGenerator:
             # }
         """
         self.indent_level = 0
-        return self._generate_value(data, type_name, annotate)
+        try:
+            return self._generate_value(data, type_name, annotate)
+        finally:
+            self.indent_level = 0  # always reset, even when an exception propagates
     
     def _generate_value(self, value: Any, type_name: str = None, annotate: bool = True) -> str:
         """Generate EDN for a value."""
@@ -1918,8 +1953,9 @@ class EDNGenerator:
                                 else:
                                     indented_nested.append(line)
                             
-                            # Build bytes(...) wrapper with absolute indentation
-                            bytes_wrapped = [bytes_indent + "bytes("]
+                            # Build bytes<N>(...) wrapper; N = raw byte-string length
+                            _raw_len = len(inner_value)
+                            bytes_wrapped = [bytes_indent + f"bytes<{_raw_len}>("]
                             bytes_wrapped.extend(indented_nested)
                             bytes_wrapped.append(bytes_indent + ")")
                             bytes_content = '\n'.join(bytes_wrapped)
@@ -1990,7 +2026,7 @@ class EDNGenerator:
         elif isinstance(value, bytes):
             return self._generate_bytes(value)
         elif isinstance(value, str):
-            return f'"{value}"'
+            return self._edn_str(value)
         elif isinstance(value, bool):
             return "true" if value else "false"
         elif isinstance(value, (int, float)):
@@ -2033,12 +2069,12 @@ class EDNGenerator:
             # Determine key string and annotation based on edn_format
             if self.edn_format == 'keyname' and is_registered and field_name:
                 # Format: "name": value
-                key_str = f'"{field_name}"'
+                key_str = self._edn_str(field_name)
                 annotation = ""
             elif self.edn_format == 'both' and is_registered and field_name:
                 # Format: 0 / name /: value
                 if isinstance(key, str):
-                    key_str = f'"{key}"'
+                    key_str = self._edn_str(key)
                 else:
                     key_str = str(key)
                 key_str = f'{key_str} / {field_name} /'
@@ -2046,7 +2082,7 @@ class EDNGenerator:
             else:  # keyindex format (default)
                 # Format: / name / 0: value
                 if isinstance(key, str):
-                    key_str = f'"{key}"'
+                    key_str = self._edn_str(key)
                 else:
                     key_str = str(key)
                 
@@ -2079,7 +2115,6 @@ class EDNGenerator:
         element_types_by_index = {}  # For structured arrays like [type1, type2]
         
         if type_name:
-            import re
             # Try inline array: [ + type ] or [ * type ]
             array_match = re.match(r'^\[\s*([+*]?)\s*(.+?)\s*\]$', type_name)
             if array_match:
@@ -2239,14 +2274,20 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Analyze and validate
-  %(prog)s schema.cddl data.cbor --validate --type person
-  
-  # Generate annotated EDN
-  %(prog)s schema.cddl data.cbor --output data.edn --annotate
-  
-  # Validate and generate EDN
-  %(prog)s schema.cddl data.cbor --validate --type person --output data.edn
+  # Decode CBOR and display annotated EDN (stdout)
+  %(prog)s schema.cddl data.cbor
+
+  # Validate CBOR against a named type and display annotated EDN
+  %(prog)s schema.cddl data.cbor --type corim-map
+
+  # Write annotated EDN to a file
+  %(prog)s schema.cddl data.cbor --type corim-map --output data.edn
+
+  # Suppress field-name annotations
+  %(prog)s schema.cddl data.cbor --no-annotate
+
+  # Use human-readable key names instead of integer indices
+  %(prog)s schema.cddl data.cbor --edn-format keyname
         """
     )
     
@@ -2254,10 +2295,12 @@ Examples:
     parser.add_argument('cbor_file', type=Path, help='Path to CBOR data file')
     parser.add_argument('-o', '--output', type=Path, help='Output EDN file (default: stdout)')
     parser.add_argument('-t', '--type', help='Root type name from CDDL for validation')
-    parser.add_argument('-a', '--annotate', action='store_true', default=True, 
-                        help='Annotate EDN with field names from CDDL (default: True)')
+    # Annotations are on by default.  Use --no-annotate to suppress field-name comments.
+    # The old -a/--annotate flag was removed: `action='store_true', default=True` meant
+    # passing -a never changed anything — the flag was always True either way.
+    parser.set_defaults(annotate=True)
     parser.add_argument('--no-annotate', action='store_false', dest='annotate',
-                        help='Disable annotations in EDN output')
+                        help='Suppress field-name comments in EDN output')
     parser.add_argument('--edn-format', choices=['keyindex', 'keyname', 'both'], default='keyindex',
                         help='EDN key format: keyindex (0: val / name /), keyname ("name": val), both (0 / name /: val)')
     parser.add_argument('--verbose', action='store_true',
@@ -2337,10 +2380,14 @@ Examples:
         
         sys.exit(0)
     
-    # Load CBOR data
+    # Load CBOR data — single read, then decode in-memory (avoids opening the file twice)
     print(f"Loading CBOR data: {args.cbor_file}", file=sys.stderr)
-    cbor_bytes = args.cbor_file.read_bytes()  # Keep raw bytes for logging
-    cbor_data = load_cbor(args.cbor_file)
+    cbor_bytes = args.cbor_file.read_bytes()
+    try:
+        cbor_data = CBOR.loads(cbor_bytes)
+    except Exception as _e:
+        print(f"Error decoding CBOR: {_e}", file=sys.stderr)
+        sys.exit(1)
     
     # Validate if type is specified
     if args.type:

@@ -402,13 +402,37 @@ class CBOR:
         self._diag_pos = 0
         self._diag_indent_str = indent
         self._diag_current_indent = 0
-        self._diag_lines = []
-        
+        # Store raw tuples (offset_str, hex_str, indent_str, comment)
+        # so we can compute the comment column dynamically after the pass.
+        self._diag_raw = []
+        self._diag_lines = []  # kept for compatibility; populated at end
+
         if not data:
             return "# Empty CBOR data"
-        
+
         self._diag_dump_item()
-        return '\n'.join(self._diag_lines)
+
+        # ── Dynamic comment column ──────────────────────────────────────────
+        # Each raw entry is (offset_str, hex_str, indent_str, comment).
+        # content_width = len(offset_str) + 1 + len(indent_str) + len(hex_str)
+        # We align all comments to max(content_widths) + 2, floored at 40.
+        if self._diag_raw:
+            max_content = max(
+                len(os) + 1 + len(hs) + len(ind)
+                for os, hs, ind, _ in self._diag_raw
+            )
+            comment_col = max(40, max_content + 2)
+        else:
+            comment_col = 40
+
+        lines = []
+        for offset_str, hex_str, indent_str, comment in self._diag_raw:
+            content_width = len(offset_str) + 1 + len(hex_str) + len(indent_str)
+            padding = ' ' * max(1, comment_col - content_width)
+            lines.append(f"{offset_str} {indent_str}{hex_str}{padding}# {comment}")
+
+        self._diag_lines = lines
+        return '\n'.join(lines)
     
     def _diag_dump_item(self, label: str = "") -> None:
         """Dump a single CBOR item with diagnostic info."""
@@ -497,10 +521,31 @@ class CBOR:
             
             try:
                 text = data_bytes.decode('utf-8')
-                if length <= 64:
+                _WRAP = 32  # characters per display line
+                if len(text) <= _WRAP:
+                    # Short string: single line
                     self._diag_add_line(data_start, data_bytes, f'"{text}"')
                 else:
-                    self._diag_add_line(data_start, data_bytes[:32], f'"{text[:32]}..."')
+                    # Long string: wrap into chunks of _WRAP characters.
+                    # We show the hex bytes for each chunk alongside the text slice.
+                    char_pos = 0
+                    byte_pos = data_start
+                    while char_pos < len(text):
+                        chunk_text = text[char_pos:char_pos + _WRAP]
+                        chunk_bytes = chunk_text.encode('utf-8')
+                        is_first = (char_pos == 0)
+                        is_last  = (char_pos + _WRAP >= len(text))
+                        if is_first and is_last:
+                            display = f'"{chunk_text}"'
+                        elif is_first:
+                            display = f'"{chunk_text}'
+                        elif is_last:
+                            display = f'{chunk_text}"'
+                        else:
+                            display = chunk_text
+                        self._diag_add_line(byte_pos, chunk_bytes, display)
+                        char_pos += _WRAP
+                        byte_pos += len(chunk_bytes)
             except UnicodeDecodeError:
                 self._diag_add_line(data_start, data_bytes, f"# Invalid UTF-8: {data_bytes.hex()}")
             
@@ -600,9 +645,9 @@ class CBOR:
         return result
     
     def _diag_add_line(self, offset: int, hex_bytes: bytes, comment: str) -> None:
-        """Add formatted line to diagnostic output."""
+        """Add a raw diagnostic entry (formatted in the final pass)."""
         offset_str = f"{offset:04x}:"
-        
+
         # Format hex bytes
         if hex_bytes == b'...':
             hex_str = "  ..."
@@ -612,19 +657,9 @@ class CBOR:
                 chunk = hex_bytes[i:i+2]
                 hex_parts.append(chunk.hex())
             hex_str = ' '.join(hex_parts) if hex_parts else ""
-        
-        # Indent
-        indent = self._diag_indent_str * self._diag_current_indent
-        
-        # Calculate padding for comment alignment
-        content_width = len(indent) + len(hex_str)
-        comment_column = 48
-        padding_needed = max(1, comment_column - content_width)
-        padding = ' ' * padding_needed
-        
-        # Combine
-        line = f"{offset_str} {indent}{hex_str}{padding}# {comment}"
-        self._diag_lines.append(line)
+
+        indent_str = self._diag_indent_str * self._diag_current_indent
+        self._diag_raw.append((offset_str, hex_str, indent_str, comment))
     
     # ========================================================================
     # PYTHON INTERFACE - Dictionary/List-like access
@@ -638,7 +673,7 @@ class CBOR:
         """String representation as diagnostic dump."""
         try:
             return self.diag()
-        except:
+        except Exception:
             return repr(self.data)
     
     def __getitem__(self, key):
