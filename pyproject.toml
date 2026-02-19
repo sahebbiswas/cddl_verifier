@@ -1,0 +1,8 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+# Show short traceback, suppress noisy logger output during tests
+log_cli = false
+addopts = "--tb=short -q"

@@ -7,6 +7,13 @@ and diagnostic dumping all in one.
 """
 
 import sys
+from pathlib import Path
+
+# When run directly (python3 tests/test_foo.py), add the repo root to
+# sys.path so source modules are importable.  pytest handles this via
+# tests/conftest.py instead.
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import unittest
 import struct
 from simple_cbor import (
@@ -705,40 +712,5 @@ class TestUnifiedCBORInterface(unittest.TestCase):
         self.assertEqual(decoded[6], {0: 1})
 
 
-def run_tests():
-    """Run all tests and return results"""
-    loader = unittest.TestLoader()
-    suite = unittest.TestSuite()
-    
-    # Add all test classes
-    suite.addTests(loader.loadTestsFromTestCase(TestCBOREncoding))
-    suite.addTests(loader.loadTestsFromTestCase(TestCBORDecoding))
-    suite.addTests(loader.loadTestsFromTestCase(TestRoundTrip))
-    suite.addTests(loader.loadTestsFromTestCase(TestDiagnosticDump))
-    suite.addTests(loader.loadTestsFromTestCase(TestEdgeCases))
-    suite.addTests(loader.loadTestsFromTestCase(TestUnifiedCBORInterface))
-    
-    # Run tests
-    runner = unittest.TextTestRunner(verbosity=2)
-    result = runner.run(suite)
-    
-    return result
-
-
 if __name__ == '__main__':
-    print("=" * 70)
-    print("Simple CBOR Module - Comprehensive Unit Tests")
-    print("=" * 70)
-    print()
-    
-    result = run_tests()
-    
-    print()
-    print("=" * 70)
-    print(f"Tests run: {result.testsRun}")
-    print(f"Successes: {result.testsRun - len(result.failures) - len(result.errors)}")
-    print(f"Failures: {len(result.failures)}")
-    print(f"Errors: {len(result.errors)}")
-    print("=" * 70)
-    
-    sys.exit(0 if result.wasSuccessful() else 1)
+    unittest.main()

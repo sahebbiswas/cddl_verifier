@@ -10,6 +10,14 @@ Tests:
 - Round-trip conversions
 """
 
+import sys
+from pathlib import Path
+
+# When run directly (python3 tests/test_foo.py), add the repo root to
+# sys.path so source modules are importable. pytest handles this via
+# tests/conftest.py instead.
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import unittest
 import json
 import math
@@ -379,38 +387,5 @@ class TestEdgeCases(unittest.TestCase):
         self.assertEqual(decoded, {"value": None})
 
 
-def run_tests():
-    """Run all tests"""
-    loader = unittest.TestLoader()
-    suite = unittest.TestSuite()
-    
-    suite.addTests(loader.loadTestsFromTestCase(TestCanonicalEncoding))
-    suite.addTests(loader.loadTestsFromTestCase(TestJSONToCBOR))
-    suite.addTests(loader.loadTestsFromTestCase(TestCBORToJSON))
-    suite.addTests(loader.loadTestsFromTestCase(TestRoundTrip))
-    suite.addTests(loader.loadTestsFromTestCase(TestEdgeCases))
-    
-    runner = unittest.TextTestRunner(verbosity=2)
-    result = runner.run(suite)
-    
-    return result
-
-
 if __name__ == '__main__':
-    print("=" * 70)
-    print("Canonical Encoding & JSON Conversion - Unit Tests")
-    print("=" * 70)
-    print()
-    
-    result = run_tests()
-    
-    print()
-    print("=" * 70)
-    print(f"Tests run: {result.testsRun}")
-    print(f"Successes: {result.testsRun - len(result.failures) - len(result.errors)}")
-    print(f"Failures: {len(result.failures)}")
-    print(f"Errors: {len(result.errors)}")
-    print("=" * 70)
-    
-    import sys
-    sys.exit(0 if result.wasSuccessful() else 1)
+    unittest.main()

@@ -17,12 +17,15 @@ import unittest
 import sys
 import os
 from pathlib import Path
+# When run directly (python3 tests/test_foo.py), add the repo root to
+# sys.path so source modules are importable.  pytest handles this via
+# tests/conftest.py instead.
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from io import StringIO
 import tempfile
 import struct
 
-# Add parent directory to path to import the analyzer
-sys.path.insert(0, str(Path(__file__).parent))
 
 from cbor_cddl_analyzer import (
     CDDLParser, 
@@ -1022,44 +1025,5 @@ class TestValidationGapsCoverage(unittest.TestCase):
         self.assertIn("/ value / 0:", edn, "EDN should show inner field annotation")
         self.assertIn("42", edn, "EDN should show inner value")
 
-def run_tests():
-    """Run all tests and return results"""
-    # Create test suite
-    loader = unittest.TestLoader()
-    suite = unittest.TestSuite()
-    
-    # Add all test classes
-    suite.addTests(loader.loadTestsFromTestCase(TestCDDLParsing))
-    suite.addTests(loader.loadTestsFromTestCase(TestTypeResolution))
-    suite.addTests(loader.loadTestsFromTestCase(TestCBORValidation))
-    suite.addTests(loader.loadTestsFromTestCase(TestEDNGeneration))
-    suite.addTests(loader.loadTestsFromTestCase(TestCoRIMSupport))
-    suite.addTests(loader.loadTestsFromTestCase(TestEdgeCases))
-    suite.addTests(loader.loadTestsFromTestCase(TestIndentationAccuracy))
-    suite.addTests(loader.loadTestsFromTestCase(TestValidationGapsCoverage))
-    
-    # Run tests
-    runner = unittest.TextTestRunner(verbosity=2)
-    result = runner.run(suite)
-    
-    return result
-
-
 if __name__ == '__main__':
-    print("=" * 70)
-    print("CBOR-CDDL Analyzer - Comprehensive Unit Tests")
-    print("=" * 70)
-    print()
-    
-    result = run_tests()
-    
-    print()
-    print("=" * 70)
-    print(f"Tests run: {result.testsRun}")
-    print(f"Successes: {result.testsRun - len(result.failures) - len(result.errors)}")
-    print(f"Failures: {len(result.failures)}")
-    print(f"Errors: {len(result.errors)}")
-    print("=" * 70)
-    
-    # Exit with appropriate code
-    sys.exit(0 if result.wasSuccessful() else 1)
+    unittest.main()

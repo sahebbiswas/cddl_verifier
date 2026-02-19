@@ -1,165 +1,161 @@
-# CBOR-CDDL Analyzer — Test Suite
+# Testing
 
 ## Overview
 
-Comprehensive unit test suite with **162 tests** across four files.
+162 tests across four files in `tests/`.  The suite runs under both **pytest**
+and the standard-library **unittest** runner with no code changes required.
 
 | File | Tests | Covers |
-|---|---|---|
-| `test_simple_cbor.py` | 63 | CBOR encode/decode, diagnostics, builder API |
-| `test_cbor_cddl_analyzer.py` | 48 | CDDL parsing, validation, EDN generation, CoRIM |
-| `test_canonical_and_json.py` | 25 | Canonical encoding (RFC 8949 §4.2), JSON conversion |
-| `test_cbor_builder.py` | 26 | Iterative CBOR construction via builder pattern |
+|------|------:|--------|
+| `tests/test_cbor_cddl_analyzer.py` | 48 | CDDL parsing, validation, EDN generation, CoRIM |
+| `tests/test_simple_cbor.py` | 63 | CBOR encode/decode, diagnostics, round-trips |
+| `tests/test_canonical_and_json.py` | 25 | Canonical encoding, JSON ↔ CBOR conversion |
+| `tests/test_cbor_builder.py` | 26 | Iterative construction, nested access, merge |
 
-## Current Status
+---
 
-**162 / 162 tests passing (100% success rate)**
+## Running the tests
 
-## Running the Tests
+### pytest (recommended)
 
 ```bash
-# All four test files at once
-python3 -m unittest test_simple_cbor test_cbor_cddl_analyzer test_canonical_and_json test_cbor_builder
+pip install pytest
+pytest                    # uses testpaths = ["tests"] from pyproject.toml
+pytest -v                 # verbose: one line per test
+pytest tests/test_cbor_cddl_analyzer.py          # single file
+pytest tests/test_cbor_cddl_analyzer.py::TestCDDLParsing           # single class
+pytest tests/test_cbor_cddl_analyzer.py::TestCDDLParsing::test_simple_alias  # single test
+```
 
-# Verbose
-python3 -m unittest test_cbor_cddl_analyzer -v
+### unittest (no extra dependencies)
 
-# Single test class
-python3 -m unittest test_cbor_cddl_analyzer.TestCDDLParsing
+```bash
+python3 -m unittest discover -s tests -t .   # all tests
+python3 -m unittest tests.test_cbor_cddl_analyzer                  # single module
+python3 -m unittest tests.test_cbor_cddl_analyzer.TestCDDLParsing  # single class
+python3 -m unittest tests.test_cbor_cddl_analyzer.TestCDDLParsing.test_simple_alias
+```
 
-# Single test
-python3 -m unittest test_cbor_cddl_analyzer.TestCDDLParsing.test_simple_alias
+> **Note on `-t .`** — the `-t .` flag sets the top-level directory to the
+> repo root so Python resolves `tests.test_*` module names correctly.  It is
+> only strictly needed when old root-level `test_*.py` files are also present
+> (e.g. during a migration); once only `tests/` contains test files it can be
+> omitted.
+
+### Direct execution
+
+Each test file can also be run directly; it adds the repo root to `sys.path`
+automatically so source modules are always found:
+
+```bash
+python3 tests/test_cbor_cddl_analyzer.py
+python3 tests/test_simple_cbor.py
 ```
 
 ---
 
-## test_cbor_cddl_analyzer.py — 48 tests
+## Project layout
 
-### 1. CDDL Parsing (9 tests)
-- Simple type alias, CBOR tag definitions (`#6.501(...)`), `.cbor` control operator
-- Type choice parsing (`$name /= ...`), IANA registered parameters, optional fields
-- Size constraints (exact, range, min-only, max-only), multi-line field definitions
-
-### 2. Type Resolution (3 tests)
-- Simple alias, chained alias, tag inner-type extraction
-
-### 3. CBOR Validation (4 tests)
-- Simple map, optional fields, size constraints, array validation
-
-### 4. EDN Generation (8 tests)
-- `keyindex`, `keyname`, `both` formats; indentation; nested tag indentation;
-  tag notation `tag_num(...)`; type name headers; `bytes<N>(...)` wrapper for nested CBOR
-
-### 5. CoRIM Support (2 tests)
-- Complex type-resolution chains, nested CBOR decoding with tag annotations
-
-### 6. Edge Cases (6 tests)
-- Empty map/array, nested empty structures, bytes encoding,
-  undefined type graceful handling, circular alias prevention
-
-### 7. Indentation Accuracy (5 tests)
-- Simple map, nested map, tag, array, closing bracket alignment
-
----
-
-## test_simple_cbor.py — 63 tests
-
-- Encode/decode all primitive CBOR types (uint, nint, bstr, tstr, bool, null, float)
-- Canonical encoding (RFC 8949 §4.2 — shortest form, sorted map keys)
-- Diagnostic dump (`CBOR.diag()`) format and hex view
-- Round-trip encode/decode for nested maps, arrays, tagged values
-- Builder API (`CBOR.from_dict()`, `CBOR.from_list()`, etc.)
-- Error handling for malformed or truncated input
-
----
-
-## test_canonical_and_json.py — 25 tests
-
-- `cbor_to_json` / `json_to_cbor` round-trips
-- Type-annotated JSON conversion (`typed=True`)
-- Bytes represented as Base64 in JSON
-- CBOR tag preservation through JSON
-- Integer key handling, `sort_keys` parameter
-
----
-
-## test_cbor_builder.py — 26 tests
-
-- `CBOR.builder()` entry point
-- Append, extend, set, update operations
-- Nested structure construction
-- Canonical encoding of builder output
-- Merge and copy operations
-
----
-
-## Dependencies
-
-**Required:** Python 3.7+, `cbor_cddl_analyzer.py`, `simple_cbor.py`, `cbor_json.py`
-
-**Optional:** `cbor2` — if installed, `load_cbor()` uses it; otherwise falls back to `simple_cbor`.
-
-```bash
-pip install cbor2
+```
+.
+├── cbor_cddl_analyzer.py
+├── simple_cbor.py
+├── cbor_json.py
+├── pyproject.toml          ← pytest configuration
+└── tests/
+    ├── conftest.py         ← adds repo root to sys.path for pytest
+    ├── __init__.py
+    ├── test_cbor_cddl_analyzer.py
+    ├── test_simple_cbor.py
+    ├── test_canonical_and_json.py
+    └── test_cbor_builder.py
 ```
 
+`pyproject.toml` configures pytest:
+
+```toml
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts   = "--tb=short -q"
+```
+
+`tests/conftest.py` inserts the repo root into `sys.path` once for the whole
+pytest session so every test module can `import cbor_cddl_analyzer` etc.
+without needing its own path manipulation.
+
 ---
 
-## CI/CD
+## CI configuration
+
+### GitHub Actions
 
 ```yaml
-# .github/workflows/test.yml
+# .github/workflows/tests.yml
 name: Tests
 on: [push, pull_request]
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-      - run: |
-          python3 -m unittest \
-            test_simple_cbor \
-            test_cbor_cddl_analyzer \
-            test_canonical_and_json \
-            test_cbor_builder
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install pytest
+        run: pip install pytest
+
+      - name: Run tests
+        run: pytest
+```
+
+If you prefer to avoid the `pip install pytest` step, replace the last two
+steps with:
+
+```yaml
+      - name: Run tests (unittest, no extra deps)
+        run: python3 -m unittest discover -s tests -t .
+```
+
+### GitLab CI
+
+```yaml
+# .gitlab-ci.yml
+test:
+  image: python:3.11
+  script:
+    - pip install pytest
+    - pytest
 ```
 
 ---
 
-## Adding Tests
+## Writing new tests
+
+Add a method to the relevant `TestCase` class, or create a new class in the
+appropriate file:
 
 ```python
 class TestMyFeature(unittest.TestCase):
-    """Tests for <feature>."""
 
-    def test_basic(self):
-        cddl = CDDLParser("my-type = { 0: uint }")
-        analyzer = CBORAnalyzer(cddl)
-        self.assertTrue(analyzer.validate({0: 42}, "my-type"))
+    def test_basic_case(self):
+        cddl = CDDLParser("my-type = { &(id:0) => uint }")
+        self.assertIn("my-type", cddl.types)
 
-    def test_regression_issue_N(self):
-        """Regression: <brief description of bug>."""
-        ...
+    def test_validation_pass(self):
+        cddl = CDDLParser("my-type = { &(id:0) => uint }")
+        self.assertTrue(CBORAnalyzer(cddl).validate({0: 1}, "my-type"))
+
+    def test_validation_fail(self):
+        cddl = CDDLParser("my-type = { &(id:0) => uint }")
+        self.assertFalse(CBORAnalyzer(cddl).validate({0: "x"}, "my-type"))
 ```
 
-Always add a regression test when fixing a bug.
-
----
-
-## Debugging Tips
-
-```python
-# Temporarily enable debug logging inside a test
-import logging
-logging.basicConfig(level=logging.DEBUG)
-
-# Print actual vs expected on failure
-def test_something(self):
-    result = function_under_test()
-    print(f"\nExpected: {repr(expected)}")
-    print(f"Actual:   {repr(result)}")
-    self.assertEqual(expected, result)
-```
+pytest discovers any `TestCase` subclass automatically; no registration in a
+`run_tests()` function is needed.
