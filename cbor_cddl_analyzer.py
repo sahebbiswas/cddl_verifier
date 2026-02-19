@@ -259,9 +259,13 @@ class CDDLParser:
 
     Limitations
     -----------
-    * Single-line map/array bodies (``record = { &(k:0)=>tstr }``) are not
-      parsed as structured types; use the multi-line form.
-    * Advanced CDDL validators (``.regexp``, ``.lt``, etc.) are not evaluated.
+    * The CDDL subset covers practical attestation schemas; it does not
+      implement the full RFC 8610 grammar.
+    * ``.regexp`` patterns are matched with ``re.fullmatch``; Unicode locale
+      flags and CDDL-specific escapes are not interpreted.
+    * Value-range predicates (``.ge``, ``.gt``, ``.le``, ``.lt``) are
+      enforced on ``uint`` and ``int`` fields only; ``float`` ranges are not
+      evaluated.
 
     Attributes
     ----------
