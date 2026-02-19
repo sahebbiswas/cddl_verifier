@@ -331,6 +331,73 @@ class CDDLParser:
                 self.type_aliases[builtin_name] = internal_type
                 logger.debug(f"Added built-in type: {builtin_name} -> {internal_type}")
     
+    @staticmethod
+    def _split_top_level_commas(text: str) -> list:
+        """Split *text* on commas that are at nesting depth 0 and outside quotes.
+
+        Tracks ``{ } [ ] ( )`` for depth and honours single/double-quoted
+        strings with backslash escapes, so commas inside nested structures or
+        ``.regexp "[a-z,]+"`` patterns are never treated as field separators.
+
+        Returns a list of stripped, non-empty token strings.
+        """
+        tokens = []
+        current: list = []
+        depth = 0
+        in_sq = False   # inside single-quoted string
+        in_dq = False   # inside double-quoted string
+        i = 0
+        while i < len(text):
+            ch = text[i]
+
+            # ── backslash escape inside a quoted string ──────────────────────
+            if (in_sq or in_dq) and ch == '\\' and i + 1 < len(text):
+                current.append(ch)
+                current.append(text[i + 1])
+                i += 2
+                continue
+
+            # ── quote boundaries ─────────────────────────────────────────────
+            if ch == "'" and not in_dq:
+                in_sq = not in_sq
+                current.append(ch)
+                i += 1
+                continue
+            if ch == '"' and not in_sq:
+                in_dq = not in_dq
+                current.append(ch)
+                i += 1
+                continue
+
+            # ── skip nesting tracking inside strings ─────────────────────────
+            if in_sq or in_dq:
+                current.append(ch)
+                i += 1
+                continue
+
+            # ── nesting depth ────────────────────────────────────────────────
+            if ch in ('{', '[', '('):
+                depth += 1
+                current.append(ch)
+            elif ch in ('}', ']', ')'):
+                depth -= 1
+                current.append(ch)
+            elif ch == ',' and depth == 0:
+                token = ''.join(current).strip()
+                if token:
+                    tokens.append(token)
+                current = []
+            else:
+                current.append(ch)
+            i += 1
+
+        # trailing token after the last comma
+        token = ''.join(current).strip()
+        if token:
+            tokens.append(token)
+
+        return tokens
+
     def parse(self):
         """Parse CDDL content to extract type definitions."""
         lines = self.content.split('\n')
@@ -460,7 +527,7 @@ class CDDLParser:
                 current_fields = {}
                 self.types[type_name] = {'fields': current_fields, 'type': 'map'}
                 if body:
-                    tokens = [t.strip() for t in body.split(',') if t.strip()]
+                    tokens = self._split_top_level_commas(body)
                     for token in tokens:
                         tok_norm = (token
                                     .replace('& (', '&(').replace('&  (', '&(').replace('&   (', '&(')
@@ -1627,9 +1694,15 @@ class CBORAnalyzer:
                             # Check .regexp constraint
                             pattern = self.cddl.extract_regexp(_resolved)
                             if pattern and not type_mismatch:
-                                if not re.fullmatch(pattern, value):
+                                try:
+                                    if not re.fullmatch(pattern, value):
+                                        type_mismatch = True
+                                        logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Regexp mismatch: {value!r} does not match /{pattern}/")
+                                except re.error as exc:
                                     type_mismatch = True
-                                    logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Regexp mismatch: {value!r} does not match /{pattern}/")
+                                    err_msg = f"Invalid .regexp pattern /{pattern}/ for field '{field_name}': {exc}"
+                                    logger.error(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} {err_msg}")
+                                    self.validation_errors.append(err_msg)
                     elif field_type == 'bstr' or _base_type == 'bstr':
                         if not isinstance(value, bytes):
                             type_mismatch = True

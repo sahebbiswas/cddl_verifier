@@ -5,6 +5,14 @@ Tests for CBOR Iterative Construction and Modification
 Tests the builder pattern and fluent API for easy CBOR construction.
 """
 
+import sys
+from pathlib import Path
+
+# When run directly (python3 tests/test_foo.py), add the repo root to
+# sys.path so source modules are importable. pytest handles this via
+# tests/conftest.py instead.
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import unittest
 from simple_cbor import CBOR, cbor_encode, cbor_decode
 
@@ -389,38 +397,5 @@ class TestComplexScenarios(unittest.TestCase):
         self.assertEqual(decoded["user"]["settings"]["theme"], "dark")
 
 
-def run_tests():
-    """Run all tests"""
-    loader = unittest.TestLoader()
-    suite = unittest.TestSuite()
-    
-    suite.addTests(loader.loadTestsFromTestCase(TestBuilderPattern))
-    suite.addTests(loader.loadTestsFromTestCase(TestNestedAccess))
-    suite.addTests(loader.loadTestsFromTestCase(TestUtilityMethods))
-    suite.addTests(loader.loadTestsFromTestCase(TestIterativeConstruction))
-    suite.addTests(loader.loadTestsFromTestCase(TestComplexScenarios))
-    
-    runner = unittest.TextTestRunner(verbosity=2)
-    result = runner.run(suite)
-    
-    return result
-
-
 if __name__ == '__main__':
-    print("=" * 70)
-    print("CBOR Iterative Construction & Modification - Unit Tests")
-    print("=" * 70)
-    print()
-    
-    result = run_tests()
-    
-    print()
-    print("=" * 70)
-    print(f"Tests run: {result.testsRun}")
-    print(f"Successes: {result.testsRun - len(result.failures) - len(result.errors)}")
-    print(f"Failures: {len(result.failures)}")
-    print(f"Errors: {len(result.errors)}")
-    print("=" * 70)
-    
-    import sys
-    sys.exit(0 if result.wasSuccessful() else 1)
+    unittest.main()

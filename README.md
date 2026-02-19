@@ -369,21 +369,22 @@ round-trip examples.
 
 ## Test suite
 
-162 tests across four files; all pass:
+162 tests across four files in `tests/`; all pass:
 
 ```bash
-python3 -m unittest test_simple_cbor test_cbor_cddl_analyzer test_canonical_and_json test_cbor_builder
+pytest                                       # requires: pip install pytest
+python3 -m unittest discover -s tests -t .  # no extra dependencies
 ```
 
 | File | Tests | Covers |
 |------|-------|--------|
-| `test_simple_cbor.py` | 63 | CBOR encode/decode, diagnostics, builder |
-| `test_cbor_cddl_analyzer.py` | 48 | CDDL parsing, validation, EDN generation, CoRIM |
-| `test_canonical_and_json.py` | 25 | Canonical encoding, JSON conversion, round-trips |
-| `test_cbor_builder.py` | 26 | Iterative construction, nested access, merge |
+| `tests/test_simple_cbor.py` | 63 | CBOR encode/decode, diagnostics, builder |
+| `tests/test_cbor_cddl_analyzer.py` | 48 | CDDL parsing, validation, EDN generation, CoRIM |
+| `tests/test_canonical_and_json.py` | 25 | Canonical encoding, JSON conversion, round-trips |
+| `tests/test_cbor_builder.py` | 26 | Iterative construction, nested access, merge |
 
-See [TESTING.md](TESTING.md) for running individual test classes, adding regression
-tests, and CI/CD configuration.
+See [TESTING.md](TESTING.md) for individual class/test commands, pytest
+configuration, CI/CD workflow examples, and contribution guidelines.
 
 ---
 

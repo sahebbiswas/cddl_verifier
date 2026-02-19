@@ -1,0 +1,38 @@
+name: Python CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install pytest  # Even if not in requirements, install it for the CI
+
+    - name: Run Unit Tests
+      run: |
+        # This command searches the 'tests/' folder and runs everything
+        pytest tests/ --doctest-modules --junitxml=junit/test-results.xml
+
+    - name: Upload Test Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results
+        path: junit/test-results.xml
