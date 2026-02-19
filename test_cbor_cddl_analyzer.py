@@ -527,7 +527,7 @@ class TestEDNGeneration(unittest.TestCase):
         edn = generator.generate(data, 'outer-type')
         
         # Should have bytes wrapper
-        self.assertIn('bytes(', edn)
+        self.assertIn('bytes<', edn)  # matches bytes<N>( annotation
         
         # Should show decoded content
         self.assertIn('/ value / 0:', edn)
@@ -1016,7 +1016,7 @@ class TestValidationGapsCoverage(unittest.TestCase):
         generator = EDNGenerator(cddl, edn_format='keyindex')
         edn = generator.generate(data, 'outer-type')
 
-        self.assertIn("bytes(", edn, "EDN should contain bytes() wrapper")
+        self.assertIn("bytes<", edn, "EDN should contain bytes<N>() wrapper")
         self.assertIn("/ value / 0:", edn, "EDN should show inner field annotation")
         self.assertIn("42", edn, "EDN should show inner value")
 

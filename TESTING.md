@@ -1,329 +1,165 @@
-# CBOR-CDDL Analyzer Unit Tests
+# CBOR-CDDL Analyzer — Test Suite
 
 ## Overview
 
-Comprehensive unit test suite for the CBOR-CDDL Analyzer with **37 tests** covering all major functionality.
+Comprehensive unit test suite with **162 tests** across four files.
 
-## Test Results
+| File | Tests | Covers |
+|---|---|---|
+| `test_simple_cbor.py` | 63 | CBOR encode/decode, diagnostics, builder API |
+| `test_cbor_cddl_analyzer.py` | 48 | CDDL parsing, validation, EDN generation, CoRIM |
+| `test_canonical_and_json.py` | 25 | Canonical encoding (RFC 8949 §4.2), JSON conversion |
+| `test_cbor_builder.py` | 26 | Iterative CBOR construction via builder pattern |
 
-**Current Status: 37/37 tests passing (100% success rate)**
+## Current Status
 
-- ✅ **Successes**: 37 tests
-- ⚠️ **Failures**: 0 tests
-- ❌ **Errors**: 0 tests
-
-## Test Coverage
-
-### 1. CDDL Parsing (9 tests) - ✅ ALL PASSING
-- ✅ Simple type alias parsing
-- ✅ CBOR tag definition parsing (`#6.501(...)`)
-- ✅ `.cbor` control operator parsing
-- ✅ Type choice parsing (`$name /= ...`)
-- ✅ IANA registered parameter parsing
-- ✅ Optional field parsing
-- ✅ Size constraint parsing (exact, range, min, max)
-- ✅ Multi-line field definition parsing
-
-### 2. Type Resolution (3 tests) - ✅ ALL PASSING
-- ✅ Simple alias resolution
-- ✅ Chained alias resolution
-- ✅ Tag inner type extraction
-
-### 3. CBOR Validation (4 tests) - ✅ ALL PASSING
-- ✅ Simple map validation
-- ✅ Optional field handling
-- ✅ Size constraint validation
-- ✅ Array validation
-
-### 4. EDN Generation (8 tests) - ✅ ALL PASSING
-- ✅ EDN with keyindex format
-- ✅ EDN with keyname format
-- ✅ EDN with both format
-- ✅ EDN indentation
-- ✅ Nested tag indentation
-- ✅ Tag notation (`tag_num(...)`)
-- ✅ Type name headers
-- ✅ Bytes wrapper for nested CBOR
-
-### 5. CoRIM Support (2 tests) - ✅ ALL PASSING
-- ✅ CoRIM type resolution chain
-- ✅ CoRIM EDN output formatting
-
-### 6. Edge Cases (6 tests) - ✅ ALL PASSING
-- ✅ Empty map handling
-- ✅ Empty array handling
-- ✅ Nested empty structures
-- ✅ Bytes encoding
-- ✅ Undefined type graceful handling
-- ✅ Circular alias prevention
-
-### 7. Indentation Accuracy (5 tests) - ✅ ALL PASSING
-- ✅ Simple map indentation
-- ✅ Nested map indentation
-- ✅ Tag indentation
-- ✅ Array indentation
-- ✅ Closing bracket alignment
+**162 / 162 tests passing (100% success rate)**
 
 ## Running the Tests
 
-### Basic Usage
 ```bash
-python3 test_cbor_cddl_analyzer.py
-```
+# All four test files at once
+python3 -m unittest test_simple_cbor test_cbor_cddl_analyzer test_canonical_and_json test_cbor_builder
 
-### With Verbose Output
-```bash
-python3 test_cbor_cddl_analyzer.py -v
-```
+# Verbose
+python3 -m unittest test_cbor_cddl_analyzer -v
 
-### Run Specific Test Class
-```bash
+# Single test class
 python3 -m unittest test_cbor_cddl_analyzer.TestCDDLParsing
-```
 
-### Run Specific Test
-```bash
+# Single test
 python3 -m unittest test_cbor_cddl_analyzer.TestCDDLParsing.test_simple_alias
 ```
 
-## Test Dependencies
+---
 
-### Required
-- Python 3.7+
-- cbor_cddl_analyzer.py (the main analyzer)
-- simple_cbor.py (CBOR encoder/decoder module)
+## test_cbor_cddl_analyzer.py — 48 tests
 
-### Optional
-- `cbor2` - For additional CBOR encoding features
-  - Install: `pip install cbor2`
-  - Tests will use simple_cbor module if cbor2 not available
+### 1. CDDL Parsing (9 tests)
+- Simple type alias, CBOR tag definitions (`#6.501(...)`), `.cbor` control operator
+- Type choice parsing (`$name /= ...`), IANA registered parameters, optional fields
+- Size constraints (exact, range, min-only, max-only), multi-line field definitions
 
-## Test Organization
+### 2. Type Resolution (3 tests)
+- Simple alias, chained alias, tag inner-type extraction
 
-### Test Classes
+### 3. CBOR Validation (4 tests)
+- Simple map, optional fields, size constraints, array validation
 
-1. **TestCDDLParsing** - CDDL schema parsing
-2. **TestTypeResolution** - Type alias and choice resolution
-3. **TestCBORValidation** - CBOR data validation
-4. **TestEDNGeneration** - EDN output generation
-5. **TestCoRIMSupport** - CoRIM-specific features
-6. **TestEdgeCases** - Error handling and edge cases
-7. **TestIndentationAccuracy** - Precise indentation verification
+### 4. EDN Generation (8 tests)
+- `keyindex`, `keyname`, `both` formats; indentation; nested tag indentation;
+  tag notation `tag_num(...)`; type name headers; `bytes<N>(...)` wrapper for nested CBOR
 
-## What Gets Tested
+### 5. CoRIM Support (2 tests)
+- Complex type-resolution chains, nested CBOR decoding with tag annotations
 
-### Parser Tests
-- Alias definitions
-- CBOR tag notation parsing
-- Control operator extraction
-- Type choice definitions
-- IANA parameter parsing
-- Multi-line field parsing
-- Size constraint regex matching
+### 6. Edge Cases (6 tests)
+- Empty map/array, nested empty structures, bytes encoding,
+  undefined type graceful handling, circular alias prevention
 
-### Validation Tests
-- Type checking (int, str, bytes, etc.)
-- Optional field handling
-- Size constraint enforcement
-- Array element validation
-- Missing required field detection
+### 7. Indentation Accuracy (5 tests)
+- Simple map, nested map, tag, array, closing bracket alignment
 
-### EDN Generation Tests
-- Three format modes (keyindex, keyname, both)
-- Left-aligned annotations
-- CBOR tag notation
-- Type name headers
-- Indentation at all nesting levels
-- Closing bracket alignment
+---
 
-### Type Resolution Tests
-- Simple alias chains
-- Multi-hop alias resolution
-- Tag inner type extraction
-- Type choice matching
+## test_simple_cbor.py — 63 tests
 
-### CoRIM Tests
-- Complex type resolution chains
-- Nested CBOR decoding
-- Tag type annotation
-- Multi-level indentation
+- Encode/decode all primitive CBOR types (uint, nint, bstr, tstr, bool, null, float)
+- Canonical encoding (RFC 8949 §4.2 — shortest form, sorted map keys)
+- Diagnostic dump (`CBOR.diag()`) format and hex view
+- Round-trip encode/decode for nested maps, arrays, tagged values
+- Builder API (`CBOR.from_dict()`, `CBOR.from_list()`, etc.)
+- Error handling for malformed or truncated input
 
-## All Tests Passing ✅
+---
 
-All 37 tests pass successfully with the refactored `simple_cbor` module. The test suite now:
+## test_canonical_and_json.py — 25 tests
 
-- ✅ Uses the dedicated `simple_cbor.py` module for CBOR encoding/decoding
-- ✅ Validates CDDL parsing, type resolution, and EDN generation
-- ✅ Checks indentation accuracy across all nesting levels
-- ✅ Tests CoRIM-specific features and complex type chains
-- ✅ Handles edge cases gracefully
+- `cbor_to_json` / `json_to_cbor` round-trips
+- Type-annotated JSON conversion (`typed=True`)
+- Bytes represented as Base64 in JSON
+- CBOR tag preservation through JSON
+- Integer key handling, `sort_keys` parameter
 
-The `simple_cbor` module provides a clean, maintainable implementation separate from the main analyzer.
+---
 
-## Using Tests for Development
+## test_cbor_builder.py — 26 tests
 
-### Before Making Changes
+- `CBOR.builder()` entry point
+- Append, extend, set, update operations
+- Nested structure construction
+- Canonical encoding of builder output
+- Merge and copy operations
+
+---
+
+## Dependencies
+
+**Required:** Python 3.7+, `cbor_cddl_analyzer.py`, `simple_cbor.py`, `cbor_json.py`
+
+**Optional:** `cbor2` — if installed, `load_cbor()` uses it; otherwise falls back to `simple_cbor`.
+
 ```bash
-# Run tests to establish baseline
-python3 test_cbor_cddl_analyzer.py > baseline.txt
+pip install cbor2
 ```
 
-### After Making Changes
-```bash
-# Run tests to verify nothing broke
-python3 test_cbor_cddl_analyzer.py
+---
 
-# Compare results
-diff baseline.txt current.txt
-```
-
-### Adding New Tests
-
-When adding new features, add tests following this pattern:
-
-```python
-class TestMyNewFeature(unittest.TestCase):
-    """Test my new feature"""
-    
-    def test_basic_functionality(self):
-        """Test basic case"""
-        cddl_text = """
-        my-type = { ... }
-        """
-        cddl = CDDLParser(cddl_text)
-        # Your test assertions
-        self.assertEqual(expected, actual)
-    
-    def test_edge_case(self):
-        """Test edge case"""
-        # Test unusual inputs
-        self.assertRaises(Exception, ...)
-```
-
-## Test Data
-
-Tests use inline CDDL snippets for:
-- Minimal dependencies
-- Fast execution
-- Clear test intent
-- Easy debugging
-
-For integration testing, use real schema files:
-```python
-cddl = load_cddl(Path('/path/to/unified.cddl'))
-```
-
-## Continuous Integration
-
-These tests are designed for CI/CD pipelines:
+## CI/CD
 
 ```yaml
-# Example .github/workflows/test.yml
+# .github/workflows/test.yml
 name: Tests
 on: [push, pull_request]
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
-      - run: pip install cbor2  # Optional
-      - run: python3 test_cbor_cddl_analyzer.py
+          python-version: '3.11'
+      - run: |
+          python3 -m unittest \
+            test_simple_cbor \
+            test_cbor_cddl_analyzer \
+            test_canonical_and_json \
+            test_cbor_builder
 ```
 
-## Interpreting Results
+---
 
-### Success Output
-```
-======================================================================
-Tests run: 37
-Successes: 37
-Failures: 0
-Errors: 0
-======================================================================
-```
+## Adding Tests
 
-### Partial Success
-```
-======================================================================
-Tests run: 37
-Successes: 33
-Failures: 4
-Errors: 0
-======================================================================
-```
-Still acceptable - check which tests failed and if they're critical.
-
-### Errors vs Failures
-- **Errors**: Code crashes, exceptions - **FIX IMMEDIATELY**
-- **Failures**: Assertions fail - May be acceptable edge cases
-
-## Test Maintenance
-
-### When to Update Tests
-
-1. **API Changes** - Update tests when changing function signatures
-2. **New Features** - Add tests for new CDDL features
-3. **Bug Fixes** - Add regression test for the bug
-4. **Format Changes** - Update EDN format expectations
-
-### What NOT to Test
-
-- External library behavior (cbor2, etc.)
-- Python standard library features
-- Implementation details that might change
-
-### What MUST be Tested
-
-- Public API behavior
-- Type resolution accuracy
-- EDN output correctness
-- Indentation rules
-- IANA parameter handling
-
-## Debugging Failed Tests
-
-### Enable Verbose Mode
 ```python
-# In test file, temporarily add:
+class TestMyFeature(unittest.TestCase):
+    """Tests for <feature>."""
+
+    def test_basic(self):
+        cddl = CDDLParser("my-type = { 0: uint }")
+        analyzer = CBORAnalyzer(cddl)
+        self.assertTrue(analyzer.validate({0: 42}, "my-type"))
+
+    def test_regression_issue_N(self):
+        """Regression: <brief description of bug>."""
+        ...
+```
+
+Always add a regression test when fixing a bug.
+
+---
+
+## Debugging Tips
+
+```python
+# Temporarily enable debug logging inside a test
 import logging
 logging.basicConfig(level=logging.DEBUG)
-```
 
-### Print Actual vs Expected
-```python
+# Print actual vs expected on failure
 def test_something(self):
     result = function_under_test()
-    print(f"Expected: {expected}")
-    print(f"Actual:   {result}")
+    print(f"\nExpected: {repr(expected)}")
+    print(f"Actual:   {repr(result)}")
     self.assertEqual(expected, result)
 ```
-
-### Run Single Test
-```bash
-python3 -m unittest test_cbor_cddl_analyzer.TestClassName.test_method_name -v
-```
-
-## Future Test Additions
-
-Planned tests:
-1. Performance benchmarks
-2. Large schema handling
-3. Malformed CBOR handling
-4. Schema validation errors
-5. Concurrent validation
-6. Memory usage tests
-
-## Summary
-
-The test suite provides:
-- ✅ Comprehensive coverage of core functionality
-- ✅ Fast execution (< 1 second)
-- ✅ No external dependencies required
-- ✅ Clear test organization
-- ✅ Easy to extend
-- ✅ CI/CD ready
-
-Use these tests to ensure any changes to the analyzer don't break existing functionality!
