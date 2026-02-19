@@ -389,9 +389,6 @@ tests, and CI/CD configuration.
 
 ## Limitations
 
-- Single-line map/array bodies (`record = { &(k:0) => tstr }`) are not parsed as
-  structured types; use the multi-line form.
-- Advanced CDDL predicates (`.regexp`, value range checks) are not evaluated.
 - The supported CDDL subset covers practical attestation schemas (CoRIM, CoSWID);
   it does not implement the full RFC 8610 grammar.
 - Indefinite-length CBOR items are not supported by the bundled encoder/decoder.

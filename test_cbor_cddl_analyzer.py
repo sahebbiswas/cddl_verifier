@@ -966,27 +966,29 @@ class TestValidationGapsCoverage(unittest.TestCase):
 
     # ── single-line type definition parse ────────────────────────────────────
 
-    def test_single_line_type_not_parsed(self):
-        """Single-line inline definitions like 'x = { &(k:0)=>tstr }' are not
-        parsed as structured types by the current parser (multi-line form is
-        required).  This test documents the known limitation so it is visible
-        in the test suite.
+    def test_single_line_map_parsed(self):
+        """Single-line map definitions like 'record = { &(name:0)=>tstr }' are
+        now parsed as structured types, identical to the multi-line equivalent.
         """
-        # Single-line: parser does not extract a structured type
         cddl_single = CDDLParser("record = { &( name : 0 ) => tstr }")
-        # Multi-line equivalent: parser correctly extracts the type
-        cddl_multi = CDDLParser("""
+        cddl_multi  = CDDLParser("""
         record = {
           &( name : 0 ) => tstr,
         }
         """)
-        # The multi-line form must produce a parseable type
+        # Both forms must produce a parseable type with the same fields
+        self.assertIn("record", cddl_single.types,
+                      "Single-line form should now be parsed correctly")
         self.assertIn("record", cddl_multi.types,
                       "Multi-line form should be parsed correctly")
-        # The single-line form currently produces no structured type
-        # (this is expected behaviour for the simplified parser)
-        self.assertNotIn("record", cddl_single.types,
-                         "Single-line form is not yet supported by the parser")
+        self.assertEqual(
+            list(cddl_single.types["record"]["fields"].keys()),
+            list(cddl_multi.types["record"]["fields"].keys()),
+            "Single-line and multi-line forms should produce identical field keys",
+        )
+        # Validation must work on data parsed from the single-line form
+        self.assertTrue(CBORAnalyzer(cddl_single).validate({0: "Alice"}, "record"))
+        self.assertFalse(CBORAnalyzer(cddl_single).validate({0: 99},     "record"))
 
     # ── bytes_wrapper_for_nested_cbor (previously always skipped) ────────────
 

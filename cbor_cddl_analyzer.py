@@ -366,6 +366,9 @@ class CDDLParser:
             # Normalize whitespace for various checks
             line_normalized = line.replace('& (', '&(').replace('&  (', '&(').replace('&   (', '&(')
             line_normalized = line_normalized.replace(') =>', ')=>').replace(')  =>', ')=>').replace(')   =>', ')=>')
+            # Strip quoted strings once; used by structural-char guards below so that
+            # .regexp patterns (e.g. "[A-Z]{3}") don't trigger map/array detection.
+            _line_unquoted = re.sub(r'"[^"]*"', '', line)
             
             # Handle socket extensions ($$name //= value)
             if '//=' in line:
@@ -434,6 +437,52 @@ class CDDLParser:
                         current_group_fields.append(line.strip())
                 continue
             
+            # Single-line map body: name = { ... } with all fields on one line.
+            # Must be checked BEFORE the IANA-param check, because a line like
+            #   record = { &(name:0)=>tstr, &(age:1)=>uint }
+            # also satisfies '&(' / '=>' and would otherwise be mis-dispatched
+            # to _parse_registered_param with no current_type set.
+            # Use _line_unquoted so .regexp quantifiers like {3} don't match.
+            if ('=' in line and '{' in _line_unquoted and '}' in _line_unquoted
+                    and '/=' not in line and '//=' not in line
+                    and not line_normalized.startswith('&')):
+                equals_pos  = line.index('=')
+                type_name   = line[:equals_pos].strip()
+                if '<' in type_name and '>' in type_name:
+                    type_name = type_name.split('<')[0].strip()
+                brace_open  = line.index('{')
+                brace_close = line.rindex('}')
+                body = line[brace_open + 1 : brace_close].strip()
+                current_fields = {}
+                self.types[type_name] = {'fields': current_fields, 'type': 'map'}
+                if body:
+                    tokens = [t.strip() for t in body.split(',') if t.strip()]
+                    for token in tokens:
+                        tok_norm = (token
+                                    .replace('& (', '&(').replace('&  (', '&(').replace('&   (', '&(')
+                                    .replace(') =>', ')=>').replace(')  =>', ')=>').replace(')   =>', ')=>'))
+                        if '&(' in tok_norm and '=>' in tok_norm:
+                            self._parse_registered_param(token, current_fields)
+                        elif ':' in token and '=>' not in token:
+                            token = token.rstrip(',}]').strip()
+                            optional = token.startswith('?')
+                            if optional:
+                                token = token[1:].strip()
+                            parts = token.split(':', 1)
+                            if len(parts) == 2:
+                                key        = parts[0].strip().strip('"')
+                                value_type = parts[1].strip()
+                                size_c = self.extract_size_constraint(value_type)
+                                entry  = {'name': key, 'type': value_type, 'optional': optional}
+                                if size_c:
+                                    entry['size_constraint'] = size_c
+                                try:
+                                    current_fields[int(key)] = entry
+                                except ValueError:
+                                    current_fields[key] = entry
+                current_type = None  # fully parsed on this line
+                continue
+
             # IANA registered parameter (e.g., "&( keyname : 0 ) => value" or "& ( keyname : 0 ) => value")
             if '&(' in line_normalized and ')' in line_normalized and '=>' in line_normalized:
                 # Check if value type is on the same line
@@ -451,7 +500,9 @@ class CDDLParser:
             # Also includes CBOR tag notation: tagged-unsigned-corim-map = #6.501(unsigned-corim-map)
             # Also includes annotated primitives: short-text = tstr .size (1..10)
             # Must come before type definition checks
-            if '=' in line and '{' not in line and '[' not in line and '/=' not in line and '//=' not in line:
+            # Strip quoted strings before structural-char guards so that .regexp
+            # patterns (which contain "[...]" literals) are not incorrectly excluded.
+            if '=' in line and '{' not in _line_unquoted and '[' not in _line_unquoted and '/=' not in line and '//=' not in line:
                 # Exclude lines that look like group definitions: name = (content)
                 # but allow .size (M..N) annotations which have '(' later in the line
                 if not re.match(r'^[^=]+=\s*\(', line.strip()):
@@ -465,12 +516,15 @@ class CDDLParser:
                             alias_target = alias_target.split(';')[0].strip()
                         # Store all single-line non-complex definitions as aliases
                         # This includes CBOR tag notation: tagged-unsigned-corim-map = #6.501(unsigned-corim-map)
-                        if alias_target and not any(c in alias_target for c in ['{', '}', '[', ']', '&']):
+                        # _line_unquoted (computed above) strips quoted strings so that
+                        # .regexp patterns don't trigger the structural-char exclusion.
+                        _alias_check = re.sub(r'"[^"]*"', '', alias_target)
+                        if alias_target and not any(c in _alias_check for c in ['{', '}', '[', ']', '&']):
                             self.type_aliases[alias_name] = alias_target
                             logger.debug(f"Parsed type alias: {alias_name} = {alias_target}")
                             continue
             
-            # Type definition start (e.g., "person = {")
+            # Type definition start (e.g., "person = {" or single-line "person = { ... }")
             if '=' in line and '{' in line and '/=' not in line:
                 type_name = line.split('=')[0].strip()
                 # Handle generics like "non-empty<M>"
@@ -790,6 +844,43 @@ class CDDLParser:
         
         return None
     
+    def extract_value_range(self, type_string: str) -> Optional[dict]:
+        """Extract numeric value-range predicates from a CDDL type string.
+
+        Supports ``.ge``, ``.gt``, ``.le``, ``.lt`` (RFC 8610 §3.8.1).
+        Multiple predicates on the same type string are all captured.
+
+        Examples::
+
+            'uint .le 150'          -> {'ge': None, 'gt': None, 'le': 150, 'lt': None}
+            'uint .ge 0 .le 100'    -> {'ge': 0,    'gt': None, 'le': 100, 'lt': None}
+            'int .gt -1 .lt 128'    -> {'ge': None, 'gt': -1,   'le': None, 'lt': 128}
+
+        Returns ``None`` if no range predicates are found.
+        """
+        result = {'ge': None, 'gt': None, 'le': None, 'lt': None}
+        found = False
+        for op in ('ge', 'gt', 'le', 'lt'):
+            m = re.search(rf'\.{op}\s+(-?\d+(?:\.\d+)?)', type_string)
+            if m:
+                # Use int if value has no decimal point, float otherwise
+                raw = m.group(1)
+                result[op] = float(raw) if '.' in raw else int(raw)
+                found = True
+        return result if found else None
+
+    def extract_regexp(self, type_string: str) -> Optional[str]:
+        """Extract a ``.regexp`` pattern from a CDDL type string.
+
+        Example::
+
+            'tstr .regexp "[a-z]+"' -> '[a-z]+'
+
+        Returns the pattern string (without surrounding quotes), or ``None``.
+        """
+        m = re.search(r'\.regexp\s+"([^"]*)"', type_string)
+        return m.group(1) if m else None
+
     def extract_cbor_tag(self, type_string: str) -> Optional[Tuple[int, str]]:
         """Extract CBOR tag number and inner type from tag notation.
         
@@ -1481,6 +1572,22 @@ class CBORAnalyzer:
                         elif _base_type == 'uint' and value < 0:
                             type_mismatch = True
                             logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected uint (>=0), got {value}")
+                        else:
+                            # Check .ge / .gt / .le / .lt value-range predicates
+                            vrange = self.cddl.extract_value_range(_resolved)
+                            if vrange:
+                                if vrange['ge'] is not None and value < vrange['ge']:
+                                    type_mismatch = True
+                                    logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Value {value} < .ge {vrange['ge']}")
+                                elif vrange['gt'] is not None and value <= vrange['gt']:
+                                    type_mismatch = True
+                                    logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Value {value} not > .gt {vrange['gt']}")
+                                elif vrange['le'] is not None and value > vrange['le']:
+                                    type_mismatch = True
+                                    logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Value {value} > .le {vrange['le']}")
+                                elif vrange['lt'] is not None and value >= vrange['lt']:
+                                    type_mismatch = True
+                                    logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Value {value} not < .lt {vrange['lt']}")
                     elif _base_type == 'bool':
                         if not isinstance(value, bool):
                             type_mismatch = True
@@ -1513,6 +1620,12 @@ class CBORAnalyzer:
                                 elif size.get('max') is not None and length > size['max']:
                                     type_mismatch = True
                                     logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected at most {size['max']}, got {length}")
+                            # Check .regexp constraint
+                            pattern = self.cddl.extract_regexp(_resolved)
+                            if pattern and not type_mismatch:
+                                if not re.fullmatch(pattern, value):
+                                    type_mismatch = True
+                                    logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Regexp mismatch: {value!r} does not match /{pattern}/")
                     elif field_type == 'bstr' or _base_type == 'bstr':
                         if not isinstance(value, bytes):
                             type_mismatch = True
