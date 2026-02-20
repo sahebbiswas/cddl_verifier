@@ -1,3 +1,5 @@
+[![Python CI](https://github.com/sahebbiswas/cddl_verifier/actions/workflows/ci.yml/badge.svg)](https://github.com/sahebbiswas/cddl_verifier/actions/workflows/ci.yml)
+
 # CBOR-CDDL Analyzer and EDN Generator
 
 A Python toolkit for working with CBOR (Concise Binary Object Representation) data and
