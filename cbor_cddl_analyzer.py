@@ -296,6 +296,7 @@ class CDDLParser:
         self.socket_extensions: Dict[str, List] = {}  # Store socket extension points
         self.registered_params: Dict[int, str] = {}  # Maps keyindex to keyname
         self.type_aliases: Dict[str, str] = {}  # Store simple type aliases (name = other_name)
+        self.first_definition: Optional[str] = None  # First name defined in source order
         self.parse()
         
         # Add built-in CDDL primitive types
@@ -397,6 +398,11 @@ class CDDLParser:
             tokens.append(token)
 
         return tokens
+
+    def _record_first(self, name: str) -> None:
+        """Record *name* as the first-defined entry if none has been seen yet."""
+        if self.first_definition is None:
+            self.first_definition = name
 
     def parse(self):
         """Parse CDDL content to extract type definitions."""
@@ -526,6 +532,7 @@ class CDDLParser:
                 body = line[brace_open + 1 : brace_close].strip()
                 current_fields = {}
                 self.types[type_name] = {'fields': current_fields, 'type': 'map'}
+                self._record_first(type_name)
                 if body:
                     tokens = self._split_top_level_commas(body)
                     for token in tokens:
@@ -592,6 +599,7 @@ class CDDLParser:
                         _alias_check = re.sub(r'"[^"]*"', '', alias_target)
                         if alias_target and not any(c in _alias_check for c in ['{', '}', '[', ']', '&']):
                             self.type_aliases[alias_name] = alias_target
+                            self._record_first(alias_name)
                             logger.debug(f"Parsed type alias: {alias_name} = {alias_target}")
                             continue
             
@@ -604,6 +612,7 @@ class CDDLParser:
                 current_type = type_name
                 current_fields = {}
                 self.types[type_name] = {'fields': current_fields, 'type': 'map'}
+                self._record_first(type_name)
             
             # Array type definition (e.g., "items = [" or "numbers = [ + uint ]")
             elif '=' in line and '[' in line and '/=' not in line and '//=' not in line:
@@ -621,6 +630,7 @@ class CDDLParser:
                         'element_types': {0: inline_elem_type},
                         'occurrence': inline_occurrence,
                     }
+                    self._record_first(type_name)
                     current_type = None  # Single-line definition — no body to parse
                 else:
                     self.types[type_name] = {
@@ -629,6 +639,7 @@ class CDDLParser:
                         'element_types': {},
                         'occurrence': '',
                     }
+                    self._record_first(type_name)
             # Field definition (e.g., "name: tstr" or "0: tstr" or "0 : tstr")
             # Also handles named array fields (e.g., "environment: environment-map")
             elif ':' in line and current_type and '=>' not in line:
@@ -2579,23 +2590,42 @@ Examples:
         print(f"Error decoding CBOR: {_e}", file=sys.stderr)
         sys.exit(1)
     
-    # Validate if type is specified
-    if args.type:
-        print(f"Validating CBOR against CDDL (type: {args.type})...", file=sys.stderr)
+    # Resolve the root type: explicit (--type) or inferred from the first CDDL entry
+    root_type: Optional[str] = args.type
+    type_inferred = False
+    if root_type is None and cddl.first_definition:
+        root_type = cddl.first_definition
+        type_inferred = True
+        print(f"No --type specified; using first CDDL entry: '{root_type}'", file=sys.stderr)
+
+    # Validate against the root type.
+    # - Explicit --type: hard failure on validation errors (existing behaviour).
+    # - Inferred type:   log errors as warnings, then continue to show EDN output.
+    if root_type:
+        print(f"Validating CBOR against CDDL (type: {root_type})...", file=sys.stderr)
         analyzer = CBORAnalyzer(cddl)
-        
-        if analyzer.validate(cbor_data, args.type, cbor_bytes):
+
+        if analyzer.validate(cbor_data, root_type, cbor_bytes):
             print("[OK] Validation successful", file=sys.stderr)
         else:
-            print("[FAIL] Validation failed:", file=sys.stderr)
-            for error in analyzer.get_errors():
-                print(f"  - {error}", file=sys.stderr)
-            sys.exit(1)
-    
+            errors = analyzer.get_errors()
+            if type_inferred:
+                # Non-fatal: warn and fall back to unannotated EDN output
+                print("[WARNING] Type resolution/validation errors for inferred type "
+                      f"'{root_type}' (proceeding to EDN output):", file=sys.stderr)
+                for error in errors:
+                    logger.warning(error)
+                root_type = None  # Produce plain EDN without type annotations
+            else:
+                print("[FAIL] Validation failed:", file=sys.stderr)
+                for error in errors:
+                    print(f"  - {error}", file=sys.stderr)
+                sys.exit(1)
+
     # Generate EDN
     print("Generating EDN...", file=sys.stderr)
     generator = EDNGenerator(cddl, edn_format=args.edn_format)
-    edn_output = generator.generate(cbor_data, args.type, args.annotate)
+    edn_output = generator.generate(cbor_data, root_type, args.annotate)
     
     # Output EDN
     if args.output:
