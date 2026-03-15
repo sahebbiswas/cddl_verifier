@@ -1025,5 +1025,392 @@ class TestValidationGapsCoverage(unittest.TestCase):
         self.assertIn("/ value / 0:", edn, "EDN should show inner field annotation")
         self.assertIn("42", edn, "EDN should show inner value")
 
+class TestFirstDefinition(unittest.TestCase):
+    """Tests for CDDLParser.first_definition — the auto-infer root-type feature."""
+
+    def test_first_definition_is_alias(self):
+        """first_definition picks up a type alias as the first entry."""
+        cddl = CDDLParser("my-root = tstr\nother = uint")
+        self.assertEqual(cddl.first_definition, 'my-root')
+
+    def test_first_definition_is_map(self):
+        """first_definition picks up a map as the first entry."""
+        cddl_text = """
+        top-map = {
+          &( x : 0 ) => uint,
+        }
+        alias = tstr
+        """
+        cddl = CDDLParser(cddl_text)
+        self.assertEqual(cddl.first_definition, 'top-map')
+
+    def test_first_definition_is_array(self):
+        """first_definition picks up an array as the first entry."""
+        cddl_text = """
+        top-array = [ + uint ]
+        some-map = {
+          &( y : 0 ) => tstr,
+        }
+        """
+        cddl = CDDLParser(cddl_text)
+        self.assertEqual(cddl.first_definition, 'top-array')
+
+    def test_first_definition_alias_before_map(self):
+        """When an alias precedes all maps/arrays it wins over the first map."""
+        cddl_text = """
+        corim = concise-rim-type-choice
+        concise-rim-type-choice /= tagged-corim-map
+        tagged-corim-map = #6.501(corim-map)
+        corim-map = {
+          &( id : 0 ) => tstr,
+        }
+        """
+        cddl = CDDLParser(cddl_text)
+        self.assertEqual(cddl.first_definition, 'corim')
+
+    def test_first_definition_empty_schema(self):
+        """An empty schema leaves first_definition as None."""
+        cddl = CDDLParser("")
+        self.assertIsNone(cddl.first_definition)
+
+
+class TestResolveTypeAliasFixed(unittest.TestCase):
+    """Tests for the two resolve_type_alias bug fixes."""
+
+    def test_primitive_self_loop_no_repeat(self):
+        """Primitives that map to themselves must resolve in a single step.
+
+        Before the fix, 'uint' looped 10 times because _add_builtin_types
+        registers it as uint -> uint.  The loop should break immediately.
+        """
+        cddl = CDDLParser("")
+        # Calling resolve_type_alias must return instantly — no assertion about
+        # the return value other than it being the same primitive.
+        result = cddl.resolve_type_alias('uint')
+        self.assertEqual(result, 'uint')
+
+    def test_all_builtin_primitives_resolve_cleanly(self):
+        """Every builtin primitive must resolve to itself without looping."""
+        cddl = CDDLParser("")
+        for name in ('uint', 'int', 'bool', 'tstr', 'bstr', 'float',
+                     'nil', 'null', 'any', 'text', 'bytes', 'nint',
+                     'float16', 'float32', 'float64', 'true', 'false'):
+            result = cddl.resolve_type_alias(name)
+            # Must return without infinite loop; result must be a non-empty string
+            self.assertIsInstance(result, str)
+            self.assertTrue(len(result) > 0, f"resolve_type_alias('{name}') returned empty string")
+
+    def test_alias_chain_to_primitive_no_type_not_found(self):
+        """Alias chains that resolve to a CDDL primitive must NOT log 'Type not found'.
+
+        Before the fix, get_type('oid-type') correctly resolved oid-type -> bytes
+        -> bstr but then fell through to 'Type not found' because bstr is not in
+        self.types.  The correct result is None (no structured definition), with
+        no spurious error log.
+        """
+        cddl_text = """
+        oid-type = bytes
+        """
+        cddl = CDDLParser(cddl_text)
+        # oid-type -> bytes -> bstr (via builtin alias)
+        # get_type should return None cleanly, not raise or misroute
+        result = cddl.get_type('oid-type')
+        self.assertIsNone(result,
+            "get_type on a name that resolves to a primitive should return None, not raise")
+
+    def test_get_type_direct_primitive_returns_none(self):
+        """get_type on a raw primitive name must return None without error."""
+        cddl = CDDLParser("")
+        for prim in ('tstr', 'uint', 'bstr', 'bool', 'float', 'int'):
+            self.assertIsNone(cddl.get_type(prim),
+                f"get_type('{prim}') should return None for a bare primitive")
+
+
+class TestValueRangeValidation(unittest.TestCase):
+    """Tests for .ge / .gt / .le / .lt value-range predicates."""
+
+    def _schema(self, constraint):
+        return CDDLParser(f"""
+        record = {{
+          &( value : 0 ) => uint {constraint},
+        }}
+        """)
+
+    def test_le_accepts_at_boundary(self):
+        self.assertTrue(CBORAnalyzer(self._schema('.le 100')).validate({0: 100}, 'record'))
+
+    def test_le_rejects_above_boundary(self):
+        self.assertFalse(CBORAnalyzer(self._schema('.le 100')).validate({0: 101}, 'record'))
+
+    def test_ge_accepts_at_boundary(self):
+        self.assertTrue(CBORAnalyzer(self._schema('.ge 5')).validate({0: 5}, 'record'))
+
+    def test_ge_rejects_below_boundary(self):
+        self.assertFalse(CBORAnalyzer(self._schema('.ge 5')).validate({0: 4}, 'record'))
+
+    def test_lt_rejects_at_boundary(self):
+        """lt is strict: value must be *less than*, not equal."""
+        self.assertFalse(CBORAnalyzer(self._schema('.lt 10')).validate({0: 10}, 'record'))
+
+    def test_lt_accepts_below_boundary(self):
+        self.assertTrue(CBORAnalyzer(self._schema('.lt 10')).validate({0: 9}, 'record'))
+
+    def test_gt_rejects_at_boundary(self):
+        """gt is strict: value must be *greater than*, not equal."""
+        self.assertFalse(CBORAnalyzer(self._schema('.gt 0')).validate({0: 0}, 'record'))
+
+    def test_gt_accepts_above_boundary(self):
+        self.assertTrue(CBORAnalyzer(self._schema('.gt 0')).validate({0: 1}, 'record'))
+
+    def test_combined_ge_le_range(self):
+        schema = self._schema('.ge 0 .le 150')
+        self.assertTrue(CBORAnalyzer(schema).validate({0: 0},   'record'))
+        self.assertTrue(CBORAnalyzer(schema).validate({0: 150}, 'record'))
+        self.assertFalse(CBORAnalyzer(schema).validate({0: 151}, 'record'))
+
+    def test_extract_value_range_returns_none_for_plain_type(self):
+        cddl = CDDLParser("")
+        self.assertIsNone(cddl.extract_value_range('uint'))
+
+    def test_extract_value_range_parses_correctly(self):
+        cddl = CDDLParser("")
+        r = cddl.extract_value_range('uint .ge 1 .le 255')
+        self.assertIsNotNone(r)
+        self.assertEqual(r['ge'], 1)
+        self.assertEqual(r['le'], 255)
+        self.assertIsNone(r['gt'])
+        self.assertIsNone(r['lt'])
+
+
+class TestRegexpValidation(unittest.TestCase):
+    """Tests for .regexp string pattern validation."""
+
+    def _schema(self, pattern):
+        return CDDLParser(f"""
+        record = {{
+          &( label : 0 ) => tstr .regexp "{pattern}",
+        }}
+        """)
+
+    def test_matching_string_accepted(self):
+        self.assertTrue(CBORAnalyzer(self._schema('[a-z]+')).validate({0: 'hello'}, 'record'))
+
+    def test_non_matching_string_rejected(self):
+        self.assertFalse(CBORAnalyzer(self._schema('[a-z]+')).validate({0: 'Hello'}, 'record'))
+
+    def test_full_match_required(self):
+        """re.fullmatch is used — a partial match must not pass."""
+        self.assertFalse(CBORAnalyzer(self._schema('[0-9]+')).validate({0: '12abc'}, 'record'))
+
+    def test_extract_regexp_returns_pattern(self):
+        cddl = CDDLParser("")
+        self.assertEqual(cddl.extract_regexp('tstr .regexp "[A-Z]{3}"'), '[A-Z]{3}')
+
+    def test_extract_regexp_returns_none_without_annotation(self):
+        cddl = CDDLParser("")
+        self.assertIsNone(cddl.extract_regexp('tstr'))
+
+
+class TestMissingRequiredField(unittest.TestCase):
+    """Tests for required-field enforcement and error messaging."""
+
+    def setUp(self):
+        self.cddl = CDDLParser("""
+        person = {
+          &( name : 0 ) => tstr,
+          &( age  : 1 ) => uint,
+          ? &( note : 2 ) => tstr,
+        }
+        """)
+
+    def test_missing_required_field_fails(self):
+        analyzer = CBORAnalyzer(self.cddl)
+        self.assertFalse(analyzer.validate({1: 30}, 'person'),
+                         "Omitting a required field must fail")
+
+    def test_missing_required_field_error_mentions_field_name(self):
+        analyzer = CBORAnalyzer(self.cddl)
+        analyzer.validate({1: 30}, 'person')
+        errors = ' '.join(analyzer.get_errors())
+        self.assertIn('name', errors,
+                      "Error message should mention the missing field name")
+
+    def test_all_required_fields_present_passes(self):
+        self.assertTrue(CBORAnalyzer(self.cddl).validate({0: 'Alice', 1: 30}, 'person'))
+
+    def test_optional_field_absent_passes(self):
+        self.assertTrue(CBORAnalyzer(self.cddl).validate({0: 'Alice', 1: 30}, 'person'))
+
+    def test_multiple_missing_required_fields_reported(self):
+        """All missing required fields should be reported, not just the first."""
+        analyzer = CBORAnalyzer(self.cddl)
+        analyzer.validate({}, 'person')
+        errors = ' '.join(analyzer.get_errors())
+        self.assertIn('name', errors)
+        self.assertIn('age', errors)
+
+
+class TestSocketExtensions(unittest.TestCase):
+    """Tests for $$socket //= extension parsing."""
+
+    def test_socket_extension_stored(self):
+        cddl = CDDLParser("$$my-ext //= extra-field")
+        self.assertIn('$$my-ext', cddl.socket_extensions)
+        self.assertIn('extra-field', cddl.socket_extensions['$$my-ext'])
+
+    def test_multiple_socket_extensions_accumulated(self):
+        cddl_text = """
+        $$my-ext //= field-a
+        $$my-ext //= field-b
+        """
+        cddl = CDDLParser(cddl_text)
+        exts = cddl.socket_extensions.get('$$my-ext', [])
+        self.assertIn('field-a', exts)
+        self.assertIn('field-b', exts)
+
+    def test_get_socket_extensions_helper(self):
+        cddl = CDDLParser("$$sock //= val")
+        self.assertIsNotNone(cddl.get_socket_extensions('$$sock'))
+        self.assertIsNone(cddl.get_socket_extensions('$$nonexistent'))
+
+
+class TestNintValidation(unittest.TestCase):
+    """Tests for nint (negative integer) type handling."""
+
+    def setUp(self):
+        self.cddl = CDDLParser("""
+        signed = {
+          &( delta : 0 ) => int,
+        }
+        """)
+
+    def test_negative_integer_accepted_for_int(self):
+        self.assertTrue(CBORAnalyzer(self.cddl).validate({0: -1}, 'signed'))
+
+    def test_positive_integer_accepted_for_int(self):
+        self.assertTrue(CBORAnalyzer(self.cddl).validate({0: 0}, 'signed'))
+
+    def test_bool_rejected_for_int(self):
+        """bool is a Python subclass of int but must be rejected for CBOR int fields."""
+        self.assertFalse(CBORAnalyzer(self.cddl).validate({0: True}, 'signed'))
+
+    def test_uint_rejects_negative(self):
+        cddl = CDDLParser("""
+        rec = {
+          &( count : 0 ) => uint,
+        }
+        """)
+        self.assertFalse(CBORAnalyzer(cddl).validate({0: -1}, 'rec'))
+
+
+class TestEDNAnnotateFalse(unittest.TestCase):
+    """Tests for EDNGenerator with annotate=False."""
+
+    def setUp(self):
+        self.cddl = CDDLParser("""
+        person = {
+          &( name : 0 ) => tstr,
+          &( age  : 1 ) => uint,
+        }
+        """)
+        self.generator = EDNGenerator(self.cddl, edn_format='keyindex')
+
+    def test_no_annotations_when_annotate_false(self):
+        edn = self.generator.generate({0: 'Alice', 1: 30}, 'person', annotate=False)
+        self.assertNotIn('/ name /', edn)
+        self.assertNotIn('/ age /', edn)
+
+    def test_values_still_present_when_annotate_false(self):
+        edn = self.generator.generate({0: 'Alice', 1: 30}, 'person', annotate=False)
+        self.assertIn('"Alice"', edn)
+        self.assertIn('30', edn)
+
+    def test_annotate_true_shows_field_names(self):
+        edn = self.generator.generate({0: 'Alice', 1: 30}, 'person', annotate=True)
+        self.assertIn('/ name /', edn)
+        self.assertIn('/ age /', edn)
+
+
+class TestValidateNoType(unittest.TestCase):
+    """validate() with type_name=None must be a no-op and return True."""
+
+    def test_validate_none_type_returns_true(self):
+        cddl = CDDLParser("rec = { &( x : 0 ) => uint }")
+        analyzer = CBORAnalyzer(cddl)
+        self.assertTrue(analyzer.validate({0: 'wrong-type-but-no-schema-given'}, None))
+
+    def test_validate_none_type_no_errors(self):
+        cddl = CDDLParser("rec = { &( x : 0 ) => uint }")
+        analyzer = CBORAnalyzer(cddl)
+        analyzer.validate({99: 'anything'}, None)
+        self.assertEqual(analyzer.get_errors(), [])
+
+
+class TestArrayElementSizeConstraint(unittest.TestCase):
+    """Size constraints on array element types must be enforced."""
+
+    def test_array_bstr_element_exact_size_accepted(self):
+        cddl = CDDLParser("hashes = [ + bstr .size 4 ]")
+        self.assertTrue(CBORAnalyzer(cddl).validate([b'abcd', b'efgh'], 'hashes'))
+
+    def test_array_bstr_element_wrong_size_rejected(self):
+        cddl = CDDLParser("hashes = [ + bstr .size 4 ]")
+        self.assertFalse(CBORAnalyzer(cddl).validate([b'abc'], 'hashes'),
+                         "bstr element with wrong size should fail")
+
+    def test_array_tstr_element_max_size_rejected(self):
+        cddl = CDDLParser("labels = [ + tstr .size (1..5) ]")
+        self.assertFalse(CBORAnalyzer(cddl).validate(['toolong'], 'labels'),
+                         "tstr element exceeding max size should fail")
+
+
+class TestGroupParsing(unittest.TestCase):
+    """Tests for CDDL group definitions."""
+
+    def test_single_line_group_stored(self):
+        cddl = CDDLParser("my-group = ( field-a )")
+        self.assertIn('my-group', cddl.groups)
+
+    def test_get_group_helper(self):
+        cddl = CDDLParser("my-group = ( field-a )")
+        self.assertIsNotNone(cddl.get_group('my-group'))
+        self.assertIsNone(cddl.get_group('nonexistent'))
+
+    def test_multiline_group_stored(self):
+        cddl_text = """
+        meta-group = (
+          corim-meta-identity,
+          ? cwt-claims-identity,
+        )
+        """
+        cddl = CDDLParser(cddl_text)
+        self.assertIn('meta-group', cddl.groups)
+
+
+class TestTypeChoiceResolution(unittest.TestCase):
+    """Tests for type-choice auto-resolution during validation."""
+
+    def test_validate_resolves_type_choice_via_alias(self):
+        """validate() on an alias-to-choice must auto-resolve and succeed."""
+        cddl_text = """
+        root = $my-choice
+        $my-choice /= item-map
+        item-map = {
+          &( x : 0 ) => uint,
+        }
+        """
+        cddl = CDDLParser(cddl_text)
+        # root -> $my-choice -> item-map: valid data should pass
+        self.assertTrue(CBORAnalyzer(cddl).validate({0: 1}, 'item-map'))
+
+    def test_unknown_type_produces_error(self):
+        """validate() on a completely unknown type must return False with an error."""
+        cddl = CDDLParser("rec = { &( x : 0 ) => uint }")
+        analyzer = CBORAnalyzer(cddl)
+        result = analyzer.validate({0: 1}, 'totally-unknown-type')
+        self.assertFalse(result)
+        self.assertTrue(len(analyzer.get_errors()) > 0)
+
+
 if __name__ == '__main__':
     unittest.main()

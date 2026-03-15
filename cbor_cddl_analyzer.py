@@ -869,6 +869,8 @@ class CDDLParser:
         logger.debug(f"Resolving type alias: {type_name}")
         while resolved in self.type_aliases and depth < max_depth:
             next_resolved = self.type_aliases[resolved]
+            if next_resolved == resolved:
+                break  # Self-referential alias (e.g. builtin primitive): stop immediately
             logger.debug(f"  {resolved} -> {next_resolved}")
             resolved = next_resolved
             depth += 1
@@ -1181,7 +1183,15 @@ class CDDLParser:
                 tag_num, inner_type = tag_info
                 logger.debug(f"  Type is alias to tag notation {tag_num}: inner type = {inner_type}")
                 return self.get_type(inner_type, cbor_data)
-        
+
+        # If the name (or its resolved alias) is a known CDDL primitive there is
+        # no structured type definition — that is correct and expected, not an error.
+        _PRIMITIVES = {'uint', 'int', 'bool', 'nil', 'null', 'float', 'tstr', 'bstr', 'any'}
+        terminal = resolved_name if resolved_name != type_name else type_name
+        if re.split(r'[\s.]', terminal)[0] in _PRIMITIVES:
+            logger.debug(f"  Resolved to primitive: {terminal}")
+            return None
+
         logger.debug(f"  Type not found: {type_name}")
         return None
     
