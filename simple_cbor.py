@@ -468,6 +468,11 @@ class CBOR:
     def _diag_dump_uint(self, start_pos: int, additional_info: int, label: str) -> None:
         """Dump unsigned integer."""
         value, end_pos = self._diag_read_uint(additional_info)
+        if value == -1:
+            hex_bytes = self._diag_data[start_pos:end_pos]
+            self._diag_add_line(start_pos, hex_bytes, f"{label}uint(?)")
+            self._diag_add_line(self._diag_pos, b'', "# ERROR: Unexpected end of data")
+            return
         hex_bytes = self._diag_data[start_pos:end_pos]
         self._diag_add_line(start_pos, hex_bytes, f"{label}uint({value})")
     
@@ -617,26 +622,35 @@ class CBOR:
     
     def _diag_read_uint(self, additional_info: int) -> Tuple[int, int]:
         """Read uint and return (value, end_position)."""
-        if additional_info < 24:
-            return additional_info, self._diag_pos
-        elif additional_info == 24:
-            value = self._diag_data[self._diag_pos]
-            self._diag_pos += 1
-            return value, self._diag_pos
-        elif additional_info == 25:
-            value = struct.unpack('>H', self._diag_data[self._diag_pos:self._diag_pos+2])[0]
-            self._diag_pos += 2
-            return value, self._diag_pos
-        elif additional_info == 26:
-            value = struct.unpack('>I', self._diag_data[self._diag_pos:self._diag_pos+4])[0]
-            self._diag_pos += 4
-            return value, self._diag_pos
-        elif additional_info == 27:
-            value = struct.unpack('>Q', self._diag_data[self._diag_pos:self._diag_pos+8])[0]
-            self._diag_pos += 8
-            return value, self._diag_pos
-        else:
-            return 0, self._diag_pos
+        try:
+            if additional_info < 24:
+                return additional_info, self._diag_pos
+            elif additional_info == 24:
+                value = self._diag_data[self._diag_pos]
+                self._diag_pos += 1
+                return value, self._diag_pos
+            elif additional_info == 25:
+                value = struct.unpack('>H', self._read_diag_bytes(2))[0]
+                return value, self._diag_pos
+            elif additional_info == 26:
+                value = struct.unpack('>I', self._read_diag_bytes(4))[0]
+                return value, self._diag_pos
+            elif additional_info == 27:
+                value = struct.unpack('>Q', self._read_diag_bytes(8))[0]
+                return value, self._diag_pos
+            else:
+                return 0, self._diag_pos
+        except (IndexError, struct.error):
+            # Return marker that error occurred
+            return -1, self._diag_pos
+
+    def _read_diag_bytes(self, n: int) -> bytes:
+        """Read n bytes from diag data, raising IndexError if not enough."""
+        if self._diag_pos + n > len(self._diag_data):
+            raise IndexError("Unexpected end of data")
+        result = self._diag_data[self._diag_pos:self._diag_pos + n]
+        self._diag_pos += n
+        return result
     
     def _diag_read_bytes(self, n: int) -> bytes:
         """Read n bytes from diag data."""
@@ -1165,8 +1179,7 @@ def cbor_diag_dump(data: bytes, indent: str = "  ") -> str:
     Returns:
         Pretty-printed diagnostic dump
     """
-    cbor = CBOR.load(data)
-    return cbor.diag(indent)
+    return CBOR()._generate_diag(data, indent)
 
 
 # For backward compatibility
