@@ -332,7 +332,7 @@ class CBOR:
         """Decode array."""
         length = self._decode_length(additional_info)
         array = []
-        for i in range(length):
+        for _ in range(length):
             array.append(self._decode_item())
         return array
     
@@ -340,7 +340,7 @@ class CBOR:
         """Decode map."""
         length = self._decode_length(additional_info)
         map_dict = {}
-        for i in range(length):
+        for _ in range(length):
             key = self._decode_item()
             value = self._decode_item()
             map_dict[key] = value
@@ -627,7 +627,7 @@ class CBOR:
         
         if length > 0:
             self._diag_current_indent += 1
-            for i in range(length):
+            for _ in range(length):
                 if self._diag_pos >= len(self._diag_data):
                     self._diag_add_line(self._diag_pos, b'', "# ERROR: Unexpected end of data")
                     break
@@ -659,29 +659,35 @@ class CBOR:
     
     def _diag_dump_simple(self, start_pos: int, additional_info: int, label: str) -> None:
         """Dump simple values."""
-        if additional_info == SIMPLE_FALSE:
-            self._diag_add_line(start_pos, bytes([0xf4]), f"{label}false")
-        elif additional_info == SIMPLE_TRUE:
-            self._diag_add_line(start_pos, bytes([0xf5]), f"{label}true")
-        elif additional_info == SIMPLE_NULL:
-            self._diag_add_line(start_pos, bytes([0xf6]), f"{label}null")
-        elif additional_info == SIMPLE_FLOAT16:
-            float_bytes = self._diag_read_bytes(2)
-            all_bytes = self._diag_data[start_pos:self._diag_pos]
-            self._diag_add_line(start_pos, all_bytes, f"{label}float16")
-        elif additional_info == SIMPLE_FLOAT32:
-            float_bytes = self._diag_read_bytes(4)
-            value = struct.unpack('>f', float_bytes)[0]
-            all_bytes = self._diag_data[start_pos:self._diag_pos]
-            self._diag_add_line(start_pos, all_bytes, f"{label}float32({value})")
-        elif additional_info == SIMPLE_FLOAT64:
-            float_bytes = self._diag_read_bytes(8)
-            value = struct.unpack('>d', float_bytes)[0]
-            all_bytes = self._diag_data[start_pos:self._diag_pos]
-            self._diag_add_line(start_pos, all_bytes, f"{label}float64({value})")
-        else:
-            self._diag_add_line(start_pos, bytes([0xe0 | additional_info]), f"{label}simple({additional_info})")
-    
+        try:
+            if additional_info == SIMPLE_FALSE:
+                self._diag_add_line(start_pos, bytes([0xf4]), f"{label}false")
+            elif additional_info == SIMPLE_TRUE:
+                self._diag_add_line(start_pos, bytes([0xf5]), f"{label}true")
+            elif additional_info == SIMPLE_NULL:
+                self._diag_add_line(start_pos, bytes([0xf6]), f"{label}null")
+            elif additional_info == SIMPLE_FLOAT16:
+                float_bytes = self._read_diag_bytes(2)
+                all_bytes = self._diag_data[start_pos:self._diag_pos]
+                self._diag_add_line(start_pos, all_bytes, f"{label}float16")
+            elif additional_info == SIMPLE_FLOAT32:
+                float_bytes = self._read_diag_bytes(4)
+                value = struct.unpack('>f', float_bytes)[0]
+                all_bytes = self._diag_data[start_pos:self._diag_pos]
+                self._diag_add_line(start_pos, all_bytes, f"{label}float32({value})")
+            elif additional_info == SIMPLE_FLOAT64:
+                float_bytes = self._read_diag_bytes(8)
+                value = struct.unpack('>d', float_bytes)[0]
+                all_bytes = self._diag_data[start_pos:self._diag_pos]
+                self._diag_add_line(start_pos, all_bytes, f"{label}float64({value})")
+            else:
+                self._diag_add_line(start_pos, bytes([0xe0 | additional_info]), f"{label}simple({additional_info})")
+        except (IndexError, struct.error):
+            all_bytes = self._diag_data[start_pos:]
+            self._diag_add_line(start_pos, all_bytes, f"{label}simple(?)")
+            self._diag_add_line(len(self._diag_data), b'', "# ERROR: Unexpected end of data")
+            self._diag_pos = len(self._diag_data)
+
     def _diag_read_uint(self, additional_info: int) -> Tuple[int, int]:
         """Read uint and return (value, end_position)."""
         try:

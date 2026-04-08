@@ -119,5 +119,19 @@ class TestCBORDiagDumpExtra(unittest.TestCase):
         dump = cbor_diag_dump(data)
         self.assertIn("float64(3.141592653589793)", dump)
 
+    def test_dump_truncated_floats(self):
+        """Test diagnostic dump of truncated float payloads."""
+        # Truncated float32
+        data = b'\xfa\x40\x48\xf5' # missing last byte
+        dump = cbor_diag_dump(data)
+        self.assertIn("simple(?)", dump)
+        self.assertIn("# ERROR: Unexpected end of data", dump)
+
+        # Truncated float64
+        data = b'\xfb\x40\x09\x21\xfb' # missing several bytes
+        dump = cbor_diag_dump(data)
+        self.assertIn("simple(?)", dump)
+        self.assertIn("# ERROR: Unexpected end of data", dump)
+
 if __name__ == '__main__':
     unittest.main()
