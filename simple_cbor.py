@@ -332,7 +332,7 @@ class CBOR:
         """Decode array."""
         length = self._decode_length(additional_info)
         array = []
-        for i in range(length):
+        for _ in range(length):
             array.append(self._decode_item())
         return array
     
@@ -340,7 +340,7 @@ class CBOR:
         """Decode map."""
         length = self._decode_length(additional_info)
         map_dict = {}
-        for i in range(length):
+        for _ in range(length):
             key = self._decode_item()
             value = self._decode_item()
             map_dict[key] = value
@@ -468,12 +468,22 @@ class CBOR:
     def _diag_dump_uint(self, start_pos: int, additional_info: int, label: str) -> None:
         """Dump unsigned integer."""
         value, end_pos = self._diag_read_uint(additional_info)
+        if value == -1:
+            hex_bytes = self._diag_data[start_pos:end_pos]
+            self._diag_add_line(start_pos, hex_bytes, f"{label}uint(?)")
+            self._diag_add_line(self._diag_pos, b'', "# ERROR: Unexpected end of data")
+            return
         hex_bytes = self._diag_data[start_pos:end_pos]
         self._diag_add_line(start_pos, hex_bytes, f"{label}uint({value})")
     
     def _diag_dump_nint(self, start_pos: int, additional_info: int, label: str) -> None:
         """Dump negative integer."""
         uint_value, end_pos = self._diag_read_uint(additional_info)
+        if uint_value == -1:
+            hex_bytes = self._diag_data[start_pos:end_pos]
+            self._diag_add_line(start_pos, hex_bytes, f"{label}nint(?)")
+            self._diag_add_line(self._diag_pos, b'', "# ERROR: Unexpected end of data")
+            return
         value = -1 - uint_value
         hex_bytes = self._diag_data[start_pos:end_pos]
         self._diag_add_line(start_pos, hex_bytes, f"{label}nint({value})")
@@ -481,6 +491,11 @@ class CBOR:
     def _diag_dump_bstr(self, start_pos: int, additional_info: int, label: str) -> None:
         """Dump byte string."""
         length, length_end = self._diag_read_uint(additional_info)
+        if length == -1:
+            hex_bytes = self._diag_data[start_pos:length_end]
+            self._diag_add_line(start_pos, hex_bytes, f"{label}bytes(?)")
+            self._diag_add_line(self._diag_pos, b'', "# ERROR: Unexpected end of data")
+            return
         
         # Header
         header_bytes = self._diag_data[start_pos:length_end]
@@ -491,6 +506,16 @@ class CBOR:
             self._diag_current_indent += 1
             data_start = length_end
             data_end = length_end + length
+
+            # Check for truncation of payload
+            if data_end > len(self._diag_data):
+                data_bytes = self._diag_data[data_start:]
+                self._diag_add_line(data_start, data_bytes, f"h'{data_bytes.hex()}'")
+                self._diag_add_line(len(self._diag_data), b'', "# ERROR: Unexpected end of data")
+                self._diag_current_indent -= 1
+                self._diag_pos = len(self._diag_data)
+                return
+
             data_bytes = self._diag_data[data_start:data_end]
             
             if length <= 32:
@@ -507,6 +532,11 @@ class CBOR:
     def _diag_dump_tstr(self, start_pos: int, additional_info: int, label: str) -> None:
         """Dump text string."""
         length, length_end = self._diag_read_uint(additional_info)
+        if length == -1:
+            hex_bytes = self._diag_data[start_pos:length_end]
+            self._diag_add_line(start_pos, hex_bytes, f"{label}text(?)")
+            self._diag_add_line(self._diag_pos, b'', "# ERROR: Unexpected end of data")
+            return
         
         # Header
         header_bytes = self._diag_data[start_pos:length_end]
@@ -517,6 +547,16 @@ class CBOR:
             self._diag_current_indent += 1
             data_start = length_end
             data_end = length_end + length
+
+            # Check for truncation of payload
+            if data_end > len(self._diag_data):
+                data_bytes = self._diag_data[data_start:]
+                self._diag_add_line(data_start, data_bytes, f"# Truncated UTF-8: {data_bytes.hex()}")
+                self._diag_add_line(len(self._diag_data), b'', "# ERROR: Unexpected end of data")
+                self._diag_current_indent -= 1
+                self._diag_pos = len(self._diag_data)
+                return
+
             data_bytes = self._diag_data[data_start:data_end]
             
             try:
@@ -555,6 +595,11 @@ class CBOR:
     def _diag_dump_array(self, start_pos: int, additional_info: int, label: str) -> None:
         """Dump array."""
         length, length_end = self._diag_read_uint(additional_info)
+        if length == -1:
+            hex_bytes = self._diag_data[start_pos:length_end]
+            self._diag_add_line(start_pos, hex_bytes, f"{label}array(?)")
+            self._diag_add_line(self._diag_pos, b'', "# ERROR: Unexpected end of data")
+            return
         
         header_bytes = self._diag_data[start_pos:length_end]
         self._diag_add_line(start_pos, header_bytes, f"{label}array({length})")
@@ -562,81 +607,118 @@ class CBOR:
         if length > 0:
             self._diag_current_indent += 1
             for i in range(length):
+                if self._diag_pos >= len(self._diag_data):
+                    self._diag_add_line(self._diag_pos, b'', "# ERROR: Unexpected end of data")
+                    break
                 self._diag_dump_item(f"[{i}] ")
             self._diag_current_indent -= 1
     
     def _diag_dump_map(self, start_pos: int, additional_info: int, label: str) -> None:
         """Dump map."""
         length, length_end = self._diag_read_uint(additional_info)
+        if length == -1:
+            hex_bytes = self._diag_data[start_pos:length_end]
+            self._diag_add_line(start_pos, hex_bytes, f"{label}map(?)")
+            self._diag_add_line(self._diag_pos, b'', "# ERROR: Unexpected end of data")
+            return
         
         header_bytes = self._diag_data[start_pos:length_end]
         self._diag_add_line(start_pos, header_bytes, f"{label}map({length})")
         
         if length > 0:
             self._diag_current_indent += 1
-            for i in range(length):
+            for _ in range(length):
+                if self._diag_pos >= len(self._diag_data):
+                    self._diag_add_line(self._diag_pos, b'', "# ERROR: Unexpected end of data")
+                    break
                 self._diag_dump_item("key: ")
+                if self._diag_pos >= len(self._diag_data):
+                    self._diag_add_line(self._diag_pos, b'', "# ERROR: Unexpected end of data")
+                    break
                 self._diag_dump_item("val: ")
             self._diag_current_indent -= 1
     
     def _diag_dump_tag(self, start_pos: int, additional_info: int, label: str) -> None:
         """Dump tagged item."""
         tag_num, tag_end = self._diag_read_uint(additional_info)
+        if tag_num == -1:
+            hex_bytes = self._diag_data[start_pos:tag_end]
+            self._diag_add_line(start_pos, hex_bytes, f"{label}tag(?)")
+            self._diag_add_line(self._diag_pos, b'', "# ERROR: Unexpected end of data")
+            return
         
         header_bytes = self._diag_data[start_pos:tag_end]
         self._diag_add_line(start_pos, header_bytes, f"{label}tag({tag_num})")
         
         self._diag_current_indent += 1
-        self._diag_dump_item()
+        if self._diag_pos >= len(self._diag_data):
+            self._diag_add_line(self._diag_pos, b'', "# ERROR: Unexpected end of data")
+        else:
+            self._diag_dump_item()
         self._diag_current_indent -= 1
     
     def _diag_dump_simple(self, start_pos: int, additional_info: int, label: str) -> None:
         """Dump simple values."""
-        if additional_info == SIMPLE_FALSE:
-            self._diag_add_line(start_pos, bytes([0xf4]), f"{label}false")
-        elif additional_info == SIMPLE_TRUE:
-            self._diag_add_line(start_pos, bytes([0xf5]), f"{label}true")
-        elif additional_info == SIMPLE_NULL:
-            self._diag_add_line(start_pos, bytes([0xf6]), f"{label}null")
-        elif additional_info == SIMPLE_FLOAT16:
-            float_bytes = self._diag_read_bytes(2)
-            all_bytes = self._diag_data[start_pos:self._diag_pos]
-            self._diag_add_line(start_pos, all_bytes, f"{label}float16")
-        elif additional_info == SIMPLE_FLOAT32:
-            float_bytes = self._diag_read_bytes(4)
-            value = struct.unpack('>f', float_bytes)[0]
-            all_bytes = self._diag_data[start_pos:self._diag_pos]
-            self._diag_add_line(start_pos, all_bytes, f"{label}float32({value})")
-        elif additional_info == SIMPLE_FLOAT64:
-            float_bytes = self._diag_read_bytes(8)
-            value = struct.unpack('>d', float_bytes)[0]
-            all_bytes = self._diag_data[start_pos:self._diag_pos]
-            self._diag_add_line(start_pos, all_bytes, f"{label}float64({value})")
-        else:
-            self._diag_add_line(start_pos, bytes([0xe0 | additional_info]), f"{label}simple({additional_info})")
-    
+        try:
+            if additional_info == SIMPLE_FALSE:
+                self._diag_add_line(start_pos, bytes([0xf4]), f"{label}false")
+            elif additional_info == SIMPLE_TRUE:
+                self._diag_add_line(start_pos, bytes([0xf5]), f"{label}true")
+            elif additional_info == SIMPLE_NULL:
+                self._diag_add_line(start_pos, bytes([0xf6]), f"{label}null")
+            elif additional_info == SIMPLE_FLOAT16:
+                float_bytes = self._read_diag_bytes(2)
+                all_bytes = self._diag_data[start_pos:self._diag_pos]
+                self._diag_add_line(start_pos, all_bytes, f"{label}float16")
+            elif additional_info == SIMPLE_FLOAT32:
+                float_bytes = self._read_diag_bytes(4)
+                value = struct.unpack('>f', float_bytes)[0]
+                all_bytes = self._diag_data[start_pos:self._diag_pos]
+                self._diag_add_line(start_pos, all_bytes, f"{label}float32({value})")
+            elif additional_info == SIMPLE_FLOAT64:
+                float_bytes = self._read_diag_bytes(8)
+                value = struct.unpack('>d', float_bytes)[0]
+                all_bytes = self._diag_data[start_pos:self._diag_pos]
+                self._diag_add_line(start_pos, all_bytes, f"{label}float64({value})")
+            else:
+                self._diag_add_line(start_pos, bytes([0xe0 | additional_info]), f"{label}simple({additional_info})")
+        except (IndexError, struct.error):
+            all_bytes = self._diag_data[start_pos:]
+            self._diag_add_line(start_pos, all_bytes, f"{label}simple(?)")
+            self._diag_add_line(len(self._diag_data), b'', "# ERROR: Unexpected end of data")
+            self._diag_pos = len(self._diag_data)
+
     def _diag_read_uint(self, additional_info: int) -> Tuple[int, int]:
         """Read uint and return (value, end_position)."""
-        if additional_info < 24:
-            return additional_info, self._diag_pos
-        elif additional_info == 24:
-            value = self._diag_data[self._diag_pos]
-            self._diag_pos += 1
-            return value, self._diag_pos
-        elif additional_info == 25:
-            value = struct.unpack('>H', self._diag_data[self._diag_pos:self._diag_pos+2])[0]
-            self._diag_pos += 2
-            return value, self._diag_pos
-        elif additional_info == 26:
-            value = struct.unpack('>I', self._diag_data[self._diag_pos:self._diag_pos+4])[0]
-            self._diag_pos += 4
-            return value, self._diag_pos
-        elif additional_info == 27:
-            value = struct.unpack('>Q', self._diag_data[self._diag_pos:self._diag_pos+8])[0]
-            self._diag_pos += 8
-            return value, self._diag_pos
-        else:
-            return 0, self._diag_pos
+        try:
+            if additional_info < 24:
+                return additional_info, self._diag_pos
+            elif additional_info == 24:
+                value = self._diag_data[self._diag_pos]
+                self._diag_pos += 1
+                return value, self._diag_pos
+            elif additional_info == 25:
+                value = struct.unpack('>H', self._read_diag_bytes(2))[0]
+                return value, self._diag_pos
+            elif additional_info == 26:
+                value = struct.unpack('>I', self._read_diag_bytes(4))[0]
+                return value, self._diag_pos
+            elif additional_info == 27:
+                value = struct.unpack('>Q', self._read_diag_bytes(8))[0]
+                return value, self._diag_pos
+            else:
+                return 0, self._diag_pos
+        except (IndexError, struct.error):
+            # Return marker that error occurred
+            return -1, self._diag_pos
+
+    def _read_diag_bytes(self, n: int) -> bytes:
+        """Read n bytes from diag data, raising IndexError if not enough."""
+        if self._diag_pos + n > len(self._diag_data):
+            raise IndexError("Unexpected end of data")
+        result = self._diag_data[self._diag_pos:self._diag_pos + n]
+        self._diag_pos += n
+        return result
     
     def _diag_read_bytes(self, n: int) -> bytes:
         """Read n bytes from diag data."""
@@ -1165,8 +1247,7 @@ def cbor_diag_dump(data: bytes, indent: str = "  ") -> str:
     Returns:
         Pretty-printed diagnostic dump
     """
-    cbor = CBOR.load(data)
-    return cbor.diag(indent)
+    return CBOR()._generate_diag(data, indent)
 
 
 # For backward compatibility
