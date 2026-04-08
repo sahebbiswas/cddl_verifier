@@ -15,9 +15,39 @@ class TestCBORDiagDumpExtra(unittest.TestCase):
 
     def test_dump_truncated_data(self):
         """Test diagnostic dump of truncated data."""
-        # Header for uint16 but no data
+        # Header for uint16 but no data (header truncation)
         data = b'\x19'
         dump = cbor_diag_dump(data)
+        self.assertIn("# ERROR: Unexpected end of data", dump)
+        self.assertIn("uint(?)", dump)
+
+        # Truncated payload for bytes
+        data = b'\x45\x01\x02' # says 5 bytes but only 2 follow
+        dump = cbor_diag_dump(data)
+        self.assertIn("bytes(5)", dump)
+        self.assertIn("# ERROR: Unexpected end of data", dump)
+
+        # Truncated payload for text
+        data = b'\x65abc' # says 5 bytes but only 3 follow
+        dump = cbor_diag_dump(data)
+        self.assertIn("text(5)", dump)
+        self.assertIn("# Truncated UTF-8: 616263", dump)
+        self.assertIn("# ERROR: Unexpected end of data", dump)
+
+        # Truncated array
+        data = b'\x85\x01\x02' # says 5 items but only 2 follow
+        dump = cbor_diag_dump(data)
+        self.assertIn("array(5)", dump)
+        self.assertIn("[0] uint(1)", dump)
+        self.assertIn("[1] uint(2)", dump)
+        self.assertIn("# ERROR: Unexpected end of data", dump)
+
+        # Truncated map
+        data = b'\xa2\x00\x01' # says 2 pairs but only 1.5 follow
+        dump = cbor_diag_dump(data)
+        self.assertIn("map(2)", dump)
+        self.assertIn("key: uint(0)", dump)
+        self.assertIn("val: uint(1)", dump)
         self.assertIn("# ERROR: Unexpected end of data", dump)
 
     def test_dump_invalid_utf8(self):

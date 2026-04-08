@@ -479,6 +479,11 @@ class CBOR:
     def _diag_dump_nint(self, start_pos: int, additional_info: int, label: str) -> None:
         """Dump negative integer."""
         uint_value, end_pos = self._diag_read_uint(additional_info)
+        if uint_value == -1:
+            hex_bytes = self._diag_data[start_pos:end_pos]
+            self._diag_add_line(start_pos, hex_bytes, f"{label}nint(?)")
+            self._diag_add_line(self._diag_pos, b'', "# ERROR: Unexpected end of data")
+            return
         value = -1 - uint_value
         hex_bytes = self._diag_data[start_pos:end_pos]
         self._diag_add_line(start_pos, hex_bytes, f"{label}nint({value})")
@@ -486,6 +491,11 @@ class CBOR:
     def _diag_dump_bstr(self, start_pos: int, additional_info: int, label: str) -> None:
         """Dump byte string."""
         length, length_end = self._diag_read_uint(additional_info)
+        if length == -1:
+            hex_bytes = self._diag_data[start_pos:length_end]
+            self._diag_add_line(start_pos, hex_bytes, f"{label}bytes(?)")
+            self._diag_add_line(self._diag_pos, b'', "# ERROR: Unexpected end of data")
+            return
         
         # Header
         header_bytes = self._diag_data[start_pos:length_end]
@@ -496,6 +506,16 @@ class CBOR:
             self._diag_current_indent += 1
             data_start = length_end
             data_end = length_end + length
+
+            # Check for truncation of payload
+            if data_end > len(self._diag_data):
+                data_bytes = self._diag_data[data_start:]
+                self._diag_add_line(data_start, data_bytes, f"h'{data_bytes.hex()}'")
+                self._diag_add_line(len(self._diag_data), b'', "# ERROR: Unexpected end of data")
+                self._diag_current_indent -= 1
+                self._diag_pos = len(self._diag_data)
+                return
+
             data_bytes = self._diag_data[data_start:data_end]
             
             if length <= 32:
@@ -512,6 +532,11 @@ class CBOR:
     def _diag_dump_tstr(self, start_pos: int, additional_info: int, label: str) -> None:
         """Dump text string."""
         length, length_end = self._diag_read_uint(additional_info)
+        if length == -1:
+            hex_bytes = self._diag_data[start_pos:length_end]
+            self._diag_add_line(start_pos, hex_bytes, f"{label}text(?)")
+            self._diag_add_line(self._diag_pos, b'', "# ERROR: Unexpected end of data")
+            return
         
         # Header
         header_bytes = self._diag_data[start_pos:length_end]
@@ -522,6 +547,16 @@ class CBOR:
             self._diag_current_indent += 1
             data_start = length_end
             data_end = length_end + length
+
+            # Check for truncation of payload
+            if data_end > len(self._diag_data):
+                data_bytes = self._diag_data[data_start:]
+                self._diag_add_line(data_start, data_bytes, f"# Truncated UTF-8: {data_bytes.hex()}")
+                self._diag_add_line(len(self._diag_data), b'', "# ERROR: Unexpected end of data")
+                self._diag_current_indent -= 1
+                self._diag_pos = len(self._diag_data)
+                return
+
             data_bytes = self._diag_data[data_start:data_end]
             
             try:
@@ -560,6 +595,11 @@ class CBOR:
     def _diag_dump_array(self, start_pos: int, additional_info: int, label: str) -> None:
         """Dump array."""
         length, length_end = self._diag_read_uint(additional_info)
+        if length == -1:
+            hex_bytes = self._diag_data[start_pos:length_end]
+            self._diag_add_line(start_pos, hex_bytes, f"{label}array(?)")
+            self._diag_add_line(self._diag_pos, b'', "# ERROR: Unexpected end of data")
+            return
         
         header_bytes = self._diag_data[start_pos:length_end]
         self._diag_add_line(start_pos, header_bytes, f"{label}array({length})")
@@ -567,12 +607,20 @@ class CBOR:
         if length > 0:
             self._diag_current_indent += 1
             for i in range(length):
+                if self._diag_pos >= len(self._diag_data):
+                    self._diag_add_line(self._diag_pos, b'', "# ERROR: Unexpected end of data")
+                    break
                 self._diag_dump_item(f"[{i}] ")
             self._diag_current_indent -= 1
     
     def _diag_dump_map(self, start_pos: int, additional_info: int, label: str) -> None:
         """Dump map."""
         length, length_end = self._diag_read_uint(additional_info)
+        if length == -1:
+            hex_bytes = self._diag_data[start_pos:length_end]
+            self._diag_add_line(start_pos, hex_bytes, f"{label}map(?)")
+            self._diag_add_line(self._diag_pos, b'', "# ERROR: Unexpected end of data")
+            return
         
         header_bytes = self._diag_data[start_pos:length_end]
         self._diag_add_line(start_pos, header_bytes, f"{label}map({length})")
@@ -580,19 +628,33 @@ class CBOR:
         if length > 0:
             self._diag_current_indent += 1
             for i in range(length):
+                if self._diag_pos >= len(self._diag_data):
+                    self._diag_add_line(self._diag_pos, b'', "# ERROR: Unexpected end of data")
+                    break
                 self._diag_dump_item("key: ")
+                if self._diag_pos >= len(self._diag_data):
+                    self._diag_add_line(self._diag_pos, b'', "# ERROR: Unexpected end of data")
+                    break
                 self._diag_dump_item("val: ")
             self._diag_current_indent -= 1
     
     def _diag_dump_tag(self, start_pos: int, additional_info: int, label: str) -> None:
         """Dump tagged item."""
         tag_num, tag_end = self._diag_read_uint(additional_info)
+        if tag_num == -1:
+            hex_bytes = self._diag_data[start_pos:tag_end]
+            self._diag_add_line(start_pos, hex_bytes, f"{label}tag(?)")
+            self._diag_add_line(self._diag_pos, b'', "# ERROR: Unexpected end of data")
+            return
         
         header_bytes = self._diag_data[start_pos:tag_end]
         self._diag_add_line(start_pos, header_bytes, f"{label}tag({tag_num})")
         
         self._diag_current_indent += 1
-        self._diag_dump_item()
+        if self._diag_pos >= len(self._diag_data):
+            self._diag_add_line(self._diag_pos, b'', "# ERROR: Unexpected end of data")
+        else:
+            self._diag_dump_item()
         self._diag_current_indent -= 1
     
     def _diag_dump_simple(self, start_pos: int, additional_info: int, label: str) -> None:
