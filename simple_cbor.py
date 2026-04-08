@@ -85,6 +85,17 @@ class CBOR:
         self.data = data
         self._cached_bytes = None
         self._indent_str = "  "
+
+    def _make_hashable(self, obj: Any) -> Any:
+        """Recursively convert unhashable objects to hashable ones."""
+        if isinstance(obj, list):
+            return tuple(self._make_hashable(item) for item in obj)
+        if isinstance(obj, dict):
+            return tuple(sorted(
+                ((self._make_hashable(k), self._make_hashable(v)) for k, v in obj.items()),
+                key=lambda x: str(x[0])
+            ))
+        return obj
     
     # ========================================================================
     # CLASS METHODS - Loading and Convenience
@@ -343,6 +354,10 @@ class CBOR:
         for _ in range(length):
             key = self._decode_item()
             value = self._decode_item()
+            try:
+                hash(key)
+            except TypeError:
+                key = self._make_hashable(key)
             map_dict[key] = value
         return map_dict
     

@@ -94,147 +94,162 @@ if not HAS_SIMPLE_CBOR:
     class SimpleCBORDecoder:
         """Simple CBOR decoder for basic data types."""
     
-    def __init__(self, data: bytes):
-        self.data = data
-        self.pos = 0
-        self.total_size = len(data)
-        self.structure_map: Dict[int, str] = {}  # Map offsets to descriptions
-        
-        # Log initial CBOR data
-        if logger.isEnabledFor(logging.DEBUG):
-            hex_preview = self._format_hex(data[:min(32, len(data))], 0)
-            logger.debug(f"{Colors.CBOR}CBOR Input:{Colors.RESET} {len(data)} bytes")
-            logger.debug(f"  {hex_preview}")
+        def __init__(self, data: bytes):
+            self.data = data
+            self.pos = 0
+            self.total_size = len(data)
+            self.structure_map: Dict[int, str] = {}  # Map offsets to descriptions
+
+            # Log initial CBOR data
+            if logger.isEnabledFor(logging.DEBUG):
+                hex_preview = self._format_hex(data[:min(32, len(data))], 0)
+                logger.debug(f"{Colors.CBOR}CBOR Input:{Colors.RESET} {len(data)} bytes")
+                logger.debug(f"  {hex_preview}")
+
+        def _make_hashable(self, obj: Any) -> Any:
+            """Recursively convert unhashable objects to hashable ones."""
+            if isinstance(obj, list):
+                return tuple(self._make_hashable(item) for item in obj)
+            if isinstance(obj, dict):
+                return tuple(sorted(
+                    ((self._make_hashable(k), self._make_hashable(v)) for k, v in obj.items()),
+                    key=lambda x: str(x[0])
+                ))
+            return obj
     
-    def _format_hex(self, data: bytes, offset: int, trim_at: int = 4) -> str:
-        """Format bytes as hex with offset, trimming long sequences."""
-        if len(data) <= trim_at:
-            hex_str = ' '.join(f'{b:02x}' for b in data)
-            return f"[@{offset:04x}] {hex_str}"
-        else:
-            hex_start = ' '.join(f'{b:02x}' for b in data[:trim_at])
-            return f"[@{offset:04x}] {hex_start} ... ({len(data)} bytes total)"
+        def _format_hex(self, data: bytes, offset: int, trim_at: int = 4) -> str:
+            """Format bytes as hex with offset, trimming long sequences."""
+            if len(data) <= trim_at:
+                hex_str = ' '.join(f'{b:02x}' for b in data)
+                return f"[@{offset:04x}] {hex_str}"
+            else:
+                hex_start = ' '.join(f'{b:02x}' for b in data[:trim_at])
+                return f"[@{offset:04x}] {hex_start} ... ({len(data)} bytes total)"
     
-    def decode(self, path: str = "") -> Any:
-        """Decode CBOR data.
-        
-        Args:
-            path: Current path in the data structure for tracking
-        """
-        if self.pos >= len(self.data):
-            raise ValueError("Unexpected end of data")
-        
-        initial_byte = self.data[self.pos]
-        start_pos = self.pos
-        self.pos += 1
-        
-        major_type = initial_byte >> 5
-        additional_info = initial_byte & 0x1F
-        
-        # Log what we're decoding with path context
-        if logger.isEnabledFor(logging.DEBUG):
-            context = f" {Colors.CDDL}({path}){Colors.RESET}" if path else ""
-            logger.debug(f"{Colors.CBOR}[@{start_pos:04x}] {initial_byte:02x}{Colors.RESET}{context} " +
-                        f"major_type={major_type} add_info={additional_info}")
-        
-        # Store structure information
-        self.structure_map[start_pos] = f"{path}: major_type={major_type}"
-        
-        if major_type == MAJOR_TYPE_UINT:
-            return self._decode_int(additional_info)
-        elif major_type == MAJOR_TYPE_NINT:
-            return -1 - self._decode_int(additional_info)
-        elif major_type == MAJOR_TYPE_BSTR:
-            length = self._decode_int(additional_info)
-            result = self.data[self.pos:self.pos + length]
-            self.pos += length
-            return result
-        elif major_type == MAJOR_TYPE_TSTR:
-            length = self._decode_int(additional_info)
-            result = self.data[self.pos:self.pos + length].decode('utf-8')
-            self.pos += length
-            return result
-        elif major_type == MAJOR_TYPE_ARRAY:
-            length = self._decode_int(additional_info)
-            return [self.decode(f"{path}[{i}]" if path else f"[{i}]") for i in range(length)]
-        elif major_type == MAJOR_TYPE_MAP:
-            length = self._decode_int(additional_info)
-            result = {}
-            for i in range(length):
-                key = self.decode(f"{path}[key{i}]" if path else f"[key{i}]")
-                value = self.decode(f"{path}.{key}" if path else f".{key}")
-                result[key] = value
-            return result
-        elif major_type == MAJOR_TYPE_TAG:
-            tag_num = self._decode_int(additional_info)
-            # Decode the tagged content
-            tagged_value = self.decode(f"{path}<tag{tag_num}>" if path else f"<tag{tag_num}>")
-            # Return tuple (tag_num, value) to preserve tag information
-            logger.debug(f"{Colors.CBOR}Tag {tag_num} wrapping:{Colors.RESET} {type(tagged_value).__name__}")
-            return (tag_num, tagged_value)
-        elif major_type == MAJOR_TYPE_SIMPLE:
-            if additional_info == SIMPLE_FALSE:
-                return False
-            elif additional_info == SIMPLE_TRUE:
-                return True
-            elif additional_info == SIMPLE_NULL:
-                return None
-            elif additional_info == 25:  # float16
-                return self._decode_float16()
-            elif additional_info == 26:  # float32
-                return self._decode_float32()
-            elif additional_info == 27:  # float64
-                return self._decode_float64()
-        
-        raise ValueError(f"Unsupported CBOR type: major={major_type}, additional={additional_info}")
-    
-    def _decode_int(self, additional_info: int) -> int:
-        """Decode integer value."""
-        if additional_info < 24:
-            return additional_info
-        elif additional_info == 24:
-            value = self.data[self.pos]
+        def decode(self, path: str = "") -> Any:
+            """Decode CBOR data.
+
+            Args:
+                path: Current path in the data structure for tracking
+            """
+            if self.pos >= len(self.data):
+                raise ValueError("Unexpected end of data")
+
+            initial_byte = self.data[self.pos]
+            start_pos = self.pos
             self.pos += 1
-            return value
-        elif additional_info == 25:
-            value = struct.unpack('>H', self.data[self.pos:self.pos + 2])[0]
+
+            major_type = initial_byte >> 5
+            additional_info = initial_byte & 0x1F
+
+            # Log what we're decoding with path context
+            if logger.isEnabledFor(logging.DEBUG):
+                context = f" {Colors.CDDL}({path}){Colors.RESET}" if path else ""
+                logger.debug(f"{Colors.CBOR}[@{start_pos:04x}] {initial_byte:02x}{Colors.RESET}{context} " +
+                            f"major_type={major_type} add_info={additional_info}")
+
+            # Store structure information
+            self.structure_map[start_pos] = f"{path}: major_type={major_type}"
+
+            if major_type == MAJOR_TYPE_UINT:
+                return self._decode_int(additional_info)
+            elif major_type == MAJOR_TYPE_NINT:
+                return -1 - self._decode_int(additional_info)
+            elif major_type == MAJOR_TYPE_BSTR:
+                length = self._decode_int(additional_info)
+                result = self.data[self.pos:self.pos + length]
+                self.pos += length
+                return result
+            elif major_type == MAJOR_TYPE_TSTR:
+                length = self._decode_int(additional_info)
+                result = self.data[self.pos:self.pos + length].decode('utf-8')
+                self.pos += length
+                return result
+            elif major_type == MAJOR_TYPE_ARRAY:
+                length = self._decode_int(additional_info)
+                return [self.decode(f"{path}[{i}]" if path else f"[{i}]") for i in range(length)]
+            elif major_type == MAJOR_TYPE_MAP:
+                length = self._decode_int(additional_info)
+                result = {}
+                for i in range(length):
+                    key = self.decode(f"{path}[key{i}]" if path else f"[key{i}]")
+                    value = self.decode(f"{path}.{key}" if path else f".{key}")
+                    try:
+                        hash(key)
+                    except TypeError:
+                        key = self._make_hashable(key)
+                    result[key] = value
+                return result
+            elif major_type == MAJOR_TYPE_TAG:
+                tag_num = self._decode_int(additional_info)
+                # Decode the tagged content
+                tagged_value = self.decode(f"{path}<tag{tag_num}>" if path else f"<tag{tag_num}>")
+                # Return tuple (tag_num, value) to preserve tag information
+                logger.debug(f"{Colors.CBOR}Tag {tag_num} wrapping:{Colors.RESET} {type(tagged_value).__name__}")
+                return (tag_num, tagged_value)
+            elif major_type == MAJOR_TYPE_SIMPLE:
+                if additional_info == SIMPLE_FALSE:
+                    return False
+                elif additional_info == SIMPLE_TRUE:
+                    return True
+                elif additional_info == SIMPLE_NULL:
+                    return None
+                elif additional_info == 25:  # float16
+                    return self._decode_float16()
+                elif additional_info == 26:  # float32
+                    return self._decode_float32()
+                elif additional_info == 27:  # float64
+                    return self._decode_float64()
+
+            raise ValueError(f"Unsupported CBOR type: major={major_type}, additional={additional_info}")
+
+        def _decode_int(self, additional_info: int) -> int:
+            """Decode integer value."""
+            if additional_info < 24:
+                return additional_info
+            elif additional_info == 24:
+                value = self.data[self.pos]
+                self.pos += 1
+                return value
+            elif additional_info == 25:
+                value = struct.unpack('>H', self.data[self.pos:self.pos + 2])[0]
+                self.pos += 2
+                return value
+            elif additional_info == 26:
+                value = struct.unpack('>I', self.data[self.pos:self.pos + 4])[0]
+                self.pos += 4
+                return value
+            elif additional_info == 27:
+                value = struct.unpack('>Q', self.data[self.pos:self.pos + 8])[0]
+                self.pos += 8
+                return value
+            raise ValueError(f"Invalid additional info for integer: {additional_info}")
+
+        def _decode_float16(self) -> float:
+            """Decode IEEE 754 half-precision (float16) per RFC 8949 §3.3."""
+            bits = struct.unpack('>H', self.data[self.pos:self.pos + 2])[0]
             self.pos += 2
-            return value
-        elif additional_info == 26:
-            value = struct.unpack('>I', self.data[self.pos:self.pos + 4])[0]
+            exp  = (bits >> 10) & 0x1F
+            mant =  bits        & 0x3FF
+            sign = -1.0 if (bits >> 15) else 1.0
+            if exp == 0:    # subnormal
+                return sign * (2.0 ** -14) * (mant / 1024.0)
+            elif exp == 31: # infinity or NaN
+                return sign * (float('inf') if mant == 0 else float('nan'))
+            else:           # normal
+                return sign * (2.0 ** (exp - 15)) * (1.0 + mant / 1024.0)
+
+        def _decode_float32(self) -> float:
+            """Decode float32."""
+            value = struct.unpack('>f', self.data[self.pos:self.pos + 4])[0]
             self.pos += 4
             return value
-        elif additional_info == 27:
-            value = struct.unpack('>Q', self.data[self.pos:self.pos + 8])[0]
+
+        def _decode_float64(self) -> float:
+            """Decode float64."""
+            value = struct.unpack('>d', self.data[self.pos:self.pos + 8])[0]
             self.pos += 8
             return value
-        raise ValueError(f"Invalid additional info for integer: {additional_info}")
-    
-    def _decode_float16(self) -> float:
-        """Decode IEEE 754 half-precision (float16) per RFC 8949 §3.3."""
-        bits = struct.unpack('>H', self.data[self.pos:self.pos + 2])[0]
-        self.pos += 2
-        exp  = (bits >> 10) & 0x1F
-        mant =  bits        & 0x3FF
-        sign = -1.0 if (bits >> 15) else 1.0
-        if exp == 0:    # subnormal
-            return sign * (2.0 ** -14) * (mant / 1024.0)
-        elif exp == 31: # infinity or NaN
-            return sign * (float('inf') if mant == 0 else float('nan'))
-        else:           # normal
-            return sign * (2.0 ** (exp - 15)) * (1.0 + mant / 1024.0)
-    
-    def _decode_float32(self) -> float:
-        """Decode float32."""
-        value = struct.unpack('>f', self.data[self.pos:self.pos + 4])[0]
-        self.pos += 4
-        return value
-    
-    def _decode_float64(self) -> float:
-        """Decode float64."""
-        value = struct.unpack('>d', self.data[self.pos:self.pos + 8])[0]
-        self.pos += 8
-        return value
 
 
 class CDDLParser:
