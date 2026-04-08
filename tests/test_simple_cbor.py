@@ -712,5 +712,40 @@ class TestUnifiedCBORInterface(unittest.TestCase):
         self.assertEqual(decoded[6], {0: 1})
 
 
+class TestUnhashableKeys(unittest.TestCase):
+    """Test handling of unhashable map keys"""
+
+    def test_list_key(self):
+        """Test map with a list as a key"""
+        # { [1]: 2 }
+        cbor_data = bytes([0xa1, 0x81, 0x01, 0x02])
+        decoded = cbor_decode(cbor_data)
+        self.assertEqual(decoded, {(1,): 2})
+
+    def test_dict_key(self):
+        """Test map with a dict as a key"""
+        # { {"a": 1}: 2 }
+        # a1 (map len 1)
+        #   a1 (map len 1)
+        #     61 61 (text "a")
+        #     01 (uint 1)
+        #   02 (uint 2)
+        cbor_data = bytes([0xa1, 0xa1, 0x61, 0x61, 0x01, 0x02])
+        decoded = cbor_decode(cbor_data)
+        self.assertEqual(decoded, {(('a', 1),): 2})
+
+    def test_nested_unhashable_key(self):
+        """Test map with a nested unhashable structure as a key"""
+        # { [[1]]: 2 }
+        # a1 (map len 1)
+        #   81 (array len 1)
+        #     81 (array len 1)
+        #       01 (uint 1)
+        #   02 (uint 2)
+        cbor_data = bytes([0xa1, 0x81, 0x81, 0x01, 0x02])
+        decoded = cbor_decode(cbor_data)
+        self.assertEqual(decoded, {((1,),): 2})
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -1412,5 +1412,21 @@ class TestTypeChoiceResolution(unittest.TestCase):
         self.assertTrue(len(analyzer.get_errors()) > 0)
 
 
+class TestFallbackDecoderUnhashable(unittest.TestCase):
+    """Test fallback decoder handling of unhashable keys"""
+
+    def test_fallback_decoder_list_key(self):
+        """Verify fallback decoder handles list as map key"""
+        # Force HAS_SIMPLE_CBOR to False for this test would be hard without mocking
+        # But we can test SimpleCBORDecoder directly if it's available in the module
+        from cbor_cddl_analyzer import SimpleCBORDecoder
+
+        # CBOR for { [1]: 2 }
+        cbor_data = bytes([0xa1, 0x81, 0x01, 0x02])
+        decoder = SimpleCBORDecoder(cbor_data)
+        decoded = decoder.decode()
+        self.assertEqual(decoded, {(1,): 2})
+
+
 if __name__ == '__main__':
     unittest.main()
