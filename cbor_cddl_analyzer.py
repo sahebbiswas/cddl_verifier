@@ -109,10 +109,10 @@ if not HAS_SIMPLE_CBOR:
     def _format_hex(self, data: bytes, offset: int, trim_at: int = 4) -> str:
         """Format bytes as hex with offset, trimming long sequences."""
         if len(data) <= trim_at:
-            hex_str = ' '.join(f'{b:02x}' for b in data)
+            hex_str = data.hex(' ')
             return f"[@{offset:04x}] {hex_str}"
         else:
-            hex_start = ' '.join(f'{b:02x}' for b in data[:trim_at])
+            hex_start = data[:trim_at].hex(' ')
             return f"[@{offset:04x}] {hex_start} ... ({len(data)} bytes total)"
     
     def decode(self, path: str = "") -> Any:
@@ -1282,7 +1282,7 @@ class CBORAnalyzer:
                 # Show a few bytes around this offset
                 start = max(0, offset)
                 end = min(len(self.cbor_bytes), offset + 4)
-                hex_bytes = ' '.join(f'{b:02x}' for b in self.cbor_bytes[start:end])
+                hex_bytes = self.cbor_bytes[start:end].hex(' ')
                 return f" {Colors.CBOR}[@{offset:04x}:{hex_bytes}]{Colors.RESET}"
         
         return ""
@@ -1453,7 +1453,7 @@ class CBORAnalyzer:
         
         # Show CBOR hex if available
         if cbor_bytes and logger.isEnabledFor(logging.DEBUG):
-            hex_preview = ' '.join(f'{b:02x}' for b in cbor_bytes[:min(16, len(cbor_bytes))])
+            hex_preview = cbor_bytes[:min(16, len(cbor_bytes))].hex(' ')
             if len(cbor_bytes) > 16:
                 hex_preview += f" ... ({len(cbor_bytes)} bytes total)"
             logger.debug(f"{Colors.CBOR}CBOR bytes:{Colors.RESET} {hex_preview}")
@@ -1958,7 +1958,7 @@ class CBORAnalyzer:
     def _format_value_for_log(self, value, max_len=50):
         """Format a value for logging, with truncation."""
         if isinstance(value, bytes):
-            hex_str = ' '.join(f'{b:02x}' for b in value[:4])
+            hex_str = value[:4].hex(' ')
             if len(value) > 4:
                 return f"h'{hex_str}...' ({len(value)} bytes)"
             return f"h'{hex_str}'"
