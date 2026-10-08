@@ -2,18 +2,18 @@
 
 ## Overview
 
-276 tests across seven files in `tests/`.  The suite runs under both **pytest**
+The tests live in `tests/`.  The suite runs under both **pytest**
 and the standard-library **unittest** runner with no code changes required.
 
-| File | Tests | Covers |
-|------|------:|--------|
-| `tests/test_cbor_cddl_analyzer.py` | 110 | CDDL parsing, validation, EDN generation, CoRIM |
-| `tests/test_simple_cbor.py` | 70 | CBOR encode/decode, diagnostics, round-trips |
-| `tests/test_cbor_builder.py` | 29 | Iterative construction, nested access, merge |
-| `tests/test_canonical_and_json.py` | 25 | Canonical encoding, JSON ↔ CBOR conversion |
-| `tests/test_strict_decoding.py` | 18 | Strict single-item decoding, error offsets, CLI `--version` |
-| `tests/test_set_nested.py` | 15 | `set_nested` path creation and errors |
-| `tests/test_cbor_diag_dump_extra.py` | 9 | Diagnostic dump edge cases and truncated input |
+| File | Covers |
+|------|--------|
+| `tests/test_cbor_cddl_analyzer.py` | CDDL parsing, validation, EDN generation, CoRIM |
+| `tests/test_simple_cbor.py` | CBOR encode/decode, diagnostics, round-trips |
+| `tests/test_cbor_builder.py` | Iterative construction, nested access, merge |
+| `tests/test_canonical_and_json.py` | Canonical encoding, JSON ↔ CBOR conversion |
+| `tests/test_strict_decoding.py` | Strict single-item decoding, error offsets, CLI `--version` |
+| `tests/test_set_nested.py` | `set_nested` path creation and errors |
+| `tests/test_cbor_diag_dump_extra.py` | Diagnostic dump edge cases and truncated input |
 
 ---
 
@@ -66,7 +66,7 @@ python3 tests/test_simple_cbor.py
 ├── simple_cbor.py
 ├── cbor_json.py
 ├── CHANGELOG.md
-├── pyproject.toml          ← package metadata + pytest configuration
+├── pyproject.toml          ← package metadata (`cddl-verify` script) + pytest configuration
 └── tests/
     ├── conftest.py         ← adds repo root to sys.path for pytest
     ├── __init__.py

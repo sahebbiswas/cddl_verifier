@@ -25,8 +25,12 @@ The version is defined once in `_version.py`.
 
 ### Added
 - Versioning scheme: `_version.py` as the single version source, this
-  changelog, `[project]` metadata in `pyproject.toml` (with a
-  `cbor-cddl-analyzer` console script), and `cbor_cddl_analyzer.py --version`.
+  changelog, `[project]` metadata in `pyproject.toml`, and a `--version` flag.
+- `pip install .` installs a `cddl-verify` console script (same as
+  `python cbor_cddl_analyzer.py`).
+- `docs/CLI.md`, `docs/API.md` and `docs/CDDL_SUPPORT.md` reference pages; the
+  README is now a short overview that links to them. EDN and diagnostic-dump
+  samples were regenerated from real output.
 - `tests/test_strict_decoding.py`: regression tests for scalars, maps, arrays,
   tags and nested data with trailing bytes, truncation at every prefix, and
   error offsets.

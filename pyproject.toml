@@ -13,7 +13,7 @@ license = { file = "LICENSE" }
 cbor2 = ["cbor2"]
 
 [project.scripts]
-cbor-cddl-analyzer = "cbor_cddl_analyzer:main"
+cddl-verify = "cbor_cddl_analyzer:main"
 
 [tool.setuptools]
 py-modules = ["_version", "simple_cbor", "cbor_json", "cbor_cddl_analyzer"]
