@@ -395,7 +395,8 @@ Actual CBOR: (send above JSON converted to CBOR)
 1. **JSON has no bytes type** - Must use annotations or lose type info
 2. **JSON has no tuple type** - Tagged values become objects  
 3. **JSON has limited numbers** - Very large integers may lose precision
-4. **Indefinite-length not supported** - Our CBOR library doesn't support it
+4. **Indefinite-length not supported** - Our CBOR library doesn't support it (decoding raises `CBORUnsupportedError`)
+5. **One item per input** - `cbor_decode()` rejects trailing bytes / CBOR sequences with `CBORTrailingDataError`
 
 ### Best Practices
 
@@ -559,4 +560,4 @@ json_file_to_cbor_file(json_path, cbor_path, canonical=False)
 - ✅ CLI tool included
 - ✅ Perfect for API development and debugging
 
-Both features are production-ready with comprehensive tests!
+Both features are production-ready with comprehensive tests!

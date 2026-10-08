@@ -14,6 +14,10 @@ EDN (Extended Diagnostic Notation) output, and converting between CBOR and JSON.
 | `cbor_cddl_analyzer.py` | CDDL schema parser, CBOR validator, annotated EDN generator, CLI tool |
 | `simple_cbor.py` | Unified CBOR encoder, decoder, diagnostic dumper, and builder |
 | `cbor_json.py` | Bidirectional CBOR ↔ JSON conversion with type preservation |
+| `_version.py` | Single source of truth for the project version |
+
+**Current version: 0.2.0** — see [CHANGELOG.md](CHANGELOG.md) and
+[Versioning](#versioning).
 
 ---
 
@@ -23,8 +27,17 @@ EDN (Extended Diagnostic Notation) output, and converting between CBOR and JSON.
 pip install cbor2   # optional — broader CBOR compatibility
 ```
 
-`cbor2` is optional. When present it is used as the primary decoder; otherwise the
-bundled `simple_cbor` module handles everything without external dependencies.
+`cbor2` is optional. The analyzer CLI and the `simple_cbor` API always decode
+with the bundled strict decoder; `cbor2` is only tried by the `load_cbor_file()`
+helper. No other external dependencies are needed.
+
+The project can also be installed as a package, which adds a
+`cbor-cddl-analyzer` console script:
+
+```bash
+pip install .            # or: pip install ".[cbor2]"
+cbor-cddl-analyzer --version
+```
 
 ---
 
@@ -51,7 +64,15 @@ python cbor_cddl_analyzer.py schema.cddl data.cbor --show-types
 
 # Enable verbose logging of type resolution and validation steps
 python cbor_cddl_analyzer.py schema.cddl data.cbor --type corim-map --verbose
+
+# Print the tool version
+python cbor_cddl_analyzer.py --version
 ```
+
+The CBOR file must contain **exactly one** CBOR data item. An empty file, a
+truncated item, or extra bytes after the item (for example a concatenated CBOR
+sequence) makes the CLI exit with status 1 and an error that names the byte
+offset, e.g. `Error decoding CBOR: Trailing data after CBOR item: 1 extra byte(s) (at offset 1)`.
 
 ### CLI options
 
@@ -65,6 +86,7 @@ python cbor_cddl_analyzer.py schema.cddl data.cbor --type corim-map --verbose
 | `--edn-format {keyindex,keyname,both}` | EDN key format (default: `keyindex`) |
 | `--show-types` | Print all parsed CDDL types and exit |
 | `--verbose` | Enable detailed logging of validation and type resolution |
+| `--version` | Print the version and exit |
 
 ---
 
@@ -253,6 +275,38 @@ raw    = cbor_encode({0: "Alice"})
 data   = cbor_decode(raw)
 ```
 
+### Strict single-item decoding
+
+`CBOR.load()`, `CBOR.loads()`, `cbor_decode()` and `load_cbor_bytes()` accept
+`bytes`, `bytearray` or `memoryview` and must consume **exactly one complete
+CBOR data item**. Anything else raises `CBORDecodeError`, a `ValueError`
+subclass whose `offset` attribute is the byte offset where the problem was
+detected (`reason` holds the message without the offset):
+
+| Exception | Raised for | `offset` |
+|-----------|------------|----------|
+| `CBORTruncatedError` | Empty input; input ending mid-item | Where more bytes were needed (`0` for empty input) |
+| `CBORTrailingDataError` | Bytes left after the item | First trailing byte |
+| `CBORUnsupportedError` | Indefinite-length items, `undefined` (also a `NotImplementedError`) | Initial byte of the item |
+| `CBORDecodeError` | Reserved additional info, invalid UTF-8, duplicate map keys, nesting too deep | Offending byte / key |
+
+A non-bytes argument raises `TypeError`.
+
+```python
+from simple_cbor import CBORDecodeError, CBORTrailingDataError, cbor_decode
+
+try:
+    cbor_decode(b"\x01\x02")          # two items: a CBOR sequence
+except CBORTrailingDataError as e:
+    print(e.offset)                   # 1
+    print(e)                          # Trailing data after CBOR item: 1 extra byte(s) (at offset 1)
+```
+
+CBOR sequences (RFC 8742) are deliberately **not** accepted by these functions;
+a separate sequence-decoding API (for `.cborseq`) is planned.
+Nested `.cbor`-controlled byte strings in the analyzer are decoded with the same
+strict rules.
+
 ### Fluent builder API
 
 ```python
@@ -371,7 +425,7 @@ round-trip examples.
 
 ## Test suite
 
-162 tests across four files in `tests/`; all pass:
+276 tests across seven files in `tests/`; all pass:
 
 ```bash
 pytest                                       # requires: pip install pytest
@@ -380,10 +434,13 @@ python3 -m unittest discover -s tests -t .  # no extra dependencies
 
 | File | Tests | Covers |
 |------|-------|--------|
-| `tests/test_simple_cbor.py` | 63 | CBOR encode/decode, diagnostics, builder |
-| `tests/test_cbor_cddl_analyzer.py` | 48 | CDDL parsing, validation, EDN generation, CoRIM |
+| `tests/test_cbor_cddl_analyzer.py` | 110 | CDDL parsing, validation, EDN generation, CoRIM |
+| `tests/test_simple_cbor.py` | 70 | CBOR encode/decode, diagnostics, builder |
+| `tests/test_cbor_builder.py` | 29 | Iterative construction, nested access, merge |
 | `tests/test_canonical_and_json.py` | 25 | Canonical encoding, JSON conversion, round-trips |
-| `tests/test_cbor_builder.py` | 26 | Iterative construction, nested access, merge |
+| `tests/test_strict_decoding.py` | 18 | Strict single-item decoding: trailing bytes, truncation, error offsets, CLI |
+| `tests/test_set_nested.py` | 15 | `set_nested` path creation and errors |
+| `tests/test_cbor_diag_dump_extra.py` | 9 | Diagnostic dump edge cases and truncated input |
 
 See [TESTING.md](TESTING.md) for individual class/test commands, pytest
 configuration, CI/CD workflow examples, and contribution guidelines.
@@ -394,4 +451,22 @@ configuration, CI/CD workflow examples, and contribution guidelines.
 
 - The supported CDDL subset covers practical attestation schemas (CoRIM, CoSWID);
   it does not implement the full RFC 8610 grammar.
-- Indefinite-length CBOR items are not supported by the bundled encoder/decoder.
+- Indefinite-length CBOR items and the `undefined` simple value are not supported by
+  the bundled encoder/decoder (decoding them raises `CBORUnsupportedError`).
+- CBOR sequences (multiple concatenated items) are rejected by the decoder; a
+  dedicated sequence API is not yet available.
+
+---
+
+## Versioning
+
+The project follows [Semantic Versioning 2.0.0](https://semver.org/). While the
+major version is `0`, a minor bump (`0.x.0`) may contain breaking changes and a
+patch bump (`0.x.y`) is for backward-compatible fixes.
+
+- The version lives in one place: `__version__` in [`_version.py`](_version.py).
+  `pyproject.toml` reads it dynamically, `simple_cbor.__version__` re-exports it,
+  and `cbor_cddl_analyzer.py --version` prints it.
+- **Every change must bump the version** and add an entry to
+  [CHANGELOG.md](CHANGELOG.md) (format: [Keep a Changelog](https://keepachangelog.com/)).
+- Keep this README and the files in `docs/` in sync with the code in the same change.

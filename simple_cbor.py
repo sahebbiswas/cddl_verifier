@@ -18,6 +18,12 @@ CBOR Major Types:
 - 6: Tagged item
 - 7: Simple values (bool, null, float)
 
+Decoding is strict: ``CBOR.loads()`` / ``cbor_decode()`` consume exactly one
+complete CBOR data item. Empty input, truncated items, and trailing bytes after
+the item raise :class:`CBORDecodeError` (a ``ValueError`` subclass) carrying the
+byte ``offset`` at which the problem was detected. CBOR sequences (RFC 8742)
+are intentionally not accepted by this API.
+
 References:
 - RFC 8949: Concise Binary Object Representation (CBOR)
 """
@@ -25,6 +31,8 @@ References:
 import struct
 import copy as copy_module
 from typing import Any, Union, Tuple, Dict, List, Optional
+
+from _version import __version__
 
 # CBOR Major Type Constants (RFC 8949)
 MAJOR_TYPE_UINT = 0      # Unsigned integer
@@ -43,6 +51,44 @@ SIMPLE_NULL = 22
 SIMPLE_FLOAT16 = 25
 SIMPLE_FLOAT32 = 26
 SIMPLE_FLOAT64 = 27
+
+
+# ============================================================================
+# DECODE ERRORS
+# ============================================================================
+
+class CBORDecodeError(ValueError):
+    """
+    Raised when CBOR bytes cannot be decoded as exactly one well-formed item.
+
+    Subclasses ``ValueError`` so existing ``except ValueError`` handlers keep
+    working.
+
+    Attributes:
+        offset: Byte offset in the input at which the error was detected.
+        reason: Error message without the offset suffix.
+    """
+
+    def __init__(self, reason: str, offset: int):
+        self.reason = reason
+        self.offset = offset
+        super().__init__(f"{reason} (at offset {offset})")
+
+
+class CBORTruncatedError(CBORDecodeError):
+    """Raised when the input ends before the current data item is complete."""
+
+
+class CBORTrailingDataError(CBORDecodeError):
+    """Raised when bytes remain after the single top-level data item."""
+
+
+class CBORUnsupportedError(CBORDecodeError, NotImplementedError):
+    """Raised for well-formed encodings this decoder does not support
+    (indefinite-length items, ``undefined``).
+
+    Also a ``NotImplementedError`` for backward compatibility.
+    """
 
 
 class CBOR:
@@ -106,27 +152,47 @@ class CBOR:
         """
         Load CBOR bytes and decode to Python object.
         
+        The input must contain exactly one complete CBOR data item.
+        
         Args:
-            cbor_bytes: CBOR encoded bytes
+            cbor_bytes: CBOR encoded bytes (``bytes``, ``bytearray`` or
+                ``memoryview``)
             
         Returns:
             CBOR object with decoded data
+        
+        Raises:
+            TypeError: If ``cbor_bytes`` is not bytes-like.
+            CBORDecodeError: If the input is empty, truncated, malformed, or
+                has trailing bytes after the item (see subclasses).
         """
+        if isinstance(cbor_bytes, (bytearray, memoryview)):
+            cbor_bytes = bytes(cbor_bytes)
+        elif not isinstance(cbor_bytes, bytes):
+            raise TypeError(
+                f"CBOR input must be bytes-like, not {type(cbor_bytes).__name__}"
+            )
         obj = cls()
-        obj._cached_bytes = cbor_bytes
         obj.data = obj._decode(cbor_bytes)
+        obj._cached_bytes = cbor_bytes
         return obj
     
     @classmethod
     def loads(cls, cbor_bytes: bytes) -> Any:
         """
-        Decode CBOR bytes directly to Python object.
+        Decode exactly one CBOR data item directly to a Python object.
+        
+        Strict: empty input, truncated items and trailing bytes are rejected
+        with :class:`CBORDecodeError`. CBOR sequences are not accepted here.
         
         Args:
             cbor_bytes: CBOR encoded bytes
             
         Returns:
             Decoded Python object
+        
+        Raises:
+            CBORDecodeError: See :meth:`load`.
         """
         return cls.load(cbor_bytes).data
     
@@ -273,19 +339,30 @@ class CBOR:
     # ========================================================================
     
     def _decode(self, data: bytes) -> Any:
-        """Decode CBOR bytes to Python object."""
+        """Decode exactly one CBOR item spanning all of ``data``."""
         self._decode_data = data
         self._decode_pos = 0
         
         if not data:
-            raise ValueError("Empty CBOR data")
+            raise CBORTruncatedError("Empty CBOR data", 0)
         
-        return self._decode_item()
+        try:
+            result = self._decode_item()
+        except RecursionError:
+            raise CBORDecodeError("Nesting too deep", self._decode_pos) from None
+        
+        if self._decode_pos != len(data):
+            trailing = len(data) - self._decode_pos
+            raise CBORTrailingDataError(
+                f"Trailing data after CBOR item: {trailing} extra byte(s)",
+                self._decode_pos,
+            )
+        return result
     
     def _decode_item(self) -> Any:
         """Decode a single CBOR item."""
         if self._decode_pos >= len(self._decode_data):
-            raise ValueError("Unexpected end of data")
+            raise CBORTruncatedError("Unexpected end of data", self._decode_pos)
         
         initial_byte = self._decode_data[self._decode_pos]
         self._decode_pos += 1
@@ -303,8 +380,14 @@ class CBOR:
             return self._read_bytes(length)
         elif major_type == MAJOR_TYPE_TSTR:
             length = self._decode_length(additional_info)
+            start = self._decode_pos
             bytes_data = self._read_bytes(length)
-            return bytes_data.decode('utf-8')
+            try:
+                return bytes_data.decode('utf-8')
+            except UnicodeDecodeError as e:
+                raise CBORDecodeError(
+                    f"Invalid UTF-8 in text string: {e.reason}", start + e.start
+                ) from None
         elif major_type == MAJOR_TYPE_ARRAY:
             return self._decode_array(additional_info)
         elif major_type == MAJOR_TYPE_MAP:
@@ -313,10 +396,8 @@ class CBOR:
             tag_num = self._decode_uint(additional_info)
             tagged_value = self._decode_item()
             return (tag_num, tagged_value)
-        elif major_type == MAJOR_TYPE_SIMPLE:
+        else:  # MAJOR_TYPE_SIMPLE (major type is 3 bits, so 0-7 are exhaustive)
             return self._decode_simple(additional_info)
-        else:
-            raise ValueError(f"Unknown major type: {major_type}")
     
     def _decode_uint(self, additional_info: int) -> int:
         """Decode unsigned integer."""
@@ -331,12 +412,17 @@ class CBOR:
         elif additional_info == 27:
             return struct.unpack('>Q', self._read_bytes(8))[0]
         else:
-            raise ValueError(f"Invalid additional info for uint: {additional_info}")
+            raise CBORDecodeError(
+                f"Invalid additional info for uint: {additional_info}",
+                self._decode_pos - 1,
+            )
     
     def _decode_length(self, additional_info: int) -> int:
         """Decode length value."""
         if additional_info == 31:
-            raise NotImplementedError("Indefinite-length items not supported")
+            raise CBORUnsupportedError(
+                "Indefinite-length items not supported", self._decode_pos - 1
+            )
         return self._decode_uint(additional_info)
     
     def _decode_array(self, additional_info: int) -> List[Any]:
@@ -352,6 +438,7 @@ class CBOR:
         length = self._decode_length(additional_info)
         map_dict = {}
         for _ in range(length):
+            key_offset = self._decode_pos
             key = self._decode_item()
             value = self._decode_item()
             try:
@@ -359,7 +446,7 @@ class CBOR:
             except TypeError:
                 key = self._make_hashable(key)
             if key in map_dict:
-                raise ValueError(f"Duplicate map key: {key!r}")
+                raise CBORDecodeError(f"Duplicate map key: {key!r}", key_offset)
             map_dict[key] = value
         return map_dict
     
@@ -372,23 +459,28 @@ class CBOR:
         elif additional_info == SIMPLE_NULL:
             return None
         elif additional_info == 23:
-            raise NotImplementedError("Undefined value not supported")
+            raise CBORUnsupportedError(
+                "Undefined value not supported", self._decode_pos - 1
+            )
         elif additional_info == SIMPLE_FLOAT16:
-            bytes_data = self._read_bytes(2)
-            return struct.unpack('>e', bytes_data)[0] if hasattr(struct, 'unpack') else 0.0
+            return struct.unpack('>e', self._read_bytes(2))[0]
         elif additional_info == SIMPLE_FLOAT32:
-            bytes_data = self._read_bytes(4)
-            return struct.unpack('>f', bytes_data)[0]
+            return struct.unpack('>f', self._read_bytes(4))[0]
         elif additional_info == SIMPLE_FLOAT64:
-            bytes_data = self._read_bytes(8)
-            return struct.unpack('>d', bytes_data)[0]
+            return struct.unpack('>d', self._read_bytes(8))[0]
         else:
-            raise ValueError(f"Unknown simple value: {additional_info}")
+            raise CBORDecodeError(
+                f"Unknown simple value: {additional_info}", self._decode_pos - 1
+            )
     
     def _read_bytes(self, n: int) -> bytes:
         """Read n bytes from decode data."""
-        if self._decode_pos + n > len(self._decode_data):
-            raise ValueError("Unexpected end of data")
+        available = len(self._decode_data) - self._decode_pos
+        if n > available:
+            raise CBORTruncatedError(
+                f"Unexpected end of data: need {n} byte(s), {available} available",
+                self._decode_pos,
+            )
         result = self._decode_data[self._decode_pos:self._decode_pos + n]
         self._decode_pos += n
         return result
@@ -1249,7 +1341,7 @@ def cbor_encode(obj: Any, canonical: bool = False) -> bytes:
 
 
 def cbor_decode(data: bytes) -> Any:
-    """Decode CBOR bytes to Python object."""
+    """Decode exactly one CBOR item to a Python object (see ``CBOR.loads``)."""
     return CBOR.loads(data)
 
 
