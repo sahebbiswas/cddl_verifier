@@ -236,21 +236,21 @@ Type headers are automatically included when using any EDN format:
 
 ```bash
 # With field indices (default)
-python cbor_cddl_analyzer.py schema.cddl data.cbor \
+cddl-verify schema.cddl data.cbor \
   --type corim --edn-format keyindex
 
 # With field names
-python cbor_cddl_analyzer.py schema.cddl data.cbor \
+cddl-verify schema.cddl data.cbor \
   --type corim --edn-format keyname
 
 # With both
-python cbor_cddl_analyzer.py schema.cddl data.cbor \
+cddl-verify schema.cddl data.cbor \
   --type corim --edn-format both
 ```
 
 To disable annotations (including type headers):
 ```bash
-python cbor_cddl_analyzer.py schema.cddl data.cbor \
+cddl-verify schema.cddl data.cbor \
   --type corim --no-annotate
 ```
 

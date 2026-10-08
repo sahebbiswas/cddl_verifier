@@ -3,7 +3,8 @@
 CBOR-CDDL Analyzer and EDN Generator
 
 Analyzes CBOR data against CDDL schemas and generates annotated EDN output.
-For full CBOR support, use simple_cbor module or install cbor2: pip install cbor2
+Internal implementation module of the ``cddl_verifier`` package. Use the
+public ``cddl_verifier`` API (``validate``, ``Validator``) instead.
 """
 
 import argparse
@@ -14,11 +15,11 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from _version import __version__
+from ._version import __version__
 
 # Import CBOR encoder/decoder from separate module
 try:
-    from simple_cbor import CBOR
+    from ._cbor import CBOR
     HAS_SIMPLE_CBOR = True
     
     # Compatibility wrapper for existing code that uses SimpleCBORDecoder
@@ -33,7 +34,7 @@ try:
     
 except ImportError:
     HAS_SIMPLE_CBOR = False
-    # Will use inline fallback decoder below if simple_cbor not available
+    # Will use inline fallback decoder below if ._cbor is not available
 
 # ANSI color codes for terminal output
 class Colors:
@@ -67,12 +68,38 @@ class ColoredFormatter(logging.Formatter):
         formatter = logging.Formatter(log_fmt)
         return formatter.format(record)
 
-# Configure logging
-logger = logging.getLogger('cbor_cddl_analyzer')
-handler = logging.StreamHandler(sys.stderr)
-handler.setFormatter(ColoredFormatter())
-logger.addHandler(handler)
-logger.setLevel(logging.WARNING)  # Default level
+# Configure logging. As a library the package emits nothing by default; the
+# CLI (main) attaches a coloured stderr handler.
+logger = logging.getLogger('cddl_verifier')
+logger.addHandler(logging.NullHandler())
+
+
+class _StderrHandler(logging.StreamHandler):
+    """Stream handler that always writes to the current ``sys.stderr``."""
+
+    @property
+    def stream(self):
+        return sys.stderr
+
+    @stream.setter
+    def stream(self, value):
+        pass
+
+
+def _configure_cli_logging(verbose: bool) -> None:
+    """Attach the CLI's coloured stderr handler (once) and set the level."""
+    if not any(isinstance(h, _StderrHandler) for h in logger.handlers):
+        cli_handler = _StderrHandler()
+        cli_handler.setFormatter(ColoredFormatter())
+        logger.addHandler(cli_handler)
+    logger.setLevel(logging.DEBUG if verbose else logging.WARNING)
+
+
+def _reset_cli_logging() -> None:
+    """Undo :func:`_configure_cli_logging` so library use stays silent."""
+    for h in [h for h in logger.handlers if isinstance(h, _StderrHandler)]:
+        logger.removeHandler(h)
+    logger.setLevel(logging.NOTSET)
 
 
 # CBOR Major Type Constants (RFC 8949)
@@ -91,7 +118,7 @@ SIMPLE_TRUE = 21
 SIMPLE_NULL = 22
 
 
-# Inline CBOR decoder (fallback if simple_cbor module not available)
+# Inline CBOR decoder (fallback if the ._cbor module is not available)
 if not HAS_SIMPLE_CBOR:
     class SimpleCBORDecoder:
         """Simple CBOR decoder for basic data types."""
@@ -2498,8 +2525,17 @@ def load_cbor(filepath: Path) -> Any:
         sys.exit(1)
 
 
-def main():
+def main(argv=None):
+    """Entry point of the ``cddl-verify`` command (see ``--help``)."""
+    try:
+        _run_cli(argv)
+    finally:
+        _reset_cli_logging()
+
+
+def _run_cli(argv=None):
     parser = argparse.ArgumentParser(
+        prog='cddl-verify',
         description='Analyze CBOR against CDDL and generate annotated EDN',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
@@ -2539,11 +2575,11 @@ Examples:
     parser.add_argument('--show-types', action='store_true', 
                         help='Show parsed CDDL types and exit')
     
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     
     # Set logging level
+    _configure_cli_logging(args.verbose)
     if args.verbose:
-        logger.setLevel(logging.DEBUG)
         logger.debug("Verbose logging enabled")
     
     # Check if files exist

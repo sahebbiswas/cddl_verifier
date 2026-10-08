@@ -5,7 +5,7 @@
 ### Create CBOR Object
 
 ```python
-from simple_cbor import CBOR
+from cddl_verifier.cbor import CBOR
 
 cbor = CBOR({})              # Empty dict
 cbor = CBOR([])              # Empty list  

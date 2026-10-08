@@ -7,16 +7,20 @@ empty input, truncation and trailing bytes with a controlled
 ``CBORDecodeError`` that reports the byte offset of the problem.
 """
 
+import os
 import sys
 import subprocess
 from pathlib import Path
 
-# When run directly, add the repo root to sys.path (pytest uses conftest.py).
-REPO_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(REPO_ROOT))
+# When run directly (python3 tests/test_foo.py) without the package installed,
+# fall back to the source tree. pytest handles this via tests/conftest.py.
+try:
+    import cddl_verifier  # noqa: F401
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import unittest
-from simple_cbor import (
+from cddl_verifier._cbor import (
     CBOR,
     CBORDecodeError,
     CBORTrailingDataError,
@@ -26,7 +30,8 @@ from simple_cbor import (
     cbor_encode,
     load_cbor_bytes,
 )
-from _version import __version__
+import cddl_verifier
+from cddl_verifier import __version__
 
 
 # (description, encoded item, expected decoded value)
@@ -175,9 +180,15 @@ class TestAnalyzerCLI(unittest.TestCase):
     """The analyzer CLI surfaces strict-decoding errors and its version."""
 
     def _run(self, *args):
+        # Run the CLI as ``python -m cddl_verifier`` against the same package
+        # the tests import (installed, or the source tree as a fallback).
+        package_root = str(Path(cddl_verifier.__file__).resolve().parent.parent)
+        env = dict(os.environ)
+        env["PYTHONPATH"] = os.pathsep.join(
+            p for p in (package_root, env.get("PYTHONPATH")) if p)
         return subprocess.run(
-            [sys.executable, str(REPO_ROOT / "cbor_cddl_analyzer.py"), *args],
-            capture_output=True, text=True, cwd=REPO_ROOT,
+            [sys.executable, "-m", "cddl_verifier", *args],
+            capture_output=True, text=True, env=env,
         )
 
     def test_trailing_bytes_fail_cli(self):

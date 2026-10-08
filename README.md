@@ -1,127 +1,181 @@
 [![Python CI](https://github.com/sahebbiswas/cddl_verifier/actions/workflows/ci.yml/badge.svg)](https://github.com/sahebbiswas/cddl_verifier/actions/workflows/ci.yml)
 
-# cddl_verifier
+# cddl-verifier
 
-A Python toolkit for working with CBOR (Concise Binary Object Representation) data and
-CDDL (Concise Data Definition Language) schemas. It covers the full workflow:
-encoding and decoding CBOR, validating data against a CDDL schema, generating annotated
-EDN (Extended Diagnostic Notation) output, and converting between CBOR and JSON.
+Validate CBOR (RFC 8949) data against CDDL (RFC 8610) schemas, render it as
+annotated EDN (Extended Diagnostic Notation), and convert between CBOR and JSON.
+It is built for attestation formats such as CoRIM and CoSWID.
 
-## Modules
+> **Scope.** cddl-verifier supports a practical subset of CDDL and CBOR. It does
+> **not** claim full RFC 8610 or RFC 8949 conformance yet; see
+> [Limitations](#limitations) and [docs/CDDL_SUPPORT.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CDDL_SUPPORT.md).
 
-| Module | Purpose |
-|--------|---------|
-| `cbor_cddl_analyzer.py` | CDDL schema parser, CBOR validator, annotated EDN generator, and the `cddl-verify` CLI |
-| `simple_cbor.py` | CBOR encoder, strict decoder, diagnostic dumper, and builder |
-| `cbor_json.py` | CBOR ↔ JSON conversion with type preservation |
-| `_version.py` | Single source of truth for the project version |
+| Surface | Name |
+|---------|------|
+| PyPI distribution | `cddl-verifier` |
+| Python import package | `cddl_verifier` |
+| Command-line tool | `cddl-verify` |
 
 ## Installation
 
 ```bash
-pip install .            # installs the modules and the `cddl-verify` command
-pip install ".[cbor2]"   # optionally also installs cbor2
+pip install cddl-verifier
 ```
 
-There are no required dependencies. You can also run the scripts directly from a
-checkout without installing (`python cbor_cddl_analyzer.py …`). `cbor2` is only used
-by the `load_cbor_file()` helper; the CLI and `simple_cbor` always use the bundled
-decoder.
+Requires Python 3.9 or newer. There are no runtime dependencies: CBOR encoding
+and decoding are bundled. Extras for contributors: `pip install "cddl-verifier[test]"`
+(pytest) and `[dev]` (pytest, build, twine).
 
 ## Quick start
 
-Validate a CBOR file against a CDDL type and print annotated EDN:
+### Command line
 
 ```bash
-cddl-verify schema.cddl data.cbor --type corim-map
+cddl-verify schema.cddl data.cbor --type corim-map                     # validate, print annotated EDN
+cddl-verify schema.cddl data.cbor --type corim-map --output data.edn   # write EDN to a file
+cddl-verify schema.cddl data.cbor --show-types                         # list the parsed CDDL types
 ```
 
-The same from Python, using the current implementation classes:
+The exit status is `0` on success and `1` on a decode or validation failure.
+`python -m cddl_verifier` takes the same arguments. See [docs/CLI.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CLI.md).
 
-> **Provisional API.** `CDDLParser`, `CBORAnalyzer` and `EDNGenerator` are
-> internal classes and will change during the CDDL AST/resolution work. A stable
-> `cddl_verifier` package with a `validate()` / `Validator` facade is planned for
-> the 0.1.0 release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)); prefer that once it is available.
+### Python
 
 ```python
-from cbor_cddl_analyzer import CDDLParser, CBORAnalyzer, EDNGenerator
-from simple_cbor import CBOR
+from pathlib import Path
+from cddl_verifier import validate
 
-cddl = CDDLParser(open("schema.cddl").read())
-data = CBOR.loads(open("data.cbor", "rb").read())   # exactly one CBOR item
-
-analyzer = CBORAnalyzer(cddl)
-if not analyzer.validate(data, "corim-map"):
-    print(analyzer.get_errors())
-print(EDNGenerator(cddl).generate(data, "corim-map"))
+result = validate(Path("schema.cddl"), Path("data.cbor").read_bytes(),
+                  root_type="corim-map")
+if result.valid:
+    print("valid")
+else:
+    for diagnostic in result.diagnostics:
+        print(diagnostic.code, diagnostic.message)
 ```
 
-Encode, decode and convert CBOR:
+- `schema` is CDDL text (`str`) or a path (`pathlib.Path`).
+- `data` is CBOR bytes or an already-decoded Python value.
+- `root_type` defaults to the first rule in the schema.
+- CBOR that cannot be decoded gives an invalid result with a `"decode"`
+  diagnostic and its byte offset; it does not raise.
+
+To check many items against one schema, or to render EDN, use `Validator`:
 
 ```python
-from simple_cbor import cbor_encode, cbor_decode
-from cbor_json import cbor_to_json
+from cddl_verifier import Validator
 
-raw = cbor_encode({0: "Alice", 1: b"\x01"}, canonical=True)
-assert cbor_decode(raw) == {0: "Alice", 1: b"\x01"}
+validator = Validator(Path("schema.cddl"))
+result = validator.validate(cbor_bytes, root_type="corim-map")
+print(validator.to_edn(cbor_bytes, root_type="corim-map"))
+```
+
+CBOR and JSON helpers:
+
+```python
+from cddl_verifier.cbor import encode, decode
+from cddl_verifier.json_codec import cbor_to_json
+
+raw = encode({0: "Alice", 1: b"\x01"}, canonical=True)
+assert decode(raw) == {0: "Alice", 1: b"\x01"}
 print(cbor_to_json(raw, typed=True, pretty=True))
 ```
 
 Decoding is strict: the input must be exactly one complete CBOR item. Empty,
-truncated, or trailing-byte input raises `CBORDecodeError` with the byte offset of
-the problem.
+truncated or trailing-byte input raises `CBORDecodeError` with the byte offset
+of the problem. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/API.md) for the full API.
+
+## What is supported
+
+- CDDL maps, arrays, type aliases, groups, type choices (`/=`), sockets (`//=`),
+  optional fields, occurrence indicators, IANA-registered parameters
+  (`&(name: n)`), CBOR tags (`#6.n(...)`), `.cbor`, `.size`, `.regexp` and
+  value-range controls on integers. Details: [docs/CDDL_SUPPORT.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CDDL_SUPPORT.md).
+- Real CoRIM and CoSWID schemas: [docs/CORIM_SUPPORT.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CORIM_SUPPORT.md).
+- CBOR encoding and strict decoding with byte offsets in errors; duplicate map
+  keys, invalid UTF-8 and excessive nesting are rejected.
+- Annotated EDN output with field names from the schema.
+- CBOR ↔ JSON conversion, optionally lossless (`typed=True`).
+
+## Limitations
+
+- **CDDL**: a practical subset, not the full RFC 8610 grammar. Malformed schemas
+  are often accepted without an error. A standards-oriented parser is planned
+  ([#69](https://github.com/sahebbiswas/cddl_verifier/issues/69),
+  [#70](https://github.com/sahebbiswas/cddl_verifier/issues/70)).
+- **`.size`**: counts characters instead of UTF-8 bytes on `tstr`, and is not
+  enforced on `uint` ([#67](https://github.com/sahebbiswas/cddl_verifier/issues/67)).
+- **Canonical encoding**: map keys are sorted and integers are shortest-form,
+  but floats are always written as 8-byte doubles, so output is not fully RFC 8949
+  §4.2 deterministic ([#66](https://github.com/sahebbiswas/cddl_verifier/issues/66)).
+- **CBOR**: indefinite-length items and `undefined` are not supported
+  (`CBORUnsupportedError`). CBOR sequences are rejected; a sequence API is not
+  available yet.
+- **Value types**: tags decode to `(tag, value)` tuples and arrays or maps used
+  as map keys decode to tuples. These are provisional and expected to change
+  ([#78](https://github.com/sahebbiswas/cddl_verifier/issues/78),
+  [#88](https://github.com/sahebbiswas/cddl_verifier/issues/88)).
 
 ## Documentation
 
 | Document | Contents |
 |----------|----------|
-| [docs/CLI.md](docs/CLI.md) | `cddl-verify` and `cbor_json.py` options, input rules, EDN output formats |
-| [docs/API.md](docs/API.md) | Python API for all modules, including decode errors and JSON conversion |
-| [docs/CDDL_SUPPORT.md](docs/CDDL_SUPPORT.md) | Supported CDDL syntax, types, and validation behaviour |
-| [docs/CORIM_SUPPORT.md](docs/CORIM_SUPPORT.md) | CoRIM / CoSWID schema support |
-| [docs/CBOR_BUILDER_QUICK_REF.md](docs/CBOR_BUILDER_QUICK_REF.md), [docs/ITERATIVE_CONSTRUCTION.md](docs/ITERATIVE_CONSTRUCTION.md) | Builder API in depth |
-| [docs/CBOR_DIAGNOSTIC_DUMP.md](docs/CBOR_DIAGNOSTIC_DUMP.md) | Diagnostic dump format |
-| [docs/CANONICAL_AND_JSON.md](docs/CANONICAL_AND_JSON.md) | Canonical encoding and JSON round-trips |
-| [docs/](docs/) | EDN formatting, tag notation, and annotation notes |
-| [TESTING.md](TESTING.md) | Running and writing tests, CI setup |
-| [CHANGELOG.md](CHANGELOG.md) | Release history |
+| [docs/CLI.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CLI.md) | `cddl-verify` and JSON converter options, input rules, EDN output formats |
+| [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/API.md) | Python API: `validate`, `Validator`, CBOR and JSON helpers |
+| [docs/CDDL_SUPPORT.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CDDL_SUPPORT.md) | Supported CDDL syntax, types, and validation behaviour |
+| [docs/CORIM_SUPPORT.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CORIM_SUPPORT.md) | CoRIM / CoSWID schema support |
+| [docs/CBOR_BUILDER_QUICK_REF.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CBOR_BUILDER_QUICK_REF.md), [docs/ITERATIVE_CONSTRUCTION.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/ITERATIVE_CONSTRUCTION.md) | `CBOR` builder API in depth |
+| [docs/CBOR_DIAGNOSTIC_DUMP.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CBOR_DIAGNOSTIC_DUMP.md) | Diagnostic dump format |
+| [docs/CANONICAL_AND_JSON.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CANONICAL_AND_JSON.md) | Canonical encoding and JSON round-trips |
+| [docs/](https://github.com/sahebbiswas/cddl_verifier/tree/main/docs) | EDN formatting, tag notation, and annotation notes |
+| [TESTING.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/TESTING.md) | Running and writing tests, CI setup |
+| [CHANGELOG.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/CHANGELOG.md) | Release history |
 
-## Testing
+## Development
 
 ```bash
-pytest                                       # requires: pip install pytest
-python3 -m unittest discover -s tests -t .  # no extra dependencies
+git clone https://github.com/sahebbiswas/cddl_verifier
+cd cddl_verifier
+pip install -e ".[test]"
+pytest
 ```
 
-See [TESTING.md](TESTING.md) for details.
-
-## Limitations
-
-- The supported CDDL subset covers practical attestation schemas (CoRIM, CoSWID);
-  it does not implement the full RFC 8610 grammar.
-- Indefinite-length CBOR items and the `undefined` simple value are not supported by
-  the bundled encoder/decoder (decoding them raises `CBORUnsupportedError`).
-- CBOR sequences (multiple concatenated items) are rejected by the decoder; a
-  dedicated sequence API is not yet available.
+The package source is in `src/cddl_verifier/`. Modules whose names start with
+an underscore are internal. See [TESTING.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/TESTING.md).
 
 ## Versioning
 
 The project follows [Semantic Versioning 2.0.0](https://semver.org/). While the
 major version is `0`, a minor bump (`0.x.0`) may contain breaking changes and a
-patch bump (`0.x.y`) is for backward-compatible fixes.
+patch bump (`0.x.y`) is for backward-compatible fixes. The stable surface is the
+public API above (`cddl_verifier`, `cddl_verifier.cbor`,
+`cddl_verifier.json_codec`) and the `cddl-verify` CLI; underscore modules are not
+covered.
 
-0.1.0 is the first public release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)). Changes made before it is
-published go into the same version, under *0.1.0* in the changelog.
-
-- The version is defined once, as `__version__` in [`_version.py`](_version.py).
-  `pyproject.toml` reads it, `simple_cbor.__version__` re-exports it, and
+- The version is defined once, as `__version__` in
+  [`src/cddl_verifier/_version.py`](https://github.com/sahebbiswas/cddl_verifier/blob/main/src/cddl_verifier/_version.py).
+  `pyproject.toml` reads it, `cddl_verifier.__version__` exposes it, and
   `cddl-verify --version` prints it. Don't repeat the version number elsewhere.
-- After 0.1.0 is published, each change merged to `main` bumps the version and
-  adds an entry to [CHANGELOG.md](CHANGELOG.md)
-  (format: [Keep a Changelog](https://keepachangelog.com/)).
-  Follow-up commits before the merge go into the same, still-unreleased version.
-- Releases are published by
-  [`publish_pypi.yml`](.github/workflows/publish_pypi.yml): publishing a GitHub
-  release tagged `vX.Y.Z` (matching `_version.py`) uploads to TestPyPI, checks
-  the install from there, then uploads to PyPI. A manual run uploads to TestPyPI by default.
+- A change that alters behaviour bumps the version and adds an entry to
+  [CHANGELOG.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/CHANGELOG.md) (format: [Keep a Changelog](https://keepachangelog.com/)).
+  Follow-up commits before a release go into the same, still-unreleased version.
 - Update this README and `docs/` in the same change as the code they describe.
+
+## Releasing
+
+Releases go to PyPI through [`publish_pypi.yml`](https://github.com/sahebbiswas/cddl_verifier/blob/main/.github/workflows/publish_pypi.yml),
+which uses PyPI Trusted Publishing (no API tokens are stored).
+
+1. Set the version in `_version.py`, date its CHANGELOG section, and merge to `main`.
+2. Optional dry run: start the workflow manually (Actions → *Publish to PyPI /
+   TestPyPI* → *Run workflow*, target `testpypi`). A version can only be uploaded
+   once per index, so use a pre-release such as `0.1.1rc1` for trial uploads.
+3. Publish a GitHub release with tag `vX.Y.Z` matching the version. The workflow
+   builds and checks the distributions, tests the wheel and sdist, uploads to
+   TestPyPI, installs from there, and then uploads to PyPI.
+
+One-time setup: on pypi.org and test.pypi.org, add a (pending) trusted publisher
+for repository `sahebbiswas/cddl_verifier`, workflow `publish_pypi.yml`, and
+environment `pypi` / `testpypi` respectively (or "any" environment). GitHub
+creates the environments on first use; add a required reviewer to `pypi` to gate
+production uploads.

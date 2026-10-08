@@ -195,19 +195,19 @@ $class-id-type-choice /= tagged-oid-type
 ### Parsing CoRIM CDDL Schema
 
 ```bash
-python cbor_cddl_analyzer.py corim.cddl corim_data.cbor --show-types
+cddl-verify corim.cddl corim_data.cbor --show-types
 ```
 
 ### Validating CoRIM CBOR Data
 
 ```bash
-python cbor_cddl_analyzer.py corim.cddl corim_data.cbor --type corim-map
+cddl-verify corim.cddl corim_data.cbor --type corim-map
 ```
 
 ### Generating EDN for CoRIM
 
 ```bash
-python cbor_cddl_analyzer.py corim.cddl corim_data.cbor --type corim-map --output corim.edn
+cddl-verify corim.cddl corim_data.cbor --type corim-map --output corim.edn
 ```
 
 **EDN Output Example:**

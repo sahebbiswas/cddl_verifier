@@ -9,14 +9,16 @@ and diagnostic dumping all in one.
 import sys
 from pathlib import Path
 
-# When run directly (python3 tests/test_foo.py), add the repo root to
-# sys.path so source modules are importable.  pytest handles this via
-# tests/conftest.py instead.
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# When run directly (python3 tests/test_foo.py) without the package installed,
+# fall back to the source tree. pytest handles this via tests/conftest.py.
+try:
+    import cddl_verifier  # noqa: F401
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import unittest
 import struct
-from simple_cbor import (
+from cddl_verifier._cbor import (
     CBOR,
     cbor_encode,
     cbor_decode,

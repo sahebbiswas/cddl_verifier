@@ -32,7 +32,7 @@ import struct
 import copy as copy_module
 from typing import Any, Union, Tuple, Dict, List, Optional
 
-from _version import __version__
+from ._version import __version__
 
 # CBOR Major Type Constants (RFC 8949)
 MAJOR_TYPE_UINT = 0      # Unsigned integer

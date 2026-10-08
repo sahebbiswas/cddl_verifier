@@ -2,3 +2,8 @@ test/
 
 __pycache__/ 
 test-data/unsigned-good-corim.cbor 
+
+# Packaging
+build/
+dist/
+*.egg-info/

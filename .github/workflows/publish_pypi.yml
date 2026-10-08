@@ -132,7 +132,7 @@ jobs:
           "$RUNNER_TEMP/venv/bin/python" -m pip install --upgrade pip
           "$RUNNER_TEMP/venv/bin/python" -m pip install "$pkg"
 
-      - name: Exercise the installed CLI
+      - name: Exercise the installed package and CLI
         # Run outside the checkout so nothing is imported from the source tree.
         working-directory: ${{ runner.temp }}
         env:
@@ -143,8 +143,33 @@ jobs:
           cddl-verify --version
           cddl-verify "$SRC/cddl-schemas/example_iana.cddl" \
                       "$SRC/test-data/example_iana.cbor" \
-                      --output example_iana.edn
+                      --type message --output example_iana.edn
           test -s example_iana.edn
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import cddl_verifier
+          from cddl_verifier import Validator, validate
+          from cddl_verifier.cbor import decode, encode
+
+          assert "site-packages" in cddl_verifier.__file__, cddl_verifier.__file__
+          src = Path(os.environ["SRC"])
+          schema = src / "cddl-schemas" / "example_iana.cddl"
+          data = (src / "test-data" / "example_iana.cbor").read_bytes()
+          result = validate(schema, data, root_type="message")
+          assert result.valid, result.errors
+          assert decode(encode(result.data)) == result.data
+          assert "/ message /" in Validator(schema).to_edn(data)
+          assert not validate("n = uint", encode("x")).valid
+          print("cddl_verifier", cddl_verifier.__version__, "OK")
+          PY
+
+      - name: Run unit tests against the installed package
+        env:
+          CDDL_VERIFIER_REQUIRE_INSTALLED: "1"
+        run: |
+          "$RUNNER_TEMP/venv/bin/python" -m pip install -r requirements.txt
+          "$RUNNER_TEMP/venv/bin/python" -m pytest tests/
 
   publish-testpypi:
     name: Publish to TestPyPI
@@ -199,6 +224,7 @@ jobs:
             sleep $((attempt * 15))
           done
           "$RUNNER_TEMP/venv/bin/cddl-verify" --version
+          "$RUNNER_TEMP/venv/bin/python" -c "import cddl_verifier; print(cddl_verifier.__version__)"
 
   publish-pypi:
     name: Publish to PyPI

@@ -314,13 +314,13 @@ Tag numbers explicit, structure clear, standard notation.
 Tag notation is automatically included in EDN output:
 
 ```bash
-python cbor_cddl_analyzer.py schema.cddl data.cbor \
+cddl-verify schema.cddl data.cbor \
   --type corim --edn-format keyindex
 ```
 
 To see tag information with verbose logging:
 ```bash
-python cbor_cddl_analyzer.py schema.cddl data.cbor \
+cddl-verify schema.cddl data.cbor \
   --type corim --edn-format keyindex --verbose 2>&1 | grep "Tag"
 ```
 

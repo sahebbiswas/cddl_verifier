@@ -24,10 +24,15 @@ Canonical encoding follows these rules:
 3. **Definite-length** - No indefinite-length items
 4. **No duplicates** - Map keys must be unique
 
+> **Not yet implemented:** RFC 8949 §4.2 also requires floats to use the
+> shortest form that keeps the value exactly (e.g. `1.5` as a 2-byte half-float).
+> The encoder currently writes floats as 8-byte doubles. Tracked in
+> [#66](https://github.com/sahebbiswas/cddl_verifier/issues/66).
+
 ### Usage
 
 ```python
-from simple_cbor import CBOR, cbor_encode
+from cddl_verifier.cbor import CBOR, cbor_encode
 
 # Standard encoding
 data = {"z": 1, "a": 2, "m": 3}
@@ -134,7 +139,7 @@ Convert between JSON and CBOR formats with support for CBOR-specific types.
 #### Basic Conversion
 
 ```python
-from cbor_json import json_to_cbor
+from cddl_verifier.json_codec import json_to_cbor
 
 json_str = '{"name": "test", "value": 42}'
 cbor_bytes = json_to_cbor(json_str)
@@ -169,8 +174,8 @@ cbor_bytes = json_to_cbor(json_str)
 #### Basic Conversion
 
 ```python
-from cbor_json import cbor_to_json
-from simple_cbor import cbor_encode
+from cddl_verifier.json_codec import cbor_to_json
+from cddl_verifier.cbor import cbor_encode
 
 data = {"name": "test", "items": [1, 2, 3]}
 cbor_bytes = cbor_encode(data)
@@ -226,7 +231,7 @@ Output:
 ### File Conversion
 
 ```python
-from cbor_json import cbor_file_to_json_file, json_file_to_cbor_file
+from cddl_verifier.json_codec import cbor_file_to_json_file, json_file_to_cbor_file
 
 # CBOR file to JSON file
 cbor_file_to_json_file('data.cbor', 'data.json', pretty=True)
@@ -241,32 +246,32 @@ json_file_to_cbor_file('data.json', 'data.cbor', canonical=True)
 
 ```bash
 # Basic conversion
-python cbor_json.py to-json input.cbor output.json
+python -m cddl_verifier.json_codec to-json input.cbor output.json
 
 # With pretty printing
-python cbor_json.py to-json input.cbor output.json --pretty
+python -m cddl_verifier.json_codec to-json input.cbor output.json --pretty
 
 # With type preservation
-python cbor_json.py to-json input.cbor output.json --pretty --typed
+python -m cddl_verifier.json_codec to-json input.cbor output.json --pretty --typed
 
 # Custom indentation
-python cbor_json.py to-json input.cbor output.json --pretty --indent 4
+python -m cddl_verifier.json_codec to-json input.cbor output.json --pretty --indent 4
 
 # Using stdin/stdout
-cat data.cbor | python cbor_json.py to-json - -
+cat data.cbor | python -m cddl_verifier.json_codec to-json - -
 ```
 
 #### Convert JSON to CBOR
 
 ```bash
 # Basic conversion
-python cbor_json.py to-cbor input.json output.cbor
+python -m cddl_verifier.json_codec to-cbor input.json output.cbor
 
 # With canonical encoding
-python cbor_json.py to-cbor input.json output.cbor --canonical
+python -m cddl_verifier.json_codec to-cbor input.json output.cbor --canonical
 
 # Using stdin/stdout
-echo '{"test": 1}' | python cbor_json.py to-cbor - output.cbor
+echo '{"test": 1}' | python -m cddl_verifier.json_codec to-cbor - output.cbor
 ```
 
 ### Type Annotations Reference
@@ -305,8 +310,8 @@ Converts to Python tuple `(32, "http://example.com")`.
 ### Round-Trip Conversion
 
 ```python
-from simple_cbor import cbor_encode, cbor_decode
-from cbor_json import cbor_to_json, json_to_cbor
+from cddl_verifier.cbor import cbor_encode, cbor_decode
+from cddl_verifier.json_codec import cbor_to_json, json_to_cbor
 
 # Original data with CBOR types
 original = {
@@ -351,12 +356,12 @@ def api_endpoint(request):
 
 ```bash
 # Inspect CBOR file as JSON
-python cbor_json.py to-json unknown.cbor - --pretty | less
+python -m cddl_verifier.json_codec to-json unknown.cbor - --pretty | less
 
 # Edit and convert back
-python cbor_json.py to-json data.cbor data.json --pretty --typed
+python -m cddl_verifier.json_codec to-json data.cbor data.json --pretty --typed
 # Edit data.json
-python cbor_json.py to-cbor data.json modified.cbor
+python -m cddl_verifier.json_codec to-cbor data.json modified.cbor
 ```
 
 #### 3. Testing
@@ -413,8 +418,8 @@ Actual CBOR: (send above JSON converted to CBOR)
 ### Complete Example: Secure Data Exchange
 
 ```python
-from simple_cbor import CBOR, cbor_encode, cbor_decode
-from cbor_json import cbor_to_json, json_to_cbor
+from cddl_verifier.cbor import CBOR, cbor_encode, cbor_decode
+from cddl_verifier.json_codec import cbor_to_json, json_to_cbor
 import hashlib
 import hmac
 

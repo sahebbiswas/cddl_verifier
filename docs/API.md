@@ -1,33 +1,103 @@
 # Python API reference
 
-The toolkit has three importable modules:
+Install with `pip install cddl-verifier` and import `cddl_verifier`.
 
-| Module | Main entry points |
-|--------|-------------------|
-| [`cbor_cddl_analyzer`](#cbor_cddl_analyzer-validation-and-edn) | `CDDLParser`, `CBORAnalyzer`, `EDNGenerator` |
-| [`simple_cbor`](#simple_cbor-encoding-and-decoding) | `CBOR`, `cbor_encode`, `cbor_decode`, `cbor_diag_dump`, `CBORDecodeError` |
-| [`cbor_json`](#cbor_json-json-conversion) | `cbor_to_json`, `json_to_cbor`, file helpers |
+| Module | Status | Main entry points |
+|--------|--------|-------------------|
+| [`cddl_verifier`](#cddl_verifier-validation) | Public | `validate`, `Validator`, `ValidationResult`, `Diagnostic`, `SchemaError`, `CBORDecodeError`, `__version__` |
+| [`cddl_verifier.cbor`](#cddl_verifiercbor-encoding-and-decoding) | Public | `encode`, `decode`, `diag_dump`, `CBOR`, decode errors |
+| [`cddl_verifier.json_codec`](#cddl_verifierjson_codec-json-conversion) | Public | `cbor_to_json`, `json_to_cbor`, file helpers |
+| [`cddl_verifier._analyzer`](#internal-parser-validator-and-edn-generator) | Internal | `CDDLParser`, `CBORAnalyzer`, `EDNGenerator` |
 
-The project version is available as `simple_cbor.__version__` (defined in `_version.py`).
+Modules whose names start with an underscore are internal: they can change in
+any release without notice. The public names above follow the versioning policy
+in the [README](../README.md#versioning).
 
-> **Provisional API.** Everything on this page documents the current
-> implementation modules. They are not a stable public API: `CDDLParser`,
-> `CBORAnalyzer` and `EDNGenerator` will change during the CDDL AST and
-> semantic-resolution work, and decoded value types (tags as `(tag, value)`
-> tuples, array/map keys as tuples) are expected to change ([#78](https://github.com/sahebbiswas/cddl_verifier/issues/78), [#88](https://github.com/sahebbiswas/cddl_verifier/issues/88)). The 0.1.0
-> release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)) introduces a stable `cddl_verifier` package with a small
-> `validate()` / `Validator` facade and deliberately chosen CBOR helpers; new
-> code should move to it once it is available.
+> **Provisional value types.** Decoded CBOR values currently represent tags as
+> `(tag, value)` tuples and arrays or maps used as map keys as tuples. These
+> types are expected to change ([#78](https://github.com/sahebbiswas/cddl_verifier/issues/78), [#88](https://github.com/sahebbiswas/cddl_verifier/issues/88)).
 
 ---
 
-## `cbor_cddl_analyzer`: validation and EDN
+## `cddl_verifier`: validation
+
+```python
+from pathlib import Path
+from cddl_verifier import validate
+
+result = validate(Path("schema.cddl"), Path("data.cbor").read_bytes(),
+                  root_type="corim-map")
+if result.valid:
+    print("valid")
+else:
+    for diagnostic in result.diagnostics:
+        print(diagnostic.code, diagnostic.message)
+```
+
+### `validate(schema, data, root_type=None) -> ValidationResult`
+
+Shorthand for `Validator(schema).validate(data, root_type)`.
+
+### `Validator(schema)`
+
+Parses a schema once so it can check many items.
+
+- `schema`: CDDL text as a `str`, or a path as a `pathlib.Path` (any
+  `os.PathLike`). A plain `str` is always schema text, never a file name.
+- Raises `SchemaError` (a `ValueError`) when a schema file cannot be read, and
+  `TypeError` for any other argument type. The current parser is lenient:
+  malformed CDDL is usually not rejected, so check results against known-good data.
+
+Members:
+
+| Member | Description |
+|--------|-------------|
+| `validate(data, root_type=None)` | Validate and return a `ValidationResult` |
+| `to_edn(data, root_type=None, *, annotate=True, edn_format="keyindex")` | Render EDN (`"keyindex"`, `"keyname"` or `"both"`); raises `CBORDecodeError` for undecodable bytes |
+| `default_root_type` | The first rule in the schema, used when `root_type` is `None` |
+
+`data` is either CBOR bytes (`bytes`, `bytearray`, `memoryview`), which are
+decoded with the strict single-item decoder, or an already-decoded Python value.
+If `root_type` is `None` and the schema has no rules, `SchemaError` is raised.
+
+### `ValidationResult`
+
+| Attribute | Description |
+|-----------|-------------|
+| `valid` | `True` if the data matches the schema; `bool(result)` is the same |
+| `root_type` | The rule that was checked |
+| `diagnostics` | Tuple of `Diagnostic` |
+| `errors` | Tuple of error messages (shortcut over `diagnostics`) |
+| `data` | The decoded value, or `None` if decoding failed |
+
+CBOR that cannot be decoded does **not** raise: the result is invalid and holds
+one `Diagnostic` with `code == "decode"` and the byte `offset` of the problem.
+
+### `Diagnostic`
+
+| Attribute | Description |
+|-----------|-------------|
+| `message` | Human-readable text (also `str(diagnostic)`) |
+| `code` | `"decode"` or `"validation"` |
+| `severity` | `"error"` |
+| `offset` | Byte offset into the CBOR input for decode errors, otherwise `None` |
+
+The library does not log anything by default. The `cddl-verify` CLI prints
+progress and errors to stderr.
+
+---
+
+## Internal: parser, validator and EDN generator
+
+These classes back the public API. They are documented for contributors and
+will change during the CDDL AST and semantic-resolution work
+([#69](https://github.com/sahebbiswas/cddl_verifier/issues/69), [#70](https://github.com/sahebbiswas/cddl_verifier/issues/70)); use `Validator` instead.
 
 ### Parsing and validating
 
 ```python
-from cbor_cddl_analyzer import CDDLParser, CBORAnalyzer
-from simple_cbor import CBOR
+from cddl_verifier._analyzer import CDDLParser, CBORAnalyzer
+from cddl_verifier.cbor import CBOR
 
 # Parse a CDDL schema
 cddl = CDDLParser(open("schema.cddl").read())
@@ -51,7 +121,7 @@ The supported schema syntax and validation rules are described in
 ### Generating annotated EDN
 
 ```python
-from cbor_cddl_analyzer import EDNGenerator
+from cddl_verifier._analyzer import EDNGenerator
 
 gen = EDNGenerator(cddl, edn_format="keyindex")   # or "keyname", "both"
 print(gen.generate(data, "person"))
@@ -61,13 +131,14 @@ The output formats are shown in [CLI.md](CLI.md#edn-output-formats).
 
 ---
 
-## `simple_cbor`: encoding and decoding
+## `cddl_verifier.cbor`: encoding and decoding
 
-`simple_cbor` provides a single `CBOR` class for all CBOR operations, with no
-external dependencies.
+`cddl_verifier.cbor` provides `encode`, `decode` and `diag_dump`, and a `CBOR`
+class for all CBOR operations, with no external dependencies. The functions are
+also available as `cbor_encode`, `cbor_decode` and `cbor_diag_dump`.
 
 ```python
-from simple_cbor import CBOR, cbor_encode, cbor_decode
+from cddl_verifier.cbor import CBOR, cbor_encode, cbor_decode
 
 # Create from Python data
 cbor = CBOR({0: "Alice", 1: 30})
@@ -94,7 +165,7 @@ tuples so they are hashable), tags to `(tag_number, value)` tuples, and
 
 ### Strict single-item decoding
 
-`CBOR.load()`, `CBOR.loads()`, `cbor_decode()` and `load_cbor_bytes()` accept
+`decode()`, `CBOR.load()`, `CBOR.loads()` and `cbor_decode()` accept
 `bytes`, `bytearray` or `memoryview`, and must consume **exactly one complete
 CBOR data item**. Anything else raises `CBORDecodeError`, a `ValueError`
 subclass. Its `offset` attribute is the byte offset where the problem was
@@ -110,7 +181,7 @@ detected, and `reason` holds the message without the offset.
 A non-bytes argument raises `TypeError`.
 
 ```python
-from simple_cbor import CBORTrailingDataError, cbor_decode
+from cddl_verifier.cbor import CBORTrailingDataError, cbor_decode
 
 try:
     cbor_decode(b"\x01\x02")          # two items: a CBOR sequence
@@ -175,12 +246,17 @@ assert h1 == h2   # always identical
 Canonical encoding is needed for CoRIM signing and anywhere CBOR bytes are hashed
 or compared. See [CANONICAL_AND_JSON.md](CANONICAL_AND_JSON.md).
 
+> **Limitation.** Canonical mode sorts map keys and uses the shortest integer
+> forms, but floats are not yet reduced to their shortest exact width (for
+> example `1.5` is written as 8 bytes, not 2). Full RFC 8949 §4.2 deterministic
+> encoding is tracked in [#66](https://github.com/sahebbiswas/cddl_verifier/issues/66).
+
 ---
 
-## `cbor_json`: JSON conversion
+## `cddl_verifier.json_codec`: JSON conversion
 
 ```python
-from cbor_json import cbor_to_json, json_to_cbor
+from cddl_verifier.json_codec import cbor_to_json, json_to_cbor
 
 # CBOR → JSON
 json_str = cbor_to_json(raw, pretty=True)
@@ -226,7 +302,7 @@ With `typed=True`, CBOR values that have no JSON equivalent are kept as objects:
 ### File conversion
 
 ```python
-from cbor_json import cbor_file_to_json_file, json_file_to_cbor_file
+from cddl_verifier.json_codec import cbor_file_to_json_file, json_file_to_cbor_file
 
 cbor_file_to_json_file("data.cbor", "data.json", pretty=True, typed=True)
 json_file_to_cbor_file("data.json", "data.cbor", canonical=True)

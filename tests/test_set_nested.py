@@ -6,11 +6,15 @@ Tests for CBOR.set_nested method
 import sys
 from pathlib import Path
 
-# Add repo root to sys.path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# When run directly (python3 tests/test_foo.py) without the package installed,
+# fall back to the source tree. pytest handles this via tests/conftest.py.
+try:
+    import cddl_verifier  # noqa: F401
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import unittest
-from simple_cbor import CBOR
+from cddl_verifier._cbor import CBOR
 
 class TestCBORSetNested(unittest.TestCase):
     """Test cases for CBOR.set_nested method"""
