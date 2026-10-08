@@ -110,15 +110,18 @@ The project follows [Semantic Versioning 2.0.0](https://semver.org/). While the
 major version is `0`, a minor bump (`0.x.0`) may contain breaking changes and a
 patch bump (`0.x.y`) is for backward-compatible fixes.
 
-0.1.0 will be the first public release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)). Until then the version is a
-[PEP 440](https://peps.python.org/pep-0440/) development release, `0.1.0.devN`,
-and changes are listed under *Unreleased* in the changelog.
+0.1.0 is the first public release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)). Changes made before it is
+published go into the same version, under *0.1.0* in the changelog.
 
 - The version is defined once, as `__version__` in [`_version.py`](_version.py).
   `pyproject.toml` reads it, `simple_cbor.__version__` re-exports it, and
   `cddl-verify --version` prints it. Don't repeat the version number elsewhere.
-- Each change merged to `main` bumps the version (`0.1.0.devN` → `devN+1` before
-  the first release) and adds an entry to
-  [CHANGELOG.md](CHANGELOG.md) (format: [Keep a Changelog](https://keepachangelog.com/)).
+- After 0.1.0 is published, each change merged to `main` bumps the version and
+  adds an entry to [CHANGELOG.md](CHANGELOG.md)
+  (format: [Keep a Changelog](https://keepachangelog.com/)).
   Follow-up commits before the merge go into the same, still-unreleased version.
+- Releases are published by
+  [`publish_pypi.yml`](.github/workflows/publish_pypi.yml): publishing a GitHub
+  release tagged `vX.Y.Z` (matching `_version.py`) uploads to TestPyPI, checks
+  the install from there, then uploads to PyPI. A manual run uploads to TestPyPI by default.
 - Update this README and `docs/` in the same change as the code they describe.

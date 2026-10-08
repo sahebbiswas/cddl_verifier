@@ -3,8 +3,8 @@
 All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
 project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-The version is defined once in `_version.py`. Until 0.1.0 (the first public
-release, [#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)) is published, the version is `0.1.0.dev0`.
+The version is defined once in `_version.py`. It is `0.1.0`, the first public
+release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)); the section below gets its date when the release is published.
 
 ## [Unreleased] - 0.1.0
 
@@ -27,6 +27,11 @@ release, [#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)) is publi
 ### Added
 - Versioning scheme: `_version.py` as the single version source, this
   changelog, `[project]` metadata in `pyproject.toml`, and a `--version` flag.
+- `.github/workflows/publish_pypi.yml`: builds the sdist and wheel, runs
+  `twine check`, smoke-tests both artifacts in clean environments, and
+  publishes with PyPI Trusted Publishing: to TestPyPI on manual runs, and to
+  TestPyPI then PyPI when a GitHub release is published
+  ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)).
 - `pip install .` installs a `cddl-verify` console script (same as
   `python cbor_cddl_analyzer.py`).
 - `docs/CLI.md`, `docs/API.md` and `docs/CDDL_SUPPORT.md` reference pages; the
