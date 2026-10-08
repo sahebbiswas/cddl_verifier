@@ -160,7 +160,9 @@ data = cbor_decode(raw)
 
 Decoded values map to Python as follows: integers to `int`, byte strings to
 `bytes`, text to `str`, arrays to `list`, maps to `dict` (array or map keys become
-tuples so they are hashable), tags to `(tag_number, value)` tuples, and
+tuples so they are hashable), tags to `(tag_number, value)` tuples (except
+bignums, tags 2/3, whose value is outside the 64-bit range: those decode to
+`int`), and
 `true` / `false` / `null` / floats to their Python equivalents.
 
 ### Strict single-item decoding

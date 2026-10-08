@@ -206,5 +206,49 @@ class TestDeterministicEdgeCases(unittest.TestCase):
                          "c249ffffffffffffffffff")
 
 
+class TestBignumDecoding(unittest.TestCase):
+    """Bignums outside the 64-bit range decode to int; in-range ones stay tagged."""
+
+    def test_round_trip_at_64_bit_boundaries(self):
+        for value in (2 ** 64 - 1, 2 ** 64, 2 ** 72 - 1, 10 ** 40,
+                      -(2 ** 64), -(2 ** 64) - 1, -(10 ** 40)):
+            with self.subTest(value=value):
+                encoded = cbor_encode(value, canonical=True)
+                self.assertEqual(cbor_decode(encoded), value)
+                self.assertEqual(cbor_encode(cbor_decode(encoded), canonical=True), encoded)
+
+    def test_rfc8949_bignum_vectors_decode(self):
+        self.assertEqual(cbor_decode(bytes.fromhex("c249010000000000000000")), 2 ** 64)
+        self.assertEqual(cbor_decode(bytes.fromhex("c349010000000000000000")), -(2 ** 64) - 1)
+
+    def test_in_range_bignum_stays_tagged(self):
+        # 5 as a bignum is not a major type 0 integer; keep it distinguishable
+        for hex_in, expected in (("c24105", (2, b"\x05")),
+                                 ("c3420000", (3, b"\x00\x00")),
+                                 ("c24900ffffffffffffffff", (2, b"\x00" + b"\xff" * 8))):
+            with self.subTest(hex_in=hex_in):
+                decoded = cbor_decode(bytes.fromhex(hex_in))
+                self.assertEqual(decoded, expected)
+                self.assertEqual(cbor_encode(decoded).hex(), hex_in)
+
+    def test_tag_2_with_non_bytes_stays_tagged(self):
+        self.assertEqual(cbor_decode(bytes.fromhex("c201")), (2, 1))
+
+    def test_out_of_range_ints_do_not_validate_as_uint_or_int(self):
+        from cddl_verifier import validate
+        cases = [
+            ("r = uint", 2 ** 64 - 1, True),
+            ("r = uint", 2 ** 64, False),
+            ("r = int", -(2 ** 64), True),
+            ("r = int", -(2 ** 64) - 1, False),
+            ("r = {a: uint}", {"a": 2 ** 64}, False),
+            ("r = {a: int}", {"a": -(2 ** 64) - 1}, False),
+            ("r = [* uint]", [2 ** 64], False),
+        ]
+        for schema, data, expected in cases:
+            with self.subTest(schema=schema, data=data):
+                self.assertEqual(validate(schema, cbor_encode(data)).valid, expected)
+
+
 if __name__ == "__main__":
     unittest.main()

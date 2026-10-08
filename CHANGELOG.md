@@ -44,7 +44,9 @@ public release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)); 
   always `f97e00`, and map keys that encode identically (e.g. two NaNs) raise
   `ValueError` ([#66](https://github.com/sahebbiswas/cddl_verifier/issues/66)).
 - Integers outside the 64-bit range encode as tag 2/3 bignums instead of
-  raising `struct.error`.
+  raising `struct.error`, and such bignums decode back to `int`. Bignums whose
+  value fits in 64 bits still decode to `(tag, bytes)`. CDDL `uint` and `int`
+  reject values outside the 64-bit range.
 - Validating against a root rule that is a plain primitive (`n = uint`) now
   checks the value instead of always failing with "not a concrete type".
 - A tagged root rule (`root = #6.501(inner)`) now requires the data to carry

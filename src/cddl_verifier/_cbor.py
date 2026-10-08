@@ -436,6 +436,13 @@ class CBOR:
         elif major_type == MAJOR_TYPE_TAG:
             tag_num = self._decode_uint(additional_info)
             tagged_value = self._decode_item()
+            if tag_num in (2, 3) and isinstance(tagged_value, bytes):
+                # Bignums beyond the 64-bit range decode to int so encode()
+                # round-trips. In-range bignums stay (tag, bytes): they are not
+                # major type 0/1 integers and must not match CDDL uint/int.
+                magnitude = int.from_bytes(tagged_value, 'big')
+                if magnitude >= 2**64:
+                    return magnitude if tag_num == 2 else -1 - magnitude
             return (tag_num, tagged_value)
         else:  # MAJOR_TYPE_SIMPLE (major type is 3 bits, so 0-7 are exhaustive)
             return self._decode_simple(additional_info)
