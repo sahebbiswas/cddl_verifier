@@ -22,9 +22,9 @@ person = {
 
 | CDDL type | Python type | Notes |
 |-----------|-------------|-------|
-| `tstr` / `text` | `str` | Optional `.size` constraint |
+| `tstr` / `text` | `str` | Optional `.size` constraint (counts characters, not UTF-8 bytes; see below) |
 | `bstr` / `bytes` | `bytes` | Optional `.size` constraint |
-| `uint` | `int >= 0` | `bool` rejected (distinct CBOR major type) |
+| `uint` | `int >= 0` | `bool` rejected (distinct CBOR major type); `.size` is not enforced |
 | `int` | `int` | `bool` rejected |
 | `bool` | `bool` | `int` rejected |
 | `float` / `float16` / `float32` / `float64` | `float` | `int` rejected |
@@ -100,3 +100,14 @@ every nesting level.
 | Unknown key not in schema | ❌ fail |
 | `[ + type ]` with empty array | ❌ fail |
 | Array element wrong type | ❌ fail |
+
+## Known gaps in `.size`
+
+`.size` does not yet follow RFC 8610 §3.8.1 in every case
+([#67](https://github.com/sahebbiswas/cddl_verifier/issues/67)):
+
+- On `tstr` it counts Unicode characters instead of UTF-8 bytes, so non-ASCII
+  text can pass or fail incorrectly.
+- On `uint` it is not enforced.
+- A top-level rule that is only a constrained primitive (`id = tstr .size 2`)
+  cannot be used as the root type; use it as a field type instead.

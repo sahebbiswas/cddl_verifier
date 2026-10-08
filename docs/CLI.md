@@ -5,12 +5,12 @@ The project ships two command-line tools:
 | Tool | Purpose |
 |------|---------|
 | `cddl-verify` | Validate a CBOR file against a CDDL schema and print annotated EDN |
-| `python cbor_json.py` | Convert between CBOR and JSON |
+| `python -m cddl_verifier.json_codec` | Convert between CBOR and JSON |
 
 ## `cddl-verify`
 
-`cddl-verify` is installed by `pip install .`. Without installing, run the
-script directly: `python cbor_cddl_analyzer.py` takes the same arguments.
+`cddl-verify` is installed by `pip install cddl-verifier`. `python -m cddl_verifier`
+takes the same arguments.
 
 ```bash
 # Decode CBOR and print annotated EDN on stdout
@@ -51,6 +51,9 @@ cddl-verify --version
 | `--show-types` | Print all parsed CDDL types and exit |
 | `--verbose` | Enable detailed logging of validation and type resolution |
 | `--version` | Print the version and exit |
+
+Exit status: `0` on success, `1` when a file is missing, the CBOR cannot be
+decoded, or validation against an explicit `--type` fails.
 
 When `--type` is omitted, the first type defined in the CDDL file is used as the
 root. Validation errors are then reported as warnings and unannotated EDN is
@@ -104,11 +107,11 @@ data `{0: "Alice", 1: 30}`:
 See [EDN_FORMATTING_IMPROVEMENTS.md](EDN_FORMATTING_IMPROVEMENTS.md) for details on
 annotation placement and the `bytes<N>(...)` wrapper used for nested CBOR fields.
 
-## `cbor_json.py`
+## `python -m cddl_verifier.json_codec`
 
 ```bash
-python cbor_json.py to-json  input.cbor output.json --pretty --typed
-python cbor_json.py to-cbor  input.json output.cbor --canonical
+python -m cddl_verifier.json_codec to-json  input.cbor output.json --pretty --typed
+python -m cddl_verifier.json_codec to-cbor  input.json output.cbor --canonical
 ```
 
 `--typed` keeps byte strings and tags as annotated JSON objects so the conversion

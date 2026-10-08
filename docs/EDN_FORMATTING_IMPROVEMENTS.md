@@ -329,7 +329,7 @@ Benefits:
 These improvements are automatic in the default `keyindex` format:
 
 ```bash
-python cbor_cddl_analyzer.py schema.cddl data.cbor \
+cddl-verify schema.cddl data.cbor \
   --type corim --edn-format keyindex
 ```
 

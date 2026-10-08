@@ -5,7 +5,7 @@ Interactive Demo: CBOR Iterative Construction
 Demonstrates all the new builder pattern features with live examples.
 """
 
-from simple_cbor import CBOR, cbor_encode, cbor_decode
+from cddl_verifier.cbor import CBOR, encode as cbor_encode, decode as cbor_decode
 import time
 
 def separator(title=""):

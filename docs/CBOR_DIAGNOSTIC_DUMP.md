@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `simple_cbor` module provides a unified interface for CBOR encoding, decoding, and inspection with diagnostic dumps.
+The `cddl_verifier.cbor` module provides a unified interface for CBOR encoding, decoding, and inspection with diagnostic dumps.
 
 ## Key Features
 
@@ -18,7 +18,7 @@ The `simple_cbor` module provides a unified interface for CBOR encoding, decodin
 ### Quick Start
 
 ```python
-from simple_cbor import CBOR
+from cddl_verifier.cbor import CBOR
 
 # Load CBOR data
 cbor = CBOR.load(cbor_bytes)
@@ -134,7 +134,7 @@ for item in cbor:
 ## Complete Workflow Example
 
 ```python
-from simple_cbor import CBOR
+from cddl_verifier.cbor import CBOR
 
 # 1. Load existing CBOR file
 with open('data.cbor', 'rb') as f:
@@ -173,7 +173,7 @@ print("\nFile saved!")
 ### Basic Example
 
 ```python
-from simple_cbor import cbor_encode, cbor_diag_dump
+from cddl_verifier.cbor import cbor_encode, cbor_diag_dump
 
 # Encode some data
 data = {0: "test", 1: 42}
@@ -450,7 +450,7 @@ output = dumper.dump()
 
 ### vs. `cbor2.loads()` with pretty print
 
-**simple_cbor diagnostic dump:**
+**cddl_verifier diagnostic dump:**
 - Shows exact byte layout
 - Includes byte offsets
 - Shows hex representation
@@ -465,7 +465,7 @@ output = dumper.dump()
 
 ### vs. hex dump utilities
 
-**simple_cbor diagnostic dump:**
+**cddl_verifier diagnostic dump:**
 - CBOR-aware structure
 - Type descriptions
 - Decoded values
@@ -517,7 +517,7 @@ output = dumper.dump()
 
 2. **Compare dumps** - Use diff tools:
    ```bash
-   diff <(python3 -c "from simple_cbor import *; print(cbor_diag_dump(...))")      <(python3 -c "from simple_cbor import *; print(cbor_diag_dump(...))")
+   diff <(python3 -c "from cddl_verifier.cbor import *; print(cbor_diag_dump(...))")      <(python3 -c "from cddl_verifier.cbor import *; print(cbor_diag_dump(...))")
    ```
 
 3. **Pipe to less** - For interactive viewing:

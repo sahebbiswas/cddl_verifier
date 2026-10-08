@@ -17,17 +17,19 @@ import unittest
 import sys
 import os
 from pathlib import Path
-# When run directly (python3 tests/test_foo.py), add the repo root to
-# sys.path so source modules are importable.  pytest handles this via
-# tests/conftest.py instead.
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# When run directly (python3 tests/test_foo.py) without the package installed,
+# fall back to the source tree. pytest handles this via tests/conftest.py.
+try:
+    import cddl_verifier  # noqa: F401
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from io import StringIO
 import tempfile
 import struct
 
 
-from cbor_cddl_analyzer import (
+from cddl_verifier._analyzer import (
     CDDLParser, 
     CBORAnalyzer, 
     EDNGenerator,
@@ -36,12 +38,12 @@ from cbor_cddl_analyzer import (
 
 # Import CBOR encoder/decoder
 try:
-    from simple_cbor import cbor_encode
+    from cddl_verifier._cbor import cbor_encode
     HAS_CBOR_ENCODER = True
 except ImportError:
     # Try importing from main module
     try:
-        from cbor_cddl_analyzer import SimpleCBORDecoder
+        from cddl_verifier._analyzer import SimpleCBORDecoder
         # Create minimal encoder if needed
         HAS_CBOR_ENCODER = False
     except:
@@ -1006,7 +1008,7 @@ class TestValidationGapsCoverage(unittest.TestCase):
         bytes() wrapper and the decoded inner content.
         """
         try:
-            from simple_cbor import cbor_encode
+            from cddl_verifier._cbor import cbor_encode
         except ImportError:
             self.skipTest("simple_cbor.cbor_encode not available")
 
@@ -1430,7 +1432,7 @@ class TestCLIArgs(unittest.TestCase):
     def test_cli_show_types(self):
         from unittest.mock import patch
         import tempfile
-        import cbor_cddl_analyzer
+        from cddl_verifier import _analyzer as cbor_cddl_analyzer
         import os
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.cddl', delete=False) as f_cddl:
@@ -1455,7 +1457,7 @@ class TestCLIArgs(unittest.TestCase):
             
     def test_cli_missing_files(self):
         from unittest.mock import patch
-        import cbor_cddl_analyzer
+        from cddl_verifier import _analyzer as cbor_cddl_analyzer
         with patch('sys.argv', ['cbor_cddl_analyzer.py', 'missing_foo.cddl', 'missing_foo.cbor']):
             with patch('sys.exit', side_effect=SystemExit) as mock_exit:
                 try:
@@ -1468,7 +1470,7 @@ class TestCLIArgs(unittest.TestCase):
         from unittest.mock import patch
         import tempfile
         import os
-        import cbor_cddl_analyzer
+        from cddl_verifier import _analyzer as cbor_cddl_analyzer
         with tempfile.NamedTemporaryFile(mode='w', suffix='.cddl', delete=False) as f_cddl:
             f_cddl.write("test = { &(f:0)=>uint }")
             f_cddl_name = f_cddl.name
@@ -1493,11 +1495,11 @@ class TestFallbackDecoder(unittest.TestCase):
     def test_fallback_decoder(self):
         import sys
         import importlib
-        import cbor_cddl_analyzer
+        from cddl_verifier import _analyzer as cbor_cddl_analyzer
         
-        save_simple = sys.modules.pop('simple_cbor', None)
+        save_simple = sys.modules.pop('cddl_verifier._cbor', None)
         save_cbor2 = sys.modules.pop('cbor2', None)
-        sys.modules['simple_cbor'] = None
+        sys.modules['cddl_verifier._cbor'] = None
         sys.modules['cbor2'] = None
         importlib.reload(cbor_cddl_analyzer)
         
@@ -1594,9 +1596,9 @@ class TestFallbackDecoder(unittest.TestCase):
             self.assertEqual(decoder.decode(), None)
 
         finally:
-            sys.modules.pop('simple_cbor', None)
+            sys.modules.pop('cddl_verifier._cbor', None)
             sys.modules.pop('cbor2', None)
-            if save_simple: sys.modules['simple_cbor'] = save_simple
+            if save_simple: sys.modules['cddl_verifier._cbor'] = save_simple
             if save_cbor2: sys.modules['cbor2'] = save_cbor2
             importlib.reload(cbor_cddl_analyzer)
 
@@ -1609,11 +1611,11 @@ class TestFallbackDecoderUnhashable(unittest.TestCase):
         # the inline fallback SimpleCBORDecoder is defined instead of the wrapper.
         import importlib.util
         from unittest.mock import patch
-        import cbor_cddl_analyzer
+        from cddl_verifier import _analyzer as cbor_cddl_analyzer
         spec = importlib.util.spec_from_file_location(
-            'cbor_cddl_analyzer_fallback', cbor_cddl_analyzer.__file__)
+            'cddl_verifier._analyzer_fallback', cbor_cddl_analyzer.__file__)
         module = importlib.util.module_from_spec(spec)
-        with patch.dict(sys.modules, {'simple_cbor': None}):
+        with patch.dict(sys.modules, {'cddl_verifier._cbor': None}):
             spec.loader.exec_module(module)
         assert not module.HAS_SIMPLE_CBOR
         cls.Decoder = module.SimpleCBORDecoder

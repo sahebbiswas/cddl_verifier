@@ -26,7 +26,7 @@ import json
 import base64
 import math
 from typing import Any, Dict, List, Union
-from simple_cbor import CBOR, cbor_encode, cbor_decode
+from ._cbor import CBOR, cbor_encode, cbor_decode
 
 
 class CBORJSONEncoder(json.JSONEncoder):
@@ -321,7 +321,8 @@ def json_file_to_cbor_file(json_path: str, cbor_path: str,
 
 
 # CLI functionality
-if __name__ == '__main__':
+def main(argv=None):
+    """Command-line interface for converting between JSON and CBOR."""
     # Command-line interface for converting between JSON and CBOR
     import sys
     import argparse
@@ -332,16 +333,16 @@ if __name__ == '__main__':
         epilog="""
 Examples:
   # CBOR to JSON
-  python cbor_json.py to-json input.cbor output.json
-  python cbor_json.py to-json input.cbor output.json --pretty --typed
+  python -m cddl_verifier.json_codec to-json input.cbor output.json
+  python -m cddl_verifier.json_codec to-json input.cbor output.json --pretty --typed
   
   # JSON to CBOR
-  python cbor_json.py to-cbor input.json output.cbor
-  python cbor_json.py to-cbor input.json output.cbor --canonical
+  python -m cddl_verifier.json_codec to-cbor input.json output.cbor
+  python -m cddl_verifier.json_codec to-cbor input.json output.cbor --canonical
   
   # Stdin/stdout
-  cat data.cbor | python cbor_json.py to-json - -
-  echo '{"test": 1}' | python cbor_json.py to-cbor - output.cbor
+  cat data.cbor | python -m cddl_verifier.json_codec to-json - -
+  echo '{"test": 1}' | python -m cddl_verifier.json_codec to-cbor - output.cbor
         """
     )
     
@@ -365,7 +366,7 @@ Examples:
     to_cbor_parser.add_argument('--canonical', action='store_true',
                                 help='Use canonical CBOR encoding')
     
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     
     if not args.command:
         # 
@@ -423,3 +424,7 @@ Examples:
         # Handle 
         print(f"[X] Error: {e}", file=sys.stderr)
         sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()

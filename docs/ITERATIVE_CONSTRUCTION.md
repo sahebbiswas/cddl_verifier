@@ -19,7 +19,7 @@ The CBOR class now provides a **complete fluent API** for iterative construction
 ### Basic Construction
 
 ```python
-from simple_cbor import CBOR
+from cddl_verifier.cbor import CBOR
 
 # Start with empty dict and build iteratively
 cbor = CBOR({})
@@ -328,7 +328,7 @@ cbor.append(7)
 ### Example 1: Building a CoRIM Structure
 
 ```python
-from simple_cbor import CBOR
+from cddl_verifier.cbor import CBOR
 
 # Create CoRIM structure iteratively
 corim = CBOR({})

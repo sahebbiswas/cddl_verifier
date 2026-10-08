@@ -5,7 +5,7 @@ Extra tests for cbor_diag_dump to ensure full coverage and correct formatting.
 
 import unittest
 import struct
-from simple_cbor import cbor_diag_dump, cbor_encode
+from cddl_verifier._cbor import cbor_diag_dump, cbor_encode
 
 class TestCBORDiagDumpExtra(unittest.TestCase):
     def test_dump_empty_bytes(self):

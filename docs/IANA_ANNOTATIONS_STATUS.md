@@ -150,7 +150,7 @@ Verify annotations at all levels:
 
 ```bash
 # Deep nesting (now works!)
-python cbor_cddl_analyzer.py unified.cddl corim.cbor --type corim --edn-format keyindex \
+cddl-verify unified.cddl corim.cbor --type corim --edn-format keyindex \
   | grep -A 3 "ACME"
 ```
 

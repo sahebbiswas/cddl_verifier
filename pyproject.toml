@@ -1,25 +1,51 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "cddl-verifier"
 dynamic = ["version"]
-description = "CBOR-CDDL analyzer, validator, annotated EDN generator, and CBOR/JSON toolkit"
+description = "Validate CBOR data against CDDL schemas, generate annotated EDN, and convert CBOR/JSON"
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.9"
+keywords = ["cbor", "cddl", "edn", "rfc8610", "rfc8949", "corim", "validation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Utilities",
+]
+# No runtime dependencies: CBOR encoding and decoding are bundled.
+dependencies = []
 
 [project.optional-dependencies]
-cbor2 = ["cbor2"]
+test = ["pytest>=8"]
+dev = ["pytest>=8", "build", "twine"]
+
+[project.urls]
+Homepage = "https://github.com/sahebbiswas/cddl_verifier"
+Source = "https://github.com/sahebbiswas/cddl_verifier"
+Issues = "https://github.com/sahebbiswas/cddl_verifier/issues"
+Changelog = "https://github.com/sahebbiswas/cddl_verifier/blob/main/CHANGELOG.md"
 
 [project.scripts]
-cddl-verify = "cbor_cddl_analyzer:main"
+cddl-verify = "cddl_verifier.cli:main"
 
-[tool.setuptools]
-py-modules = ["_version", "simple_cbor", "cbor_json", "cbor_cddl_analyzer"]
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.setuptools.dynamic]
-version = { attr = "_version.__version__" }
+version = { attr = "cddl_verifier._version.__version__" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

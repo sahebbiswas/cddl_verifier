@@ -7,7 +7,8 @@ and the standard-library **unittest** runner with no code changes required.
 
 | File | Covers |
 |------|--------|
-| `tests/test_cbor_cddl_analyzer.py` | CDDL parsing, validation, EDN generation, CoRIM |
+| `tests/test_public_api.py` | Public API: `validate`, `Validator`, `cddl_verifier.cbor`, `json_codec`, `python -m cddl_verifier` |
+| `tests/test_cbor_cddl_analyzer.py` | CDDL parsing, validation, EDN generation, CoRIM (internal classes) |
 | `tests/test_simple_cbor.py` | CBOR encode/decode, diagnostics, round-trips |
 | `tests/test_cbor_builder.py` | Iterative construction, nested access, merge |
 | `tests/test_canonical_and_json.py` | Canonical encoding, JSON ↔ CBOR conversion |
@@ -17,12 +18,22 @@ and the standard-library **unittest** runner with no code changes required.
 
 ---
 
+## Setup
+
+Install the package in editable mode with the test extra:
+
+```bash
+pip install -e ".[test]"
+```
+
+Without an installation the tests fall back to the source tree under `src/`,
+so a plain checkout also works.
+
 ## Running the tests
 
 ### pytest (recommended)
 
 ```bash
-pip install pytest
 pytest                    # uses testpaths = ["tests"] from pyproject.toml
 pytest -v                 # verbose: one line per test
 pytest tests/test_cbor_cddl_analyzer.py          # single file
@@ -40,20 +51,32 @@ python3 -m unittest tests.test_cbor_cddl_analyzer.TestCDDLParsing.test_simple_al
 ```
 
 > **Note on `-t .`** — the `-t .` flag sets the top-level directory to the
-> repo root so Python resolves `tests.test_*` module names correctly.  It is
-> only strictly needed when old root-level `test_*.py` files are also present
-> (e.g. during a migration); once only `tests/` contains test files it can be
-> omitted.
+> repo root so Python resolves `tests.test_*` module names correctly.
 
 ### Direct execution
 
-Each test file can also be run directly; it adds the repo root to `sys.path`
-automatically so source modules are always found:
+Each test file can also be run directly. If `cddl_verifier` is not installed,
+it adds `src/` to `sys.path` itself:
 
 ```bash
 python3 tests/test_cbor_cddl_analyzer.py
-python3 tests/test_simple_cbor.py
+python3 tests/test_public_api.py
 ```
+
+### Testing a built distribution
+
+CI runs the suite against the installed wheel and sdist rather than the source
+tree. To do the same locally:
+
+```bash
+python -m build                      # writes dist/*.whl and dist/*.tar.gz
+python -m venv /tmp/venv
+/tmp/venv/bin/pip install dist/*.whl -r requirements.txt
+CDDL_VERIFIER_REQUIRE_INSTALLED=1 /tmp/venv/bin/python -m pytest tests/
+```
+
+`CDDL_VERIFIER_REQUIRE_INSTALLED=1` makes `tests/conftest.py` fail if
+`cddl_verifier` would be imported from `src/` instead of the installation.
 
 ---
 
@@ -61,22 +84,24 @@ python3 tests/test_simple_cbor.py
 
 ```text
 .
-├── _version.py            ← single source of the project version
-├── cbor_cddl_analyzer.py
-├── simple_cbor.py
-├── cbor_json.py
+├── src/cddl_verifier/
+│   ├── __init__.py         ← public API: validate, Validator, ValidationResult, …
+│   ├── cbor.py             ← public CBOR helpers
+│   ├── json_codec.py       ← public CBOR ↔ JSON conversion
+│   ├── cli.py, __main__.py ← `cddl-verify` / `python -m cddl_verifier`
+│   ├── _api.py             ← validate()/Validator implementation
+│   ├── _analyzer.py        ← CDDL parser, validator, EDN generator (internal)
+│   ├── _cbor.py            ← CBOR encoder/decoder (internal)
+│   ├── _json_codec.py      ← JSON conversion (internal)
+│   └── _version.py         ← single source of the project version
 ├── CHANGELOG.md
-├── pyproject.toml          ← package metadata (`cddl-verify` script) + pytest configuration
+├── MANIFEST.in             ← extra files (tests, test data, docs) for the sdist
+├── pyproject.toml          ← package metadata + pytest configuration
+├── cddl-schemas/, test-data/  ← sample schemas and CBOR used by the tests
 └── tests/
-    ├── conftest.py         ← adds repo root to sys.path for pytest
+    ├── conftest.py         ← imports the installed package, or falls back to src/
     ├── __init__.py
-    ├── test_cbor_cddl_analyzer.py
-    ├── test_simple_cbor.py
-    ├── test_canonical_and_json.py
-    ├── test_cbor_builder.py
-    ├── test_strict_decoding.py
-    ├── test_set_nested.py
-    └── test_cbor_diag_dump_extra.py
+    └── test_*.py
 ```
 
 `pyproject.toml` configures pytest:
@@ -87,94 +112,53 @@ testpaths = ["tests"]
 addopts   = "--tb=short -q"
 ```
 
-`tests/conftest.py` inserts the repo root into `sys.path` once for the whole
-pytest session so every test module can `import cbor_cddl_analyzer` etc.
-without needing its own path manipulation.
-
 ---
 
 ## CI configuration
 
-### GitHub Actions
+`.github/workflows/ci.yml` runs on pushes and pull requests to `main`:
 
-```yaml
-# .github/workflows/ci.yml
-name: Tests
-on: [push, pull_request]
+1. **build** builds the sdist and wheel and runs `twine check --strict`.
+2. **test** installs the wheel on Python 3.9–3.13 (and the sdist on 3.11),
+   checks `import cddl_verifier`, `cddl-verify --help` and `--version` from
+   outside the checkout, then runs the suite with
+   `CDDL_VERIFIER_REQUIRE_INSTALLED=1`.
 
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12"]
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install pytest
-        run: pip install pytest
-
-      - name: Run tests
-        run: pytest
-```
-
-If you prefer to avoid the `pip install pytest` step, replace the last two
-steps with:
-
-```yaml
-      - name: Run tests (unittest, no extra deps)
-        run: python3 -m unittest discover -s tests -t .
-```
-
-### GitLab CI
-
-```yaml
-# .gitlab-ci.yml
-test:
-  image: python:3.11
-  script:
-    - pip install pytest
-    - pytest
-```
+`.github/workflows/publish_pypi.yml` repeats the build and installed-package
+checks before publishing; see the README's *Releasing* section.
 
 ---
 
 ## Writing new tests
 
-Add a method to the relevant `TestCase` class, or create a new class in the
-appropriate file:
+Prefer the public API in new tests:
 
 ```python
 import unittest
-from cbor_cddl_analyzer import CDDLParser, CBORAnalyzer
+from cddl_verifier import Validator
 
 class TestMyFeature(unittest.TestCase):
 
-    def test_basic_case(self):
-        cddl = CDDLParser("my-type = { &(id:0) => uint }")
-        self.assertIn("my-type", cddl.types)
-
     def test_validation_pass(self):
-        cddl = CDDLParser("my-type = { &(id:0) => uint }")
-        self.assertTrue(CBORAnalyzer(cddl).validate({0: 1}, "my-type"))
+        validator = Validator("my-type = { &(id:0) => uint }")
+        self.assertTrue(validator.validate({0: 1}).valid)
 
     def test_validation_fail(self):
-        cddl = CDDLParser("my-type = { &(id:0) => uint }")
-        self.assertFalse(CBORAnalyzer(cddl).validate({0: "x"}, "my-type"))
+        result = Validator("my-type = { &(id:0) => uint }").validate({0: "x"})
+        self.assertFalse(result.valid)
+        self.assertEqual(result.diagnostics[0].code, "validation")
 ```
+
+Tests of internals import from the private modules, for example
+`from cddl_verifier._analyzer import CDDLParser`.
 
 pytest discovers any `TestCase` subclass automatically; no registration in a
 `run_tests()` function is needed.
 
-When a change alters behaviour, also bump `__version__` in `_version.py`, add a
-`CHANGELOG.md` entry, and update the README/docs (see the README's
-*Versioning* section). `tests/test_strict_decoding.py` checks that the CLI
-reports the version from `_version.py`.
+When a change alters behaviour, also bump `__version__` in
+`src/cddl_verifier/_version.py`, add a `CHANGELOG.md` entry, and update the
+README/docs (see the README's *Versioning* section).
+`tests/test_strict_decoding.py` checks that the CLI reports that version.
 
 Decoder error tests should assert the specific `CBORDecodeError` subclass and its
 `offset`, not just a bare `Exception`.

@@ -13,18 +13,18 @@ Tests:
 import sys
 from pathlib import Path
 
-# When run directly (python3 tests/test_foo.py), add the repo root to
-# sys.path so source modules are importable. pytest handles this via
-# tests/conftest.py instead.
-_repo_root = str(Path(__file__).parent.parent)
-if _repo_root not in sys.path:
-    sys.path.insert(0, _repo_root)
+# When run directly (python3 tests/test_foo.py) without the package installed,
+# fall back to the source tree. pytest handles this via tests/conftest.py.
+try:
+    import cddl_verifier  # noqa: F401
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import unittest
 import json
 import math
-from simple_cbor import CBOR, cbor_encode, cbor_decode
-from cbor_json import (
+from cddl_verifier._cbor import CBOR, cbor_encode, cbor_decode
+from cddl_verifier._json_codec import (
     cbor_to_json, json_to_cbor, 
     CBORJSONEncoder, _process_cbor_annotations
 )
