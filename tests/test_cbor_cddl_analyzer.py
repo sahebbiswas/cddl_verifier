@@ -1641,6 +1641,12 @@ class TestFallbackDecoderUnhashable(unittest.TestCase):
         with self.assertRaises(ValueError):
             self._decode(data)
 
+    def test_equivalent_dict_keys_with_mixed_types(self):
+        # { {1: "a", "1": "b"}: 0, {"1": "b", 1: "a"}: 1 } -- same map, different order
+        data = bytes.fromhex('a2' 'a201616161316162' '00' 'a261316162016161' '01')
+        with self.assertRaises(ValueError):
+            self._decode(data)
+
     def test_duplicate_plain_keys(self):
         # { 1: 2, 1: 3 }
         with self.assertRaises(ValueError):

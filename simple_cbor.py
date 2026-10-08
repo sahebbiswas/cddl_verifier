@@ -93,7 +93,7 @@ class CBOR:
         if isinstance(obj, dict):
             return tuple(sorted(
                 ((self._make_hashable(k), self._make_hashable(v)) for k, v in obj.items()),
-                key=lambda x: str(x[0])
+                key=lambda x: (type(x[0]).__name__, repr(x[0]))
             ))
         return obj
     

@@ -759,6 +759,13 @@ class TestUnhashableKeys(unittest.TestCase):
         with self.assertRaises(ValueError):
             cbor_decode(cbor_data)
 
+    def test_equivalent_dict_keys_with_mixed_types(self):
+        """Equal maps used as keys must normalize identically even when 1 and "1" both appear"""
+        # { {1: "a", "1": "b"}: 0, {"1": "b", 1: "a"}: 1 }
+        cbor_data = bytes.fromhex('a2' 'a201616161316162' '00' 'a261316162016161' '01')
+        with self.assertRaises(ValueError):
+            cbor_decode(cbor_data)
+
     def test_duplicate_plain_keys(self):
         """Duplicate map keys must be rejected rather than silently overwritten"""
         # { 1: 2, 1: 3 }
