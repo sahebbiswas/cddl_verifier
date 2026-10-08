@@ -16,18 +16,33 @@ Canonical encoding produces deterministic CBOR output - the same data always enc
 - **Blockchain/DLT** - Ensure data integrity
 - **CoRIM signing** - Standards compliance
 
-### RFC 8949 Rules
+### Deterministic profile
 
-Canonical encoding follows these rules:
-1. **Shortest encoding** - Integers use minimal bytes
-2. **Sorted map keys** - Keys sorted by encoded byte comparison
-3. **Definite-length** - No indefinite-length items
-4. **No duplicates** - Map keys must be unique
+`canonical=True` implements the RFC 8949 §4.2.1 "Core Deterministic Encoding
+Requirements". This is the profile the project means by "canonical"; it is not
+the older RFC 7049 §3.9 "length-first" key ordering.
 
-> **Not yet implemented:** RFC 8949 §4.2 also requires floats to use the
-> shortest form that keeps the value exactly (e.g. `1.5` as a 2-byte half-float).
-> The encoder currently writes floats as 8-byte doubles. Tracked in
-> [#66](https://github.com/sahebbiswas/cddl_verifier/issues/66).
+| Rule | Behaviour | Example |
+|------|-----------|---------|
+| Shortest arguments | Integers, lengths and tag numbers use the shortest head | `24` → `18 18` |
+| Big integers | Outside the 64-bit range: tag 2/3 bignum, no leading zero bytes (§3.4.3) | `2**64` → `c2 49 010000000000000000` |
+| Floats | Shortest of float16/32/64 that keeps the value exactly, subnormals included | `1.5` → `f9 3e00`, `100000.0` → `fa 47c35000`, `1.1` → `fb 3ff199999999999a` |
+| Negative zero | Sign is kept | `-0.0` → `f9 8000` |
+| NaN / infinity | One quiet NaN regardless of payload; infinities as float16 (§4.2.2) | `nan` → `f9 7e00`, `inf` → `f9 7c00` |
+| Integral floats | Stay floats; the optional §4.2.2 float→int reduction is not applied | `1.0` → `f9 3c00` |
+| Map keys | Sorted bytewise (lexicographic) by their deterministic encoding | `10, 100, -1, "z", "aa", [100], [-1], false` |
+| Definite length | Always; the encoder never emits indefinite-length items | |
+| Duplicate keys | Keys whose encodings are identical (e.g. two NaN keys) raise `ValueError` | |
+
+On decoding, duplicate map keys are always rejected with `CBORDecodeError`
+([#65](https://github.com/sahebbiswas/cddl_verifier/issues/65)). The decoder does
+not check whether its input is itself deterministically encoded.
+
+Byte-for-byte vectors from RFC 8949 Appendix A are in
+`tests/test_deterministic_encoding.py`.
+
+Without `canonical=True`, maps keep insertion order and floats are written as
+8-byte doubles. Integers are shortest-form in both modes.
 
 ### Usage
 
@@ -569,4 +584,4 @@ json_file_to_cbor_file(json_path, cbor_path, canonical=False)
 - ✅ CLI tool included
 - ✅ Perfect for API development and debugging
 
-Both features are production-ready with comprehensive tests!
+Both features are production-ready with comprehensive tests!

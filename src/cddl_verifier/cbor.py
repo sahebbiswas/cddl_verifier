@@ -40,8 +40,8 @@ __all__ = [
 def encode(obj, canonical: bool = False) -> bytes:
     """Encode a Python value as CBOR.
 
-    ``canonical=True`` requests deterministic encoding. It does not yet
-    implement every RFC 8949 section 4.2 rule; see the README limitations.
+    ``canonical=True`` applies RFC 8949 section 4.2.1 deterministic encoding
+    (shortest floats, sorted map keys); see ``CBOR.encode`` for details.
     """
     return cbor_encode(obj, canonical=canonical)
 

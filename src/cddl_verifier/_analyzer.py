@@ -1766,6 +1766,10 @@ class CBORAnalyzer:
                         elif _base_type == 'uint' and value < 0:
                             type_mismatch = True
                             logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected uint (>=0), got {value}")
+                        elif not -2**64 <= value < 2**64:
+                            # Outside the 64-bit range: a bignum (tag 2/3), not uint/int
+                            type_mismatch = True
+                            logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: {value} is a bignum, outside the {_base_type} range")
                         else:
                             # Check .ge / .gt / .le / .lt value-range predicates
                             vrange = self.cddl.extract_value_range(_resolved)
@@ -2040,9 +2044,12 @@ class CBORAnalyzer:
         if t == 'uint':
             if not isinstance(value, int) or isinstance(value, bool):
                 return False
-            return value >= 0
+            return 0 <= value < 2**64
         if t == 'int':
-            return isinstance(value, int) and not isinstance(value, bool)
+            if not isinstance(value, int) or isinstance(value, bool):
+                return False
+            # Values beyond 64 bits can only come from bignum tags 2/3
+            return -2**64 <= value < 2**64
         if t == 'bool':
             return isinstance(value, bool)
         if t in ('nil', 'null'):

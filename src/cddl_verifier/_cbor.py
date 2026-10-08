@@ -28,6 +28,7 @@ References:
 - RFC 8949: Concise Binary Object Representation (CBOR)
 """
 
+import math
 import struct
 import copy as copy_module
 from typing import Any, Union, Tuple, Dict, List, Optional
@@ -210,15 +211,32 @@ class CBOR:
         Returns:
             CBOR encoded bytes
         
-        Canonical encoding rules (RFC 8949 Section 4.2):
-        - Integers use shortest form
-        - Map keys sorted by encoded byte comparison
-        - Definite-length encoding only
-        - No duplicate map keys
+        Canonical mode implements RFC 8949 §4.2.1 "Core Deterministic
+        Encoding Requirements":
+
+        - Integers, lengths and tag numbers use the shortest argument.
+          Integers outside the 64-bit range use bignum tags 2/3 with no
+          leading zero bytes (§3.4.3); this applies in both modes.
+        - Floats use the shortest of float16/float32/float64 that preserves
+          the value exactly, including subnormals and ``-0.0``. NaN is
+          always ``0xf97e00`` and infinities are ``0xf97c00``/``0xf9fc00``
+          (§4.2.2). Integral floats stay floats (``1.0`` is ``0xf93c00``);
+          the optional float-to-int reduction of §4.2.2 is not applied.
+        - Map keys are sorted by the bytewise lexicographic order of their
+          deterministic encodings.
+        - Definite-length encoding only (the encoder never emits
+          indefinite-length items).
+        - Map keys whose deterministic encodings are identical (for example
+          two NaN keys) raise ``ValueError``.
+
+        Non-canonical mode keeps dict insertion order and writes every float
+        as float64.
         """
         self._canonical = canonical
-        self._cached_bytes = self._encode_item(self.data)
-        self._canonical = False  # Reset
+        try:
+            self._cached_bytes = self._encode_item(self.data)
+        finally:
+            self._canonical = False  # Reset
         return self._cached_bytes
     
     def dumps(self) -> bytes:
@@ -258,11 +276,20 @@ class CBOR:
             raise TypeError(f"Cannot encode type {type(obj).__name__}")
     
     def _encode_int(self, value: int) -> bytes:
-        """Encode an integer."""
+        """Encode an integer, using a bignum tag outside the 64-bit range."""
         if value >= 0:
-            return self._encode_uint(MAJOR_TYPE_UINT, value)
-        else:
-            return self._encode_uint(MAJOR_TYPE_NINT, -1 - value)
+            if value < 2**64:
+                return self._encode_uint(MAJOR_TYPE_UINT, value)
+            return self._encode_bignum(2, value)
+        magnitude = -1 - value
+        if magnitude < 2**64:
+            return self._encode_uint(MAJOR_TYPE_NINT, magnitude)
+        return self._encode_bignum(3, magnitude)
+
+    def _encode_bignum(self, tag_num: int, magnitude: int) -> bytes:
+        """Encode tag 2/3 bignum content with no leading zero bytes (RFC 8949 §3.4.3)."""
+        content = magnitude.to_bytes((magnitude.bit_length() + 7) // 8, 'big')
+        return self._encode_uint(MAJOR_TYPE_TAG, tag_num) + self._encode_bytes(content)
     
     def _encode_uint(self, major_type: int, value: int) -> bytes:
         """Encode unsigned integer with given major type."""
@@ -302,19 +329,20 @@ class CBOR:
         result = self._encode_uint(MAJOR_TYPE_MAP, len(value))
         
         # Canonical encoding: sort keys by their encoded representation
-        if hasattr(self, '_canonical') and self._canonical:
-            # Encode all keys and sort by byte comparison
+        if getattr(self, '_canonical', False):
             encoded_pairs = []
             for key, val in value.items():
-                encoded_key = self._encode_item(key)
-                encoded_val = self._encode_item(val)
-                encoded_pairs.append((encoded_key, encoded_val))
+                encoded_pairs.append((self._encode_item(key), self._encode_item(val)))
             
-            # Sort by encoded key bytes
+            # Sort by encoded key bytes (bytewise lexicographic, RFC 8949 §4.2.1)
             encoded_pairs.sort(key=lambda x: x[0])
             
-            # Concatenate sorted pairs
-            for encoded_key, encoded_val in encoded_pairs:
+            for i, (encoded_key, encoded_val) in enumerate(encoded_pairs):
+                # Distinct Python keys can share an encoding (e.g. two NaNs)
+                if i and encoded_key == encoded_pairs[i - 1][0]:
+                    raise ValueError(
+                        f"Duplicate map key in canonical encoding: 0x{encoded_key.hex()}"
+                    )
                 result += encoded_key + encoded_val
         else:
             # Standard encoding: maintain dict order
@@ -331,7 +359,20 @@ class CBOR:
         return result
     
     def _encode_float(self, value: float) -> bytes:
-        """Encode float (major type 7) - uses float64."""
+        """Encode float (major type 7): float64, or shortest form in canonical mode."""
+        if not getattr(self, '_canonical', False):
+            return bytes([0xfb]) + struct.pack('>d', value)
+        if value != value:
+            return b'\xf9\x7e\x00'  # Canonical quiet NaN (RFC 8949 §4.2.2)
+        for initial_byte, fmt in ((0xf9, '>e'), (0xfa, '>f')):
+            try:
+                packed = struct.pack(fmt, value)
+            except OverflowError:
+                continue
+            # Exact round-trip; copysign check keeps -0.0 distinct from 0.0
+            unpacked = struct.unpack(fmt, packed)[0]
+            if unpacked == value and math.copysign(1.0, unpacked) == math.copysign(1.0, value):
+                return bytes([initial_byte]) + packed
         return bytes([0xfb]) + struct.pack('>d', value)
     
     # ========================================================================
@@ -395,6 +436,13 @@ class CBOR:
         elif major_type == MAJOR_TYPE_TAG:
             tag_num = self._decode_uint(additional_info)
             tagged_value = self._decode_item()
+            if tag_num in (2, 3) and isinstance(tagged_value, bytes):
+                # Bignums beyond the 64-bit range decode to int so encode()
+                # round-trips. In-range bignums stay (tag, bytes): they are not
+                # major type 0/1 integers and must not match CDDL uint/int.
+                magnitude = int.from_bytes(tagged_value, 'big')
+                if magnitude >= 2**64:
+                    return magnitude if tag_num == 2 else -1 - magnitude
             return (tag_num, tagged_value)
         else:  # MAJOR_TYPE_SIMPLE (major type is 3 bits, so 0-7 are exhaustive)
             return self._decode_simple(additional_info)
