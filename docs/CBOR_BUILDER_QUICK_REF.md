@@ -153,6 +153,7 @@ config["database"].update({"url": "postgres://...", "pool_size": 10})
 - `CBOR(data)` - Construct a CBOR instance from a Python object
 - `CBOR.load(bytes)` - Parse CBOR bytes and return a CBOR instance
 - `CBOR.loads(bytes)` - Decode CBOR bytes directly to the Python object (returns the decoded Python object, not a CBOR instance)
+- Both `load` and `loads` are strict: the input must be exactly one complete CBOR item. Empty, truncated or trailing-byte input raises `CBORDecodeError` (with an `offset` attribute) — see the README's *Strict single-item decoding* section.
 
 ### Builder Pattern (returns self)
 - `.set(key, value)` - Set single key-value

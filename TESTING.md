@@ -2,15 +2,18 @@
 
 ## Overview
 
-162 tests across four files in `tests/`.  The suite runs under both **pytest**
+The tests live in `tests/`.  The suite runs under both **pytest**
 and the standard-library **unittest** runner with no code changes required.
 
-| File | Tests | Covers |
-|------|------:|--------|
-| `tests/test_cbor_cddl_analyzer.py` | 48 | CDDL parsing, validation, EDN generation, CoRIM |
-| `tests/test_simple_cbor.py` | 63 | CBOR encode/decode, diagnostics, round-trips |
-| `tests/test_canonical_and_json.py` | 25 | Canonical encoding, JSON ↔ CBOR conversion |
-| `tests/test_cbor_builder.py` | 26 | Iterative construction, nested access, merge |
+| File | Covers |
+|------|--------|
+| `tests/test_cbor_cddl_analyzer.py` | CDDL parsing, validation, EDN generation, CoRIM |
+| `tests/test_simple_cbor.py` | CBOR encode/decode, diagnostics, round-trips |
+| `tests/test_cbor_builder.py` | Iterative construction, nested access, merge |
+| `tests/test_canonical_and_json.py` | Canonical encoding, JSON ↔ CBOR conversion |
+| `tests/test_strict_decoding.py` | Strict single-item decoding, error offsets, CLI `--version` |
+| `tests/test_set_nested.py` | `set_nested` path creation and errors |
+| `tests/test_cbor_diag_dump_extra.py` | Diagnostic dump edge cases and truncated input |
 
 ---
 
@@ -58,17 +61,22 @@ python3 tests/test_simple_cbor.py
 
 ```text
 .
+├── _version.py            ← single source of the project version
 ├── cbor_cddl_analyzer.py
 ├── simple_cbor.py
 ├── cbor_json.py
-├── pyproject.toml          ← pytest configuration
+├── CHANGELOG.md
+├── pyproject.toml          ← package metadata (`cddl-verify` script) + pytest configuration
 └── tests/
     ├── conftest.py         ← adds repo root to sys.path for pytest
     ├── __init__.py
     ├── test_cbor_cddl_analyzer.py
     ├── test_simple_cbor.py
     ├── test_canonical_and_json.py
-    └── test_cbor_builder.py
+    ├── test_cbor_builder.py
+    ├── test_strict_decoding.py
+    ├── test_set_nested.py
+    └── test_cbor_diag_dump_extra.py
 ```
 
 `pyproject.toml` configures pytest:
@@ -162,3 +170,11 @@ class TestMyFeature(unittest.TestCase):
 
 pytest discovers any `TestCase` subclass automatically; no registration in a
 `run_tests()` function is needed.
+
+When a change alters behaviour, also bump `__version__` in `_version.py`, add a
+`CHANGELOG.md` entry, and update the README/docs (see the README's
+*Versioning* section). `tests/test_strict_decoding.py` checks that the CLI
+reports the version from `_version.py`.
+
+Decoder error tests should assert the specific `CBORDecodeError` subclass and its
+`offset`, not just a bare `Exception`.

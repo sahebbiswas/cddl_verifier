@@ -201,7 +201,7 @@ python cbor_cddl_analyzer.py corim.cddl corim_data.cbor --show-types
 ### Validating CoRIM CBOR Data
 
 ```bash
-python cbor_cddl_analyzer.py corim.cddl corim_data.cbor --validate --type corim-map
+python cbor_cddl_analyzer.py corim.cddl corim_data.cbor --type corim-map
 ```
 
 ### Generating EDN for CoRIM

@@ -1,3 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cddl-verifier"
+dynamic = ["version"]
+description = "CBOR-CDDL analyzer, validator, annotated EDN generator, and CBOR/JSON toolkit"
+readme = "README.md"
+license = { file = "LICENSE" }
+
+[project.optional-dependencies]
+cbor2 = ["cbor2"]
+
+[project.scripts]
+cddl-verify = "cbor_cddl_analyzer:main"
+
+[tool.setuptools]
+py-modules = ["_version", "simple_cbor", "cbor_json", "cbor_cddl_analyzer"]
+
+[tool.setuptools.dynamic]
+version = { attr = "_version.__version__" }
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

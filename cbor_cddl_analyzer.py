@@ -14,6 +14,8 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from _version import __version__
+
 # Import CBOR encoder/decoder from separate module
 try:
     from simple_cbor import CBOR
@@ -2519,6 +2521,7 @@ Examples:
         """
     )
     
+    parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     parser.add_argument('cddl_file', type=Path, help='Path to CDDL schema file')
     parser.add_argument('cbor_file', type=Path, help='Path to CBOR data file')
     parser.add_argument('-o', '--output', type=Path, help='Output EDN file (default: stdout)')
@@ -2613,7 +2616,7 @@ Examples:
     cbor_bytes = args.cbor_file.read_bytes()
     try:
         cbor_data = CBOR.loads(cbor_bytes)
-    except Exception as _e:  # noqa: BLE001 — catch-all needed: loader raises ValueError/NotImplementedError/UnicodeDecodeError depending on input
+    except Exception as _e:  # noqa: BLE001 — loader raises CBORDecodeError (empty/truncated/trailing/malformed) or TypeError
         print(f"Error decoding CBOR: {_e}", file=sys.stderr)
         sys.exit(1)
     
@@ -2666,4 +2669,4 @@ Examples:
 
 
 if __name__ == '__main__':
-    main()
+    main()
