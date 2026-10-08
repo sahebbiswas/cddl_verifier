@@ -174,7 +174,7 @@ which uses PyPI Trusted Publishing (no API tokens are stored).
 2. Optional dry run: start the workflow manually (Actions → *Publish to PyPI /
    TestPyPI* → *Run workflow*); manual runs only upload to TestPyPI. A version can
    only be uploaded once per index, so use a pre-release such as `0.1.1rc1` for
-   trial uploads.
+   trial uploads. A release fails if its version is already on TestPyPI.
 3. Publish a GitHub release with tag `vX.Y.Z` matching the version. The workflow
    builds and checks the distributions, tests the wheel and sdist, uploads to
    TestPyPI, installs from there, and then uploads to PyPI.

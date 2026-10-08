@@ -187,8 +187,10 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
-          # TestPyPI never allows re-uploading a version; re-runs should not fail.
-          skip-existing: true
+          # TestPyPI never allows re-uploading a version. Manual dry runs may
+          # repeat one, but a release must upload the files it just built, so
+          # that the install check below tests exactly what goes to PyPI.
+          skip-existing: ${{ github.event_name == 'workflow_dispatch' }}
 
   verify-testpypi:
     name: Verify TestPyPI install
