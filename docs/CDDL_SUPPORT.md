@@ -14,7 +14,7 @@ person = {
   &( age   : 1 ) => uint,               ; required unsigned integer
   ? &( email : 2 ) => tstr,             ; optional text field
   &( uuid  : 3 ) => bstr .size 16,      ; exactly 16 bytes
-  &( label : 4 ) => tstr .size (1..64), ; 1–64 characters
+  &( label : 4 ) => tstr .size (1..64), ; 1–64 UTF-8 bytes
 }
 ```
 
@@ -22,9 +22,9 @@ person = {
 
 | CDDL type | Python type | Notes |
 |-----------|-------------|-------|
-| `tstr` / `text` | `str` | Optional `.size` constraint (counts characters, not UTF-8 bytes; see below) |
-| `bstr` / `bytes` | `bytes` | Optional `.size` constraint |
-| `uint` | `int >= 0` | `bool` rejected (distinct CBOR major type); `.size` is not enforced |
+| `tstr` / `text` | `str` | Optional `.size` constraint (UTF-8 bytes; see below) |
+| `bstr` / `bytes` | `bytes` | Optional `.size` constraint (bytes) |
+| `uint` | `int >= 0` | `bool` rejected (distinct CBOR major type); optional `.size` constraint (see below) |
 | `int` | `int` | `bool` rejected |
 | `bool` | `bool` | `int` rejected |
 | `float` / `float16` / `float32` / `float64` | `float` | `int` rejected |
@@ -101,13 +101,33 @@ every nesting level.
 | `[ + type ]` with empty array | ❌ fail |
 | Array element wrong type | ❌ fail |
 
-## Known gaps in `.size`
+## `.size`
 
-`.size` does not yet follow RFC 8610 §3.8.1 in every case
-([#67](https://github.com/sahebbiswas/cddl_verifier/issues/67)):
+`.size` follows RFC 8610 §3.8.1. It is checked on map fields, array elements
+(including inline arrays such as `[* tstr .size 8]`), aliases
+(`label = tstr .size (1..64)`) and a root rule (`id = tstr .size 2`).
 
-- On `tstr` it counts Unicode characters instead of UTF-8 bytes, so non-ASCII
-  text can pass or fail incorrectly.
-- On `uint` it is not enforced.
-- A top-level rule that is only a constrained primitive (`id = tstr .size 2`)
-  cannot be used as the root type; use it as a field type instead.
+| Target | What is measured | Example |
+|--------|------------------|---------|
+| `tstr` | Length of the UTF-8 encoding in bytes | `"ü"` has size 2; `tstr .size 2` accepts it |
+| `bstr` | Length in bytes | `bstr .size 16` accepts exactly 16 bytes |
+| `uint` | Number of bytes needed to represent the value | `uint .size 3` accepts `0..16777215` (`value < 256**3`) |
+
+The argument can be:
+
+- an integer: `.size 16`, `.size 0x10`
+- a range: `.size (1..64)` (inclusive) or `.size (1...64)` (upper bound
+  exclusive)
+- a constant defined elsewhere: `.size max-len` with `max-len = 64` or
+  `max-len = 1..64`
+
+For `uint`, a value satisfies `.size S` when it fits in some allowed number of
+bytes in `S`, so only the upper bound of a range matters:
+`uint .size (1..2)` accepts `0..65535`.
+
+These are reported as validation errors instead of being skipped silently:
+
+- an argument that is not a non-negative integer, range or such a constant
+  (`.size foo`, `.size -1`)
+- an empty range (`.size (3..1)`)
+- `.size` on a type other than `tstr`, `bstr` or `uint` (`int .size 1`)

@@ -588,7 +588,7 @@ class CDDLParser:
                         if '&(' in tok_norm and '=>' in tok_norm:
                             self._parse_registered_param(token, current_fields)
                         elif ':' in token and '=>' not in token:
-                            token = token.rstrip(',}]').strip()
+                            token = self._strip_closers(token)
                             optional = token.startswith('?')
                             if optional:
                                 token = token[1:].strip()
@@ -596,10 +596,7 @@ class CDDLParser:
                             if len(parts) == 2:
                                 key        = parts[0].strip().strip('"')
                                 value_type = parts[1].strip()
-                                size_c = self.extract_size_constraint(value_type)
                                 entry  = {'name': key, 'type': value_type, 'optional': optional}
-                                if size_c:
-                                    entry['size_constraint'] = size_c
                                 try:
                                     current_fields[int(key)] = entry
                                 except ValueError:
@@ -690,7 +687,7 @@ class CDDLParser:
             # Also handles named array fields (e.g., "environment: environment-map")
             elif ':' in line and current_type and '=>' not in line:
                 # Remove trailing comma and closing braces
-                line = line.rstrip(',}]').strip()
+                line = self._strip_closers(line)
                 
                 # Extract comment if present (field name)
                 comment_name = None
@@ -818,6 +815,15 @@ class CDDLParser:
         except (ValueError, IndexError):
             pass  # Skip malformed lines
     
+    @staticmethod
+    def _strip_closers(text: str) -> str:
+        """Strip trailing commas and closing braces/brackets of the enclosing
+        group, keeping a ``]`` that closes an inline array (``[* tstr]``)."""
+        text = text.strip()
+        while text and (text[-1] in ',}' or (text[-1] == ']' and text.count(']') > text.count('['))):
+            text = text[:-1].rstrip()
+        return text
+
     def _parse_registered_param(self, line: str, current_fields: Dict):
         """Parse IANA registered parameter format: &( keyname : keyindex ) => value_type
         Handles variations with extra whitespace like & (, ) =>, etc.
@@ -869,9 +875,6 @@ class CDDLParser:
                     # Store in registered params for global lookup
                     self.registered_params[keyindex] = keyname
                     
-                    # Extract .size constraint if present
-                    size_constraint = self.extract_size_constraint(value_type)
-                    
                     # Store in current fields
                     field_info = {
                         'name': keyname,
@@ -879,10 +882,6 @@ class CDDLParser:
                         'optional': optional,
                         'registered': True
                     }
-                    
-                    if size_constraint:
-                        field_info['size_constraint'] = size_constraint
-                        logger.debug(f"Field {keyname} has size constraint: {size_constraint}")
                     
                     current_fields[keyindex] = field_info
                 except ValueError:
@@ -938,42 +937,107 @@ class CDDLParser:
             return (base_type, inner_type)
         return None
     
+    _SIZE_CONTROL = re.compile(r'\.size\s+(\([^)]*\)|[^\s,)\]}]+)')
+    _INT_LITERAL = re.compile(r'^(?:0x[0-9a-fA-F]+|0b[01]+|\d+)$')
+
+    def _size_bound(self, token: str) -> Optional[int]:
+        """Resolve a ``.size`` bound (int literal or named constant) to an int."""
+        seen = set()
+        token = token.strip()
+        while not self._INT_LITERAL.match(token):
+            if token in seen or token not in self.type_aliases:
+                return None
+            seen.add(token)
+            token = self.type_aliases[token].strip()
+        return int(token, 0)
+
     def extract_size_constraint(self, type_string: str) -> Optional[dict]:
-        """Extract .size constraint from type string.
-        
-        Returns dict with:
-        - 'min': minimum length (or None)
-        - 'max': maximum length (or None)
-        - 'exact': exact length (or None)
-        
+        """Extract the ``.size`` control (RFC 8610 §3.8.1) from a type string.
+
+        The argument may be a non-negative integer (decimal, ``0x`` or ``0b``),
+        a range ``(M..N)`` or ``(M...N)`` (upper bound exclusive), or a named
+        constant defined elsewhere in the schema (``max-len = 64``).
+
+        Returns ``None`` when there is no ``.size`` control, otherwise a dict
+        with ``'exact'``, ``'min'`` and ``'max'`` (each an int or ``None``).
+        An unusable argument yields ``{'error': message}`` instead, so that
+        validation reports it rather than silently skipping the check.
+
         Examples:
-        - 'bytes .size 16' -> {'exact': 16}
-        - 'text .size (8..64)' -> {'min': 8, 'max': 64}
-        - 'bstr .size (16..)' -> {'min': 16, 'max': None}
-        - 'tstr .size (..100)' -> {'min': None, 'max': 100}
+        - 'bytes .size 16' -> {'exact': 16, 'min': None, 'max': None}
+        - 'text .size (8..64)' -> {'exact': None, 'min': 8, 'max': 64}
+        - 'text .size (8...64)' -> {'exact': None, 'min': 8, 'max': 63}
+        - 'bstr .size (16..)' -> {'exact': None, 'min': 16, 'max': None}
+        - 'tstr .size (..100)' -> {'exact': None, 'min': None, 'max': 100}
         """
-        # Match: .size N (exact)
-        match = re.search(r'\.size\s+(\d+)(?!\.)' , type_string)
-        if match:
-            return {'exact': int(match.group(1)), 'min': None, 'max': None}
-        
-        # Match: .size (M..N) (range)
-        match = re.search(r'\.size\s+\((\d+)\.\.(\d+)\)', type_string)
-        if match:
-            return {'exact': None, 'min': int(match.group(1)), 'max': int(match.group(2))}
-        
-        # Match: .size (M..) (at least M)
-        match = re.search(r'\.size\s+\((\d+)\.\.\)', type_string)
-        if match:
-            return {'exact': None, 'min': int(match.group(1)), 'max': None}
-        
-        # Match: .size (..N) (at most N)
-        match = re.search(r'\.size\s+\(\.\.(\d+)\)', type_string)
-        if match:
-            return {'exact': None, 'min': None, 'max': int(match.group(1))}
-        
+        match = self._SIZE_CONTROL.search(type_string)
+        if not match:
+            return None
+        arg = match.group(1)
+        invalid = {'error': f"Invalid .size argument '{arg}': expected a non-negative "
+                            f"integer, a range (M..N) / (M...N), or a constant naming one"}
+
+        inner = arg[1:-1].strip() if arg.startswith('(') else arg
+        if not arg.startswith('(') and '..' not in inner:
+            # Named constant may itself be a range: lim = 1..4
+            resolved = self.type_aliases.get(inner, '').strip()
+            if '..' in resolved:
+                inner = resolved.strip('()').strip()
+        if '..' not in inner:
+            value = self._size_bound(inner)
+            if value is None:
+                return invalid
+            return {'exact': value, 'min': None, 'max': None}
+
+        exclusive = '...' in inner
+        lo_tok, hi_tok = inner.split('...' if exclusive else '..', 1)
+        lo = self._size_bound(lo_tok) if lo_tok.strip() else None
+        hi = self._size_bound(hi_tok) if hi_tok.strip() else None
+        if (lo_tok.strip() and lo is None) or (hi_tok.strip() and hi is None):
+            return invalid
+        if exclusive and hi is not None:
+            hi -= 1
+        if lo is not None and hi is not None and lo > hi:
+            return {'error': f"Invalid .size argument '{arg}': empty range"}
+        return {'exact': None, 'min': lo, 'max': hi}
+
+    @staticmethod
+    def size_violation(value: Any, base_type: str, constraint: Optional[dict]) -> Optional[str]:
+        """Check *value* against a ``.size`` constraint (RFC 8610 §3.8.1).
+
+        - ``tstr``: length of the UTF-8 encoding in bytes.
+        - ``bstr``: length in bytes.
+        - ``uint``: the value must fit in an allowed number of bytes, i.e.
+          ``value < 256 ** n`` for some allowed size ``n``. ``uint .size 3``
+          is ``0..16777215``; for a range only the upper bound restricts.
+
+        Returns an error message, or ``None`` when the value conforms (or
+        there is no constraint). The caller has already checked the type.
+        """
+        if not constraint:
+            return None
+        if 'error' in constraint:
+            return constraint['error']
+        exact, lo, hi = constraint.get('exact'), constraint.get('min'), constraint.get('max')
+        if base_type == 'uint':
+            limit = exact if exact is not None else hi
+            if limit is not None and value.bit_length() > 8 * limit:
+                return f"{value} does not fit in {limit} byte(s) (.size {limit})"
+            return None
+        if base_type == 'tstr':
+            length, unit = len(value.encode('utf-8')), 'UTF-8 bytes'
+        elif base_type == 'bstr':
+            length, unit = len(value), 'bytes'
+        else:
+            return f".size is not defined for '{base_type}' (only tstr, bstr, uint)"
+        if exact is not None and length != exact:
+            return f"expected exactly {exact} {unit}, got {length}"
+        if lo is not None and length < lo:
+            return f"expected at least {lo} {unit}, got {length}"
+        if hi is not None and length > hi:
+            return f"expected at most {hi} {unit}, got {length}"
         return None
-    
+
     def extract_value_range(self, type_string: str) -> Optional[dict]:
         """Extract numeric value-range predicates from a CDDL type string.
 
@@ -1476,6 +1540,20 @@ class CBORAnalyzer:
                 value = value[1]
                 continue
             stripped = name.strip()
+            size_root = re.match(r'^(\w+)\s+\.size\s+(\([^)]*\)|\S+)$', stripped)
+            if size_root and size_root.group(1) in self._ROOT_PRIMITIVES:
+                base = size_root.group(1)
+                if not self._check_primitive_type(value, base):
+                    self.validation_errors.append(
+                        f"Value does not match type '{type_name}' (expected {base})")
+                    return False
+                size_error = self.cddl.size_violation(
+                    value, base, self.cddl.extract_size_constraint(stripped))
+                if size_error:
+                    self.validation_errors.append(
+                        f"Value does not match type '{type_name}': .size {size_error}")
+                    return False
+                return True
             if stripped in self._ROOT_PRIMITIVES:
                 if self._check_primitive_type(value, stripped):
                     return True
@@ -1805,19 +1883,6 @@ class CBORAnalyzer:
                             type_mismatch = True
                             logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected tstr, got {type(value).__name__}")
                         else:
-                            # Check size constraint from inline annotation or resolved alias
-                            size = field_info.get('size_constraint') or self.cddl.extract_size_constraint(_resolved)
-                            if size:
-                                length = len(value)
-                                if size.get('exact') is not None and length != size['exact']:
-                                    type_mismatch = True
-                                    logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected exactly {size['exact']}, got {length}")
-                                elif size.get('min') is not None and length < size['min']:
-                                    type_mismatch = True
-                                    logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected at least {size['min']}, got {length}")
-                                elif size.get('max') is not None and length > size['max']:
-                                    type_mismatch = True
-                                    logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected at most {size['max']}, got {length}")
                             # Check .regexp constraint
                             pattern = self.cddl.extract_regexp(_resolved)
                             if pattern and not type_mismatch:
@@ -1834,20 +1899,6 @@ class CBORAnalyzer:
                         if not isinstance(value, bytes):
                             type_mismatch = True
                             logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected bstr, got {type(value).__name__}")
-                        else:
-                            # Check size constraint from inline annotation or resolved alias
-                            size = field_info.get('size_constraint') or self.cddl.extract_size_constraint(_resolved)
-                            if size:
-                                length = len(value)
-                                if size.get('exact') is not None and length != size['exact']:
-                                    type_mismatch = True
-                                    logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected exactly {size['exact']} bytes, got {length}")
-                                elif size.get('min') is not None and length < size['min']:
-                                    type_mismatch = True
-                                    logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected at least {size['min']} bytes, got {length}")
-                                elif size.get('max') is not None and length > size['max']:
-                                    type_mismatch = True
-                                    logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Size mismatch: expected at most {size['max']} bytes, got {length}")
 
                     elif field_type and not field_type.startswith('$'):
                         # It's a structured type - check basic structure
@@ -1862,6 +1913,13 @@ class CBORAnalyzer:
                     
                     if type_mismatch:
                         self.validation_errors.append(f"Type mismatch for field '{field_name}' in '{type_name}'")
+                    elif _base_type in self._ROOT_PRIMITIVES and _base_type != 'any':
+                        size_error = self.cddl.size_violation(
+                            value, _base_type, self.cddl.extract_size_constraint(_resolved))
+                        if size_error:
+                            logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} .size: {size_error}")
+                            self.validation_errors.append(
+                                f"Field '{field_name}' in '{type_name}' violates .size: {size_error}")
                     
                     # Recursively validate nested structures
                     if field_type and field_type not in ['tstr', 'uint', 'int', 'bstr', 'bool', 'float', 'any']:
@@ -1903,10 +1961,24 @@ class CBORAnalyzer:
                                         else:
                                             logger.warning(f"{Colors.WARNING}[{item_breadcrumb}]{Colors.RESET} Could not resolve type choice: {element_type}")
                                     else:
-                                        # Regular element type
-                                        nested_type_def = self.cddl.get_type(element_type)
-                                        if nested_type_def:
-                                            self._validate_type(item, nested_type_def, element_type)
+                                        # Regular element type: primitive (with .size) or named type
+                                        resolved_elem = self.cddl.resolve_type_alias(element_type)
+                                        base_elem = re.split(r'[\s.]', resolved_elem)[0] if resolved_elem else ''
+                                        elem_valid = self._check_primitive_type(item, base_elem)
+                                        if elem_valid is False:
+                                            self.validation_errors.append(
+                                                f"Element [{i}] of field '{field_name}' has wrong type: "
+                                                f"expected {base_elem}, got {type(item).__name__}")
+                                        elif elem_valid is True:
+                                            size_error = self.cddl.size_violation(
+                                                item, base_elem, self.cddl.extract_size_constraint(resolved_elem))
+                                            if size_error:
+                                                self.validation_errors.append(
+                                                    f"Element [{i}] of field '{field_name}' violates .size: {size_error}")
+                                        else:
+                                            nested_type_def = self.cddl.get_type(element_type)
+                                            if nested_type_def:
+                                                self._validate_type(item, nested_type_def, element_type)
                                     
                                     self._pop_breadcrumb()
                         
@@ -1998,22 +2070,11 @@ class CBORAnalyzer:
                         self.validation_errors.append(error_msg)
                     # Enforce size constraint if primitive check passed
                     elif elem_valid is True and size_constraint:
-                        if base_elem_type in ('tstr', 'bstr') and isinstance(item, (str, bytes)):
-                            length = len(item)
-                            size_ok = True
-                            if size_constraint.get('exact') is not None:
-                                size_ok = (length == size_constraint['exact'])
-                            elif size_constraint.get('min') is not None and length < size_constraint['min']:
-                                size_ok = False
-                            elif size_constraint.get('max') is not None and length > size_constraint['max']:
-                                size_ok = False
-                            if not size_ok:
-                                error_msg = (
-                                    f"Array element [{i}] violates size constraint: "
-                                    f"expected {size_constraint}, got length {length}"
-                                )
-                                logger.error(f"{Colors.MISMATCH}[{item_breadcrumb}]{Colors.RESET} {error_msg}")
-                                self.validation_errors.append(error_msg)
+                        size_error = self.cddl.size_violation(item, base_elem_type, size_constraint)
+                        if size_error:
+                            error_msg = f"Array element [{i}] of '{type_name}' violates .size: {size_error}"
+                            logger.error(f"{Colors.MISMATCH}[{item_breadcrumb}]{Colors.RESET} {error_msg}")
+                            self.validation_errors.append(error_msg)
                     # elem_valid is None → structured type (map, array, choice)
                     elif elem_valid is None:
                         nested_type_def = self.cddl.get_type(base_elem_type, item)
