@@ -1436,6 +1436,58 @@ class CBORAnalyzer:
         
         return offset
     
+    _ROOT_PRIMITIVES = frozenset(
+        {'uint', 'int', 'bool', 'nil', 'null', 'float', 'tstr', 'bstr', 'any'})
+
+    def _validate_root_expression(self, data: Any, type_name: str) -> Optional[bool]:
+        """Check what the structured-type path cannot: root tags and primitives.
+
+        Follows the alias chain of *type_name*. A CBOR tag on the way
+        (``root = #6.501(inner)``) must be present on *data* with the same tag
+        number. A chain that ends in a plain primitive (``n = uint``) is
+        validated here.
+
+        Returns:
+            ``False`` (with an error recorded) on a tag mismatch or a primitive
+            mismatch, ``True`` when a primitive root matches, and ``None`` when
+            validation should continue on the structured-type path.
+        """
+        name = type_name
+        value = data
+        seen = set()
+        while name not in seen:
+            seen.add(name)
+            if name in self.cddl.types or name in self.cddl.type_choices:
+                return None
+            tag_info = self.cddl.extract_cbor_tag(name)
+            if tag_info:
+                expected_tag, name = tag_info[0], tag_info[1].strip()
+                if not (isinstance(value, tuple) and len(value) == 2
+                        and isinstance(value[0], int)):
+                    self.validation_errors.append(
+                        f"Type '{type_name}' requires CBOR tag {expected_tag}, "
+                        f"but the data is not tagged")
+                    return False
+                if value[0] != expected_tag:
+                    self.validation_errors.append(
+                        f"Type '{type_name}' requires CBOR tag {expected_tag}, "
+                        f"got tag {value[0]}")
+                    return False
+                value = value[1]
+                continue
+            stripped = name.strip()
+            if stripped in self._ROOT_PRIMITIVES:
+                if self._check_primitive_type(value, stripped):
+                    return True
+                self.validation_errors.append(
+                    f"Value does not match type '{type_name}' (expected {stripped})")
+                return False
+            next_name = self.cddl.type_aliases.get(name)
+            if next_name is None or next_name == name:
+                return None
+            name = next_name
+        return None
+
     def _validate_root(self, data: Any, type_name: str) -> bool:
         """Internal dispatcher — validate *data* without resetting validation_errors.
 
@@ -1513,6 +1565,10 @@ class CBORAnalyzer:
             if isinstance(data, dict):
                 logger.debug(f"CBOR data keys: {list(data.keys())}")
             
+            root_result = self._validate_root_expression(data, type_name)
+            if root_result is not None:
+                return root_result
+
             type_def = self.cddl.get_type(type_name, cbor_data=data)
             if not type_def:
                 logger.warning(f"Type '{type_name}' not found, attempting resolution...")

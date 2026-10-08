@@ -36,7 +36,9 @@ cddl-verify schema.cddl data.cbor --type corim-map --output data.edn   # write E
 cddl-verify schema.cddl data.cbor --show-types                         # list the parsed CDDL types
 ```
 
-The exit status is `0` on success and `1` on a decode or validation failure.
+The exit status is `1` when the CBOR cannot be decoded or, with `--type`, when
+validation fails. Without `--type` the first rule is used and validation errors
+are only warnings (exit status `0`).
 `python -m cddl_verifier` takes the same arguments. See [docs/CLI.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CLI.md).
 
 ### Python
@@ -95,7 +97,9 @@ of the problem. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/b
 - CBOR encoding and strict decoding with byte offsets in errors; duplicate map
   keys, invalid UTF-8 and excessive nesting are rejected.
 - Annotated EDN output with field names from the schema.
-- CBOR ↔ JSON conversion, optionally lossless (`typed=True`).
+- CBOR ↔ JSON conversion. `typed=True` keeps byte strings and tags, but
+  non-string map keys (such as the integer keys in CoRIM maps) still become JSON
+  strings, so maps with such keys do not round-trip exactly.
 
 ## Limitations
 
@@ -168,8 +172,9 @@ which uses PyPI Trusted Publishing (no API tokens are stored).
 
 1. Set the version in `_version.py`, date its CHANGELOG section, and merge to `main`.
 2. Optional dry run: start the workflow manually (Actions → *Publish to PyPI /
-   TestPyPI* → *Run workflow*, target `testpypi`). A version can only be uploaded
-   once per index, so use a pre-release such as `0.1.1rc1` for trial uploads.
+   TestPyPI* → *Run workflow*); manual runs only upload to TestPyPI. A version can
+   only be uploaded once per index, so use a pre-release such as `0.1.1rc1` for
+   trial uploads.
 3. Publish a GitHub release with tag `vX.Y.Z` matching the version. The workflow
    builds and checks the distributions, tests the wheel and sdist, uploads to
    TestPyPI, installs from there, and then uploads to PyPI.

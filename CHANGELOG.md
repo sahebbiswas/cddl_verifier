@@ -38,6 +38,12 @@ public release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)); 
 - Decoding accepts `bytearray` and `memoryview`; non-bytes input raises
   `TypeError`.
 
+### Fixed
+- Validating against a root rule that is a plain primitive (`n = uint`) now
+  checks the value instead of always failing with "not a concrete type".
+- A tagged root rule (`root = #6.501(inner)`) now requires the data to carry
+  that tag number; data with a different tag, or no tag, was accepted before.
+
 ### Added
 - Public API ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)):
   `cddl_verifier.validate()`, `Validator` (with `to_edn()`), `ValidationResult`,
@@ -57,7 +63,7 @@ public release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)); 
 - `.github/workflows/publish_pypi.yml`: builds the sdist and wheel, runs
   `twine check`, smoke-tests both artifacts in clean environments, and
   publishes with PyPI Trusted Publishing: to TestPyPI on manual runs, and to
-  TestPyPI then PyPI when a GitHub release is published
+  TestPyPI then PyPI when a GitHub release is published (the only path to PyPI)
   ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)).
 - `pip install .` installs a `cddl-verify` console script.
 - `docs/CLI.md`, `docs/API.md` and `docs/CDDL_SUPPORT.md` reference pages; the

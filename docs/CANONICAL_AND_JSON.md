@@ -331,6 +331,10 @@ assert cbor_decode(cbor1) == cbor_decode(cbor2)
 
 **Important:** Use `typed=True` when converting CBOR to JSON if you plan to convert back!
 
+**Limitation:** JSON object keys are always strings, so non-string CBOR map keys
+(for example the integer keys of CoRIM maps) come back as strings even with
+`typed=True`: `{0: "a"}` round-trips to `{"0": "a"}`.
+
 ### Use Cases
 
 #### 1. API Development

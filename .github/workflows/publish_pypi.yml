@@ -11,20 +11,15 @@ name: Publish to PyPI / TestPyPI
 #
 # Flow:
 #   * Manual run (workflow_dispatch): build, check, smoke test, then publish
-#     to TestPyPI only (or PyPI if "pypi" is chosen).
+#     to TestPyPI only.
 #   * GitHub release published (tag vX.Y.Z): build, check, smoke test,
 #     publish to TestPyPI, verify the TestPyPI install, then publish to PyPI.
+#     This is the only way to reach production PyPI.
 
 on:
   release:
     types: [published]
   workflow_dispatch:
-    inputs:
-      target:
-        description: "Package index to publish to"
-        type: choice
-        options: [testpypi, pypi]
-        default: testpypi
 
 permissions:
   contents: read
@@ -174,9 +169,7 @@ jobs:
   publish-testpypi:
     name: Publish to TestPyPI
     needs: [build, smoke-test]
-    if: >-
-      github.event_name == 'release' ||
-      (github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi')
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment:
       name: testpypi
@@ -229,16 +222,9 @@ jobs:
   publish-pypi:
     name: Publish to PyPI
     needs: [build, smoke-test, verify-testpypi]
-    # Runs after a successful TestPyPI round trip on release, or directly
-    # on a manual run that explicitly targets PyPI.
-    if: >-
-      always() &&
-      needs.build.result == 'success' &&
-      needs.smoke-test.result == 'success' &&
-      (
-        (github.event_name == 'release' && needs.verify-testpypi.result == 'success') ||
-        (github.event_name == 'workflow_dispatch' && inputs.target == 'pypi')
-      )
+    # Only a published release reaches production PyPI, and only after the
+    # TestPyPI upload and install check have succeeded.
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
     environment:
       name: pypi

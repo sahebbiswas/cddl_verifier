@@ -73,7 +73,7 @@ def _read_schema(schema: SchemaSource) -> str:
     if isinstance(schema, os.PathLike):
         try:
             return Path(schema).read_text(encoding="utf-8")
-        except OSError as e:
+        except (OSError, UnicodeError) as e:
             raise SchemaError(f"cannot read CDDL schema {os.fspath(schema)!r}: {e}") from e
     if isinstance(schema, str):
         return schema
@@ -119,7 +119,9 @@ class Validator:
 
         Args:
             data: CBOR-encoded bytes (``bytes``, ``bytearray`` or
-                ``memoryview``), or an already-decoded Python value.
+                ``memoryview``), or an already-decoded Python value. Bytes are
+                always decoded as CBOR; to validate a decoded byte string
+                against a ``bstr`` rule, pass its CBOR encoding.
             root_type: Name of the CDDL rule to validate against. Defaults to
                 the first rule in the schema.
 

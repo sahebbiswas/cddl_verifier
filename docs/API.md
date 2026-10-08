@@ -261,7 +261,7 @@ from cddl_verifier.json_codec import cbor_to_json, json_to_cbor
 # CBOR → JSON
 json_str = cbor_to_json(raw, pretty=True)
 
-# With CBOR-type annotations (required for lossless round-trips)
+# With CBOR-type annotations (keeps bytes and tags for round-trips)
 json_str = cbor_to_json(raw, typed=True, pretty=True)
 
 # JSON → CBOR
@@ -285,8 +285,10 @@ cbor_to_json(
 `cbor_bytes` is decoded with the strict decoder above, so it must hold exactly
 one CBOR item.
 
-> **Lossless round-trips require `typed=True`.** Without it, `bytes` values are
-> reduced to Base64 strings and CBOR tag numbers are discarded.
+> **Round-trips need `typed=True`.** Without it, `bytes` values are reduced to
+> Base64 strings and CBOR tag numbers are discarded. Even with it, non-string map
+> keys become JSON strings (`{0: "a"}` comes back as `{"0": "a"}`), so maps with
+> integer keys do not round-trip exactly.
 
 ### Type annotations in JSON
 

@@ -123,6 +123,44 @@ class TestValidate(unittest.TestCase):
                           root_type="corim-map")
         self.assertTrue(result.valid, result.errors)
 
+    def test_primitive_root(self):
+        self.assertTrue(validate("n = uint", 1).valid)
+        self.assertTrue(validate("a = n\nn = tstr", "x").valid)
+        result = validate("n = uint", -1)
+        self.assertFalse(result.valid)
+        self.assertIn("uint", result.errors[0])
+        self.assertFalse(validate("n = bool", 1).valid)
+
+    def test_constrained_primitive_root_is_not_silently_accepted(self):
+        self.assertFalse(validate("n = tstr .size 2", "abc").valid)
+
+    def test_tagged_root_checks_tag_number(self):
+        schema = "root = #6.501(inner)\ninner = { a: uint }\n"
+        self.assertTrue(validate(schema, (501, {"a": 1})).valid)
+        wrong = validate(schema, (502, {"a": 1}))
+        self.assertFalse(wrong.valid)
+        self.assertIn("501", wrong.errors[0])
+        self.assertFalse(validate(schema, {"a": 1}).valid)
+        self.assertFalse(validate(schema, (501, {"a": "x"})).valid)
+
+    def test_tagged_primitive_root(self):
+        self.assertTrue(validate("r = #6.1(uint)", (1, 5)).valid)
+        self.assertFalse(validate("r = #6.1(uint)", (1, "x")).valid)
+        self.assertFalse(validate("r = #6.1(uint)", (2, 5)).valid)
+
+    def test_tagged_root_from_cbor_bytes(self):
+        result = validate(SCHEMAS / "unified.cddl",
+                          (DATA / "minimal-corim.cbor").read_bytes(),
+                          root_type="tagged-unsigned-corim-map")
+        self.assertTrue(result.valid, result.errors)
+
+    def test_schema_file_not_utf8(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            schema = Path(tmp) / "bad.cddl"
+            schema.write_bytes(b"n = uint ; \xff\xfe\n")
+            with self.assertRaises(SchemaError):
+                Validator(schema)
+
     def test_library_is_silent(self):
         stderr = io.StringIO()
         with redirect_stderr(stderr):
