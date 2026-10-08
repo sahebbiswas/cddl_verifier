@@ -3,16 +3,17 @@
 All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
 project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-The version is defined once in `_version.py`.
+The version is defined once in `_version.py`. Until 0.1.0 (the first public
+release, [#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)) is published, the version is `0.1.0.dev0`.
 
-## [0.2.0] - 2026-10-08
+## [Unreleased] - 0.1.0
 
 ### Changed
-- **Breaking:** `CBOR.load()`, `CBOR.loads()`, `cbor_decode()` and
+- **Behaviour change** from earlier unversioned code: `CBOR.load()`, `CBOR.loads()`, `cbor_decode()` and
   `load_cbor_bytes()` now decode exactly one complete CBOR data item. Trailing
   bytes after the item (including concatenated CBOR sequences), which were
   previously ignored silently, are rejected with `CBORTrailingDataError`
-  (#64). The analyzer CLI and nested `.cbor` validation inherit this behaviour.
+  ([#64](https://github.com/sahebbiswas/cddl_verifier/issues/64)). The analyzer CLI and nested `.cbor` validation inherit this behaviour.
 - Decoder errors are now `CBORDecodeError` (a `ValueError` subclass) carrying the
   byte `offset` of the problem: `CBORTruncatedError` for empty or truncated
   input, `CBORTrailingDataError` for trailing bytes, `CBORUnsupportedError`
@@ -34,10 +35,3 @@ The version is defined once in `_version.py`.
 - `tests/test_strict_decoding.py`: regression tests for scalars, maps, arrays,
   tags and nested data with trailing bytes, truncation at every prefix, and
   error offsets.
-
-## [0.1.0] - 2026-10-07
-
-### Added
-- Baseline release prior to the versioning scheme: CDDL parser and CBOR
-  validator with annotated EDN output, `simple_cbor` encoder/decoder/diagnostic
-  dumper/builder, and `cbor_json` conversion.

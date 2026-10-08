@@ -10,6 +10,15 @@ The toolkit has three importable modules:
 
 The project version is available as `simple_cbor.__version__` (defined in `_version.py`).
 
+> **Provisional API.** Everything on this page documents the current
+> implementation modules. They are not a stable public API: `CDDLParser`,
+> `CBORAnalyzer` and `EDNGenerator` will change during the CDDL AST and
+> semantic-resolution work, and decoded value types (tags as `(tag, value)`
+> tuples, array/map keys as tuples) are expected to change ([#78](https://github.com/sahebbiswas/cddl_verifier/issues/78), [#88](https://github.com/sahebbiswas/cddl_verifier/issues/88)). The 0.1.0
+> release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)) introduces a stable `cddl_verifier` package with a small
+> `validate()` / `Validator` facade and deliberately chosen CBOR helpers; new
+> code should move to it once it is available.
+
 ---
 
 ## `cbor_cddl_analyzer`: validation and EDN

@@ -4,4 +4,4 @@ Bump this on every change and record it in CHANGELOG.md; ``pyproject.toml``
 reads it dynamically and the analyzer CLI reports it via ``--version``.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.1.0.dev0"

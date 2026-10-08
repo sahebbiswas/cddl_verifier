@@ -36,7 +36,12 @@ Validate a CBOR file against a CDDL type and print annotated EDN:
 cddl-verify schema.cddl data.cbor --type corim-map
 ```
 
-The same from Python:
+The same from Python, using the current implementation classes:
+
+> **Provisional API.** `CDDLParser`, `CBORAnalyzer` and `EDNGenerator` are
+> internal classes and will change during the CDDL AST/resolution work. A stable
+> `cddl_verifier` package with a `validate()` / `Validator` facade is planned for
+> the 0.1.0 release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)); prefer that once it is available.
 
 ```python
 from cbor_cddl_analyzer import CDDLParser, CBORAnalyzer, EDNGenerator
@@ -105,10 +110,15 @@ The project follows [Semantic Versioning 2.0.0](https://semver.org/). While the
 major version is `0`, a minor bump (`0.x.0`) may contain breaking changes and a
 patch bump (`0.x.y`) is for backward-compatible fixes.
 
+0.1.0 will be the first public release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)). Until then the version is a
+[PEP 440](https://peps.python.org/pep-0440/) development release, `0.1.0.devN`,
+and changes are listed under *Unreleased* in the changelog.
+
 - The version is defined once, as `__version__` in [`_version.py`](_version.py).
   `pyproject.toml` reads it, `simple_cbor.__version__` re-exports it, and
   `cddl-verify --version` prints it. Don't repeat the version number elsewhere.
-- Each change merged to `main` bumps the version and adds an entry to
+- Each change merged to `main` bumps the version (`0.1.0.devN` → `devN+1` before
+  the first release) and adds an entry to
   [CHANGELOG.md](CHANGELOG.md) (format: [Keep a Changelog](https://keepachangelog.com/)).
   Follow-up commits before the merge go into the same, still-unreleased version.
 - Update this README and `docs/` in the same change as the code they describe.
