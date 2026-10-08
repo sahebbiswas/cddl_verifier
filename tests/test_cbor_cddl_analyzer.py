@@ -80,9 +80,12 @@ class TestCDDLParsing(unittest.TestCase):
     
     def test_simple_alias(self):
         """Test simple type alias parsing"""
-        cddl = CDDLParser("person-name = tstr")
-        self.assertIn('person-name', cddl.type_aliases)
-        self.assertEqual(cddl.type_aliases['person-name'], 'tstr')
+        cddl2 = CDDLParser("single = { &(a:0)=>tstr, &(b:1)=>uint }")
+        self.assertIn('single', cddl2.types)
+
+    def test_single_line_map_string_key(self):
+        cddl = CDDLParser("single = { foo: tstr }")
+        self.assertEqual(cddl.types['single']['fields']['foo']['type'], 'tstr')
     
     def test_cbor_tag_alias(self):
         """Test CBOR tag definition parsing"""
@@ -1412,20 +1415,236 @@ class TestTypeChoiceResolution(unittest.TestCase):
         self.assertTrue(len(analyzer.get_errors()) > 0)
 
 
+class TestCoverageGaps(unittest.TestCase):
+    def test_split_top_level_commas(self):
+        cddl_text = '''
+        record = {
+          &( name : 0 ) => tstr .regexp "a,b\\,c",
+          &( p1 : 1 ) => tstr .regexp 'x,y\\\\,z',
+        }
+        '''
+        cddl = CDDLParser(cddl_text)
+        self.assertIn('record', cddl.types)
+
+class TestCLIArgs(unittest.TestCase):
+    def test_cli_show_types(self):
+        from unittest.mock import patch
+        import tempfile
+        import cbor_cddl_analyzer
+        import os
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.cddl', delete=False) as f_cddl:
+            f_cddl.write("test = { &(f:0)=>uint }")
+            f_cddl_name = f_cddl.name
+            
+        with tempfile.NamedTemporaryFile(mode='wb', suffix='.cbor', delete=False) as f_cbor:
+            f_cbor.write(b"\xa1\x00\x01")
+            f_cbor_name = f_cbor.name
+            
+        try:
+            with patch('sys.argv', ['cbor_cddl_analyzer.py', f_cddl_name, f_cbor_name, '--show-types']):
+                with patch('sys.exit', side_effect=SystemExit) as mock_exit:
+                    try:
+                        cbor_cddl_analyzer.main()
+                    except SystemExit:
+                        pass
+                    mock_exit.assert_called_with(0)
+        finally:
+            os.remove(f_cddl_name)
+            os.remove(f_cbor_name)
+            
+    def test_cli_missing_files(self):
+        from unittest.mock import patch
+        import cbor_cddl_analyzer
+        with patch('sys.argv', ['cbor_cddl_analyzer.py', 'missing_foo.cddl', 'missing_foo.cbor']):
+            with patch('sys.exit', side_effect=SystemExit) as mock_exit:
+                try:
+                    cbor_cddl_analyzer.main()
+                except SystemExit:
+                    pass
+                mock_exit.assert_called_with(1)
+
+    def test_cli_bad_cbor(self):
+        from unittest.mock import patch
+        import tempfile
+        import os
+        import cbor_cddl_analyzer
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.cddl', delete=False) as f_cddl:
+            f_cddl.write("test = { &(f:0)=>uint }")
+            f_cddl_name = f_cddl.name
+            
+        with tempfile.NamedTemporaryFile(mode='wb', suffix='.cbor', delete=False) as f_cbor:
+            f_cbor.write(b"bad_cbor")
+            f_cbor_name = f_cbor.name
+            
+        try:
+            with patch('sys.argv', ['cbor_cddl_analyzer.py', f_cddl_name, f_cbor_name, "--type", "test"]):
+                with patch('sys.exit', side_effect=SystemExit) as mock_exit:
+                    try:
+                        cbor_cddl_analyzer.main()
+                    except SystemExit:
+                        pass
+                    mock_exit.assert_called_with(1)
+        finally:
+            os.remove(f_cddl_name)
+            os.remove(f_cbor_name)
+
+class TestFallbackDecoder(unittest.TestCase):
+    def test_fallback_decoder(self):
+        import sys
+        import importlib
+        import cbor_cddl_analyzer
+        
+        save_simple = sys.modules.pop('simple_cbor', None)
+        save_cbor2 = sys.modules.pop('cbor2', None)
+        sys.modules['simple_cbor'] = None
+        sys.modules['cbor2'] = None
+        importlib.reload(cbor_cddl_analyzer)
+        
+        try:
+            decoder = cbor_cddl_analyzer.SimpleCBORDecoder(b"\x01")
+            self.assertEqual(decoder.decode(), 1)
+            
+            # float16
+            decoder = cbor_cddl_analyzer.SimpleCBORDecoder(b"\xf9\x3c\x00")
+            self.assertEqual(decoder.decode(), 1.0)
+            
+            # float32
+            decoder = cbor_cddl_analyzer.SimpleCBORDecoder(b"\xfa\x3f\x80\x00\x00")
+            self.assertEqual(decoder.decode(), 1.0)
+            
+            # float64
+            decoder = cbor_cddl_analyzer.SimpleCBORDecoder(b"\xfb\x3f\xf0\x00\x00\x00\x00\x00\x00")
+            self.assertEqual(decoder.decode(), 1.0)
+            
+            # bstr
+            decoder = cbor_cddl_analyzer.SimpleCBORDecoder(b"\x41\x01")
+            self.assertEqual(decoder.decode(), b"\x01")
+            
+            # large int 1
+            decoder = cbor_cddl_analyzer.SimpleCBORDecoder(b"\x18\x2a")
+            self.assertEqual(decoder.decode(), 42)
+            
+            # large int 2
+            decoder = cbor_cddl_analyzer.SimpleCBORDecoder(b"\x19\x01\x00")
+            self.assertEqual(decoder.decode(), 256)
+            
+            # large int 4
+            decoder = cbor_cddl_analyzer.SimpleCBORDecoder(b"\x1a\x00\x01\x00\x00")
+            self.assertEqual(decoder.decode(), 65536)
+            
+            # large int 8
+            decoder = cbor_cddl_analyzer.SimpleCBORDecoder(b"\x1b\x00\x00\x00\x01\x00\x00\x00\x00")
+            self.assertEqual(decoder.decode(), 4294967296)
+            
+            # negative int
+            decoder = cbor_cddl_analyzer.SimpleCBORDecoder(b"\x20")
+            self.assertEqual(decoder.decode(), -1)
+
+            # float16 nan
+            import math
+            decoder = cbor_cddl_analyzer.SimpleCBORDecoder(b"\xf9\x7e\x00")
+            self.assertTrue(math.isnan(decoder.decode()))
+
+            # float16 subnormal
+            decoder = cbor_cddl_analyzer.SimpleCBORDecoder(b"\xf9\x00\x01")
+            self.assertTrue(decoder.decode() > 0.0)
+
+            # invalid int
+            decoder = cbor_cddl_analyzer.SimpleCBORDecoder(b"\x1c")
+            with self.assertRaises(ValueError):
+                decoder.decode()
+
+            # unexpected end
+            decoder = cbor_cddl_analyzer.SimpleCBORDecoder(b"")
+            with self.assertRaises(ValueError):
+                decoder.decode()
+
+            # unsupported simple
+            decoder = cbor_cddl_analyzer.SimpleCBORDecoder(b"\xf7")
+            with self.assertRaises(ValueError):
+                decoder.decode()
+            
+            # string
+            decoder = cbor_cddl_analyzer.SimpleCBORDecoder(b"\x61\x61")
+            self.assertEqual(decoder.decode(), "a")
+            
+            # map
+            decoder = cbor_cddl_analyzer.SimpleCBORDecoder(b"\xa1\x01\x02")
+            self.assertEqual(decoder.decode(), {1: 2})
+            
+            # list
+            decoder = cbor_cddl_analyzer.SimpleCBORDecoder(b"\x81\x01")
+            self.assertEqual(decoder.decode(), [1])
+            
+            # tag
+            decoder = cbor_cddl_analyzer.SimpleCBORDecoder(b"\xc2\x01")
+            self.assertEqual(decoder.decode(), (2, 1))
+
+            # false
+            decoder = cbor_cddl_analyzer.SimpleCBORDecoder(b"\xf4")
+            self.assertEqual(decoder.decode(), False)
+
+            # true
+            decoder = cbor_cddl_analyzer.SimpleCBORDecoder(b"\xf5")
+            self.assertEqual(decoder.decode(), True)
+
+            # null
+            decoder = cbor_cddl_analyzer.SimpleCBORDecoder(b"\xf6")
+            self.assertEqual(decoder.decode(), None)
+
+        finally:
+            sys.modules.pop('simple_cbor', None)
+            sys.modules.pop('cbor2', None)
+            if save_simple: sys.modules['simple_cbor'] = save_simple
+            if save_cbor2: sys.modules['cbor2'] = save_cbor2
+            importlib.reload(cbor_cddl_analyzer)
+
 class TestFallbackDecoderUnhashable(unittest.TestCase):
-    """Test fallback decoder handling of unhashable keys"""
+    """Test the inline fallback decoder's handling of unhashable map keys."""
 
-    def test_fallback_decoder_list_key(self):
-        """Verify fallback decoder handles list as map key"""
-        # Force HAS_SIMPLE_CBOR to False for this test would be hard without mocking
-        # But we can test SimpleCBORDecoder directly if it's available in the module
-        from cbor_cddl_analyzer import SimpleCBORDecoder
+    @classmethod
+    def setUpClass(cls):
+        # Load a private copy of the module with simple_cbor unavailable so
+        # the inline fallback SimpleCBORDecoder is defined instead of the wrapper.
+        import importlib.util
+        from unittest.mock import patch
+        import cbor_cddl_analyzer
+        spec = importlib.util.spec_from_file_location(
+            'cbor_cddl_analyzer_fallback', cbor_cddl_analyzer.__file__)
+        module = importlib.util.module_from_spec(spec)
+        with patch.dict(sys.modules, {'simple_cbor': None}):
+            spec.loader.exec_module(module)
+        assert not module.HAS_SIMPLE_CBOR
+        cls.Decoder = module.SimpleCBORDecoder
 
-        # CBOR for { [1]: 2 }
-        cbor_data = bytes([0xa1, 0x81, 0x01, 0x02])
-        decoder = SimpleCBORDecoder(cbor_data)
-        decoded = decoder.decode()
-        self.assertEqual(decoded, {(1,): 2})
+    def _decode(self, data: bytes):
+        return self.Decoder(data).decode()
+
+    def test_list_key(self):
+        # { [1]: 2 }
+        self.assertEqual(self._decode(bytes([0xa1, 0x81, 0x01, 0x02])), {(1,): 2})
+
+    def test_dict_key(self):
+        # { {"a": 1}: 2 }
+        self.assertEqual(self._decode(bytes([0xa1, 0xa1, 0x61, 0x61, 0x01, 0x02])),
+                         {(('a', 1),): 2})
+
+    def test_tagged_list_key(self):
+        # { 1([1]): 2 } -- tag decodes to (1, [1]), which must also be normalized
+        self.assertEqual(self._decode(bytes([0xa1, 0xc1, 0x81, 0x01, 0x02])),
+                         {(1, (1,)): 2})
+
+    def test_colliding_normalized_keys(self):
+        # { [1, [2]]: 0, 1([2]): 1 } -- both normalize to (1, (2,))
+        data = bytes([0xa2, 0x82, 0x01, 0x81, 0x02, 0x00, 0xc1, 0x81, 0x02, 0x01])
+        with self.assertRaises(ValueError):
+            self._decode(data)
+
+    def test_duplicate_plain_keys(self):
+        # { 1: 2, 1: 3 }
+        with self.assertRaises(ValueError):
+            self._decode(bytes([0xa2, 0x01, 0x02, 0x01, 0x03]))
 
 
 if __name__ == '__main__':

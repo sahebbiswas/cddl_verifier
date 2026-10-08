@@ -227,6 +227,43 @@ class TestUtilityMethods(unittest.TestCase):
         
         self.assertEqual(cbor1.data, [1, 2, 3, 4, 5, 6])
     
+    def test_merge_incompatible_types(self):
+        """Test merge() with incompatible types raises TypeError"""
+        cbor_dict = CBOR({"a": 1})
+        cbor_list = CBOR([1, 2])
+        cbor_str = CBOR("string")
+
+        with self.assertRaises(TypeError):
+            cbor_dict.merge(cbor_list)
+
+        with self.assertRaises(TypeError):
+            cbor_list.merge(cbor_dict)
+
+        with self.assertRaises(TypeError):
+            cbor_dict.merge(cbor_str)
+
+    def test_merge_chaining(self):
+        """Test merge() returns self for chaining"""
+        cbor1 = CBOR({"a": 1})
+        cbor2 = CBOR({"b": 2})
+
+        result = cbor1.merge(cbor2)
+        self.assertIs(result, cbor1)
+        self.assertEqual(cbor1.data, {"a": 1, "b": 2})
+
+    def test_merge_clears_cache(self):
+        """Test merge() clears the encoded byte cache"""
+        cbor1 = CBOR({"a": 1})
+        cbor2 = CBOR({"b": 2})
+
+        # Encode to populate cache
+        cbor1.encode()
+        self.assertIsNotNone(cbor1._cached_bytes)
+
+        # Merge should clear cache
+        cbor1.merge(cbor2)
+        self.assertIsNone(cbor1._cached_bytes)
+
     def test_to_dict_to_list(self):
         """Test to_dict() and to_list() methods"""
         cbor_dict = CBOR({"a": 1})

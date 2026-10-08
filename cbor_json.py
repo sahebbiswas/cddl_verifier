@@ -142,7 +142,8 @@ def _preprocess_for_json(obj: Any, typed: bool) -> Any:
     - nested structures recursively
     """
     # Handle bytes
-    if isinstance(obj, bytes):
+    if isinstance(obj, bytes):      
+        
         if typed:
             return {
                 "$cbor": "bytes",
@@ -153,6 +154,7 @@ def _preprocess_for_json(obj: Any, typed: bool) -> Any:
     
     # Handle tagged values (tag_num, value) tuples
     if isinstance(obj, tuple) and len(obj) == 2 and isinstance(obj[0], int) and obj[0] >= 0:
+        
         tag_num, value = obj
         processed_value = _preprocess_for_json(value, typed)
         if typed:
@@ -237,6 +239,7 @@ def _process_cbor_annotations(obj: Any) -> Any:
         {"$cbor": "Infinity"} → float('inf')
         {"$cbor": "-Infinity"} → float('-inf')
     """
+    # 
     if isinstance(obj, dict):
         # Check for CBOR type annotation
         if "$cbor" in obj:
@@ -319,6 +322,7 @@ def json_file_to_cbor_file(json_path: str, cbor_path: str,
 
 # CLI functionality
 if __name__ == '__main__':
+    # Command-line interface for converting between JSON and CBOR
     import sys
     import argparse
     
@@ -364,12 +368,14 @@ Examples:
     args = parser.parse_args()
     
     if not args.command:
+        # 
         parser.print_help()
         sys.exit(1)
     
     try:
+        # 
         if args.command == 'to-json':
-            # Read CBOR input
+            # Read CBOR input 
             if args.input == '-':
                 cbor_bytes = sys.stdin.buffer.read()
             else:
@@ -414,5 +420,6 @@ Examples:
                       file=sys.stderr)
     
     except Exception as e:
+        # Handle 
         print(f"[X] Error: {e}", file=sys.stderr)
         sys.exit(1)

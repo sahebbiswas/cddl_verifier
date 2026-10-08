@@ -99,16 +99,16 @@ if not HAS_SIMPLE_CBOR:
             self.pos = 0
             self.total_size = len(data)
             self.structure_map: Dict[int, str] = {}  # Map offsets to descriptions
-
+        
             # Log initial CBOR data
             if logger.isEnabledFor(logging.DEBUG):
                 hex_preview = self._format_hex(data[:min(32, len(data))], 0)
                 logger.debug(f"{Colors.CBOR}CBOR Input:{Colors.RESET} {len(data)} bytes")
                 logger.debug(f"  {hex_preview}")
-
+    
         def _make_hashable(self, obj: Any) -> Any:
             """Recursively convert unhashable objects to hashable ones."""
-            if isinstance(obj, list):
+            if isinstance(obj, (list, tuple)):
                 return tuple(self._make_hashable(item) for item in obj)
             if isinstance(obj, dict):
                 return tuple(sorted(
@@ -120,37 +120,37 @@ if not HAS_SIMPLE_CBOR:
         def _format_hex(self, data: bytes, offset: int, trim_at: int = 4) -> str:
             """Format bytes as hex with offset, trimming long sequences."""
             if len(data) <= trim_at:
-                hex_str = ' '.join(f'{b:02x}' for b in data)
+                hex_str = data.hex(' ')
                 return f"[@{offset:04x}] {hex_str}"
             else:
-                hex_start = ' '.join(f'{b:02x}' for b in data[:trim_at])
+                hex_start = data[:trim_at].hex(' ')
                 return f"[@{offset:04x}] {hex_start} ... ({len(data)} bytes total)"
     
         def decode(self, path: str = "") -> Any:
             """Decode CBOR data.
-
+        
             Args:
                 path: Current path in the data structure for tracking
             """
             if self.pos >= len(self.data):
                 raise ValueError("Unexpected end of data")
-
+        
             initial_byte = self.data[self.pos]
             start_pos = self.pos
             self.pos += 1
-
+        
             major_type = initial_byte >> 5
             additional_info = initial_byte & 0x1F
-
+        
             # Log what we're decoding with path context
             if logger.isEnabledFor(logging.DEBUG):
                 context = f" {Colors.CDDL}({path}){Colors.RESET}" if path else ""
                 logger.debug(f"{Colors.CBOR}[@{start_pos:04x}] {initial_byte:02x}{Colors.RESET}{context} " +
                             f"major_type={major_type} add_info={additional_info}")
-
+        
             # Store structure information
             self.structure_map[start_pos] = f"{path}: major_type={major_type}"
-
+        
             if major_type == MAJOR_TYPE_UINT:
                 return self._decode_int(additional_info)
             elif major_type == MAJOR_TYPE_NINT:
@@ -178,6 +178,8 @@ if not HAS_SIMPLE_CBOR:
                         hash(key)
                     except TypeError:
                         key = self._make_hashable(key)
+                    if key in result:
+                        raise ValueError(f"Duplicate map key: {key!r}")
                     result[key] = value
                 return result
             elif major_type == MAJOR_TYPE_TAG:
@@ -200,9 +202,9 @@ if not HAS_SIMPLE_CBOR:
                     return self._decode_float32()
                 elif additional_info == 27:  # float64
                     return self._decode_float64()
-
+        
             raise ValueError(f"Unsupported CBOR type: major={major_type}, additional={additional_info}")
-
+    
         def _decode_int(self, additional_info: int) -> int:
             """Decode integer value."""
             if additional_info < 24:
@@ -224,7 +226,7 @@ if not HAS_SIMPLE_CBOR:
                 self.pos += 8
                 return value
             raise ValueError(f"Invalid additional info for integer: {additional_info}")
-
+    
         def _decode_float16(self) -> float:
             """Decode IEEE 754 half-precision (float16) per RFC 8949 §3.3."""
             bits = struct.unpack('>H', self.data[self.pos:self.pos + 2])[0]
@@ -238,13 +240,13 @@ if not HAS_SIMPLE_CBOR:
                 return sign * (float('inf') if mant == 0 else float('nan'))
             else:           # normal
                 return sign * (2.0 ** (exp - 15)) * (1.0 + mant / 1024.0)
-
+    
         def _decode_float32(self) -> float:
             """Decode float32."""
             value = struct.unpack('>f', self.data[self.pos:self.pos + 4])[0]
             self.pos += 4
             return value
-
+    
         def _decode_float64(self) -> float:
             """Decode float64."""
             value = struct.unpack('>d', self.data[self.pos:self.pos + 8])[0]
@@ -1297,7 +1299,7 @@ class CBORAnalyzer:
                 # Show a few bytes around this offset
                 start = max(0, offset)
                 end = min(len(self.cbor_bytes), offset + 4)
-                hex_bytes = ' '.join(f'{b:02x}' for b in self.cbor_bytes[start:end])
+                hex_bytes = self.cbor_bytes[start:end].hex(' ')
                 return f" {Colors.CBOR}[@{offset:04x}:{hex_bytes}]{Colors.RESET}"
         
         return ""
@@ -1468,7 +1470,7 @@ class CBORAnalyzer:
         
         # Show CBOR hex if available
         if cbor_bytes and logger.isEnabledFor(logging.DEBUG):
-            hex_preview = ' '.join(f'{b:02x}' for b in cbor_bytes[:min(16, len(cbor_bytes))])
+            hex_preview = cbor_bytes[:min(16, len(cbor_bytes))].hex(' ')
             if len(cbor_bytes) > 16:
                 hex_preview += f" ... ({len(cbor_bytes)} bytes total)"
             logger.debug(f"{Colors.CBOR}CBOR bytes:{Colors.RESET} {hex_preview}")
@@ -1973,7 +1975,7 @@ class CBORAnalyzer:
     def _format_value_for_log(self, value, max_len=50):
         """Format a value for logging, with truncation."""
         if isinstance(value, bytes):
-            hex_str = ' '.join(f'{b:02x}' for b in value[:4])
+            hex_str = value[:4].hex(' ')
             if len(value) > 4:
                 return f"h'{hex_str}...' ({len(value)} bytes)"
             return f"h'{hex_str}'"
@@ -2664,4 +2666,4 @@ Examples:
 
 
 if __name__ == '__main__':
-    main()
+    main()

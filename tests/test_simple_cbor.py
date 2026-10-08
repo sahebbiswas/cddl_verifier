@@ -746,6 +746,25 @@ class TestUnhashableKeys(unittest.TestCase):
         decoded = cbor_decode(cbor_data)
         self.assertEqual(decoded, {((1,),): 2})
 
+    def test_tagged_list_key(self):
+        """Test map with a tagged array as a key"""
+        # { 1([1]): 2 } -- tag decodes to (1, [1]), which must also be normalized
+        cbor_data = bytes([0xa1, 0xc1, 0x81, 0x01, 0x02])
+        self.assertEqual(cbor_decode(cbor_data), {(1, (1,)): 2})
+
+    def test_colliding_normalized_keys(self):
+        """Distinct keys that normalize to the same form must be rejected"""
+        # { [1, [2]]: 0, 1([2]): 1 } -- both normalize to (1, (2,))
+        cbor_data = bytes([0xa2, 0x82, 0x01, 0x81, 0x02, 0x00, 0xc1, 0x81, 0x02, 0x01])
+        with self.assertRaises(ValueError):
+            cbor_decode(cbor_data)
+
+    def test_duplicate_plain_keys(self):
+        """Duplicate map keys must be rejected rather than silently overwritten"""
+        # { 1: 2, 1: 3 }
+        with self.assertRaises(ValueError):
+            cbor_decode(bytes([0xa2, 0x01, 0x02, 0x01, 0x03]))
+
 
 if __name__ == '__main__':
     unittest.main()
