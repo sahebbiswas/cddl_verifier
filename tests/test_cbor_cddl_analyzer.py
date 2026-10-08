@@ -1415,8 +1415,6 @@ class TestTypeChoiceResolution(unittest.TestCase):
         self.assertTrue(len(analyzer.get_errors()) > 0)
 
 
-if __name__ == '__main__':
-    unittest.main()
 class TestCoverageGaps(unittest.TestCase):
     def test_split_top_level_commas(self):
         cddl_text = '''
@@ -1601,6 +1599,59 @@ class TestFallbackDecoder(unittest.TestCase):
             if save_simple: sys.modules['simple_cbor'] = save_simple
             if save_cbor2: sys.modules['cbor2'] = save_cbor2
             importlib.reload(cbor_cddl_analyzer)
+
+class TestFallbackDecoderUnhashable(unittest.TestCase):
+    """Test the inline fallback decoder's handling of unhashable map keys."""
+
+    @classmethod
+    def setUpClass(cls):
+        # Load a private copy of the module with simple_cbor unavailable so
+        # the inline fallback SimpleCBORDecoder is defined instead of the wrapper.
+        import importlib.util
+        from unittest.mock import patch
+        import cbor_cddl_analyzer
+        spec = importlib.util.spec_from_file_location(
+            'cbor_cddl_analyzer_fallback', cbor_cddl_analyzer.__file__)
+        module = importlib.util.module_from_spec(spec)
+        with patch.dict(sys.modules, {'simple_cbor': None}):
+            spec.loader.exec_module(module)
+        assert not module.HAS_SIMPLE_CBOR
+        cls.Decoder = module.SimpleCBORDecoder
+
+    def _decode(self, data: bytes):
+        return self.Decoder(data).decode()
+
+    def test_list_key(self):
+        # { [1]: 2 }
+        self.assertEqual(self._decode(bytes([0xa1, 0x81, 0x01, 0x02])), {(1,): 2})
+
+    def test_dict_key(self):
+        # { {"a": 1}: 2 }
+        self.assertEqual(self._decode(bytes([0xa1, 0xa1, 0x61, 0x61, 0x01, 0x02])),
+                         {(('a', 1),): 2})
+
+    def test_tagged_list_key(self):
+        # { 1([1]): 2 } -- tag decodes to (1, [1]), which must also be normalized
+        self.assertEqual(self._decode(bytes([0xa1, 0xc1, 0x81, 0x01, 0x02])),
+                         {(1, (1,)): 2})
+
+    def test_colliding_normalized_keys(self):
+        # { [1, [2]]: 0, 1([2]): 1 } -- both normalize to (1, (2,))
+        data = bytes([0xa2, 0x82, 0x01, 0x81, 0x02, 0x00, 0xc1, 0x81, 0x02, 0x01])
+        with self.assertRaises(ValueError):
+            self._decode(data)
+
+    def test_equivalent_dict_keys_with_mixed_types(self):
+        # { {1: "a", "1": "b"}: 0, {"1": "b", 1: "a"}: 1 } -- same map, different order
+        data = bytes.fromhex('a2' 'a201616161316162' '00' 'a261316162016161' '01')
+        with self.assertRaises(ValueError):
+            self._decode(data)
+
+    def test_duplicate_plain_keys(self):
+        # { 1: 2, 1: 3 }
+        with self.assertRaises(ValueError):
+            self._decode(bytes([0xa2, 0x01, 0x02, 0x01, 0x03]))
+
 
 if __name__ == '__main__':
     unittest.main()

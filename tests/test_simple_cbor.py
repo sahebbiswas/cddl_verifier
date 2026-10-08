@@ -712,5 +712,66 @@ class TestUnifiedCBORInterface(unittest.TestCase):
         self.assertEqual(decoded[6], {0: 1})
 
 
+class TestUnhashableKeys(unittest.TestCase):
+    """Test handling of unhashable map keys"""
+
+    def test_list_key(self):
+        """Test map with a list as a key"""
+        # { [1]: 2 }
+        cbor_data = bytes([0xa1, 0x81, 0x01, 0x02])
+        decoded = cbor_decode(cbor_data)
+        self.assertEqual(decoded, {(1,): 2})
+
+    def test_dict_key(self):
+        """Test map with a dict as a key"""
+        # { {"a": 1}: 2 }
+        # a1 (map len 1)
+        #   a1 (map len 1)
+        #     61 61 (text "a")
+        #     01 (uint 1)
+        #   02 (uint 2)
+        cbor_data = bytes([0xa1, 0xa1, 0x61, 0x61, 0x01, 0x02])
+        decoded = cbor_decode(cbor_data)
+        self.assertEqual(decoded, {(('a', 1),): 2})
+
+    def test_nested_unhashable_key(self):
+        """Test map with a nested unhashable structure as a key"""
+        # { [[1]]: 2 }
+        # a1 (map len 1)
+        #   81 (array len 1)
+        #     81 (array len 1)
+        #       01 (uint 1)
+        #   02 (uint 2)
+        cbor_data = bytes([0xa1, 0x81, 0x81, 0x01, 0x02])
+        decoded = cbor_decode(cbor_data)
+        self.assertEqual(decoded, {((1,),): 2})
+
+    def test_tagged_list_key(self):
+        """Test map with a tagged array as a key"""
+        # { 1([1]): 2 } -- tag decodes to (1, [1]), which must also be normalized
+        cbor_data = bytes([0xa1, 0xc1, 0x81, 0x01, 0x02])
+        self.assertEqual(cbor_decode(cbor_data), {(1, (1,)): 2})
+
+    def test_colliding_normalized_keys(self):
+        """Distinct keys that normalize to the same form must be rejected"""
+        # { [1, [2]]: 0, 1([2]): 1 } -- both normalize to (1, (2,))
+        cbor_data = bytes([0xa2, 0x82, 0x01, 0x81, 0x02, 0x00, 0xc1, 0x81, 0x02, 0x01])
+        with self.assertRaises(ValueError):
+            cbor_decode(cbor_data)
+
+    def test_equivalent_dict_keys_with_mixed_types(self):
+        """Equal maps used as keys must normalize identically even when 1 and "1" both appear"""
+        # { {1: "a", "1": "b"}: 0, {"1": "b", 1: "a"}: 1 }
+        cbor_data = bytes.fromhex('a2' 'a201616161316162' '00' 'a261316162016161' '01')
+        with self.assertRaises(ValueError):
+            cbor_decode(cbor_data)
+
+    def test_duplicate_plain_keys(self):
+        """Duplicate map keys must be rejected rather than silently overwritten"""
+        # { 1: 2, 1: 3 }
+        with self.assertRaises(ValueError):
+            cbor_decode(bytes([0xa2, 0x01, 0x02, 0x01, 0x03]))
+
+
 if __name__ == '__main__':
     unittest.main()

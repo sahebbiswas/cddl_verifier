@@ -106,6 +106,17 @@ if not HAS_SIMPLE_CBOR:
                 logger.debug(f"{Colors.CBOR}CBOR Input:{Colors.RESET} {len(data)} bytes")
                 logger.debug(f"  {hex_preview}")
     
+        def _make_hashable(self, obj: Any) -> Any:
+            """Recursively convert unhashable objects to hashable ones."""
+            if isinstance(obj, (list, tuple)):
+                return tuple(self._make_hashable(item) for item in obj)
+            if isinstance(obj, dict):
+                return tuple(sorted(
+                    ((self._make_hashable(k), self._make_hashable(v)) for k, v in obj.items()),
+                    key=lambda x: (type(x[0]).__name__, repr(x[0]))
+                ))
+            return obj
+    
         def _format_hex(self, data: bytes, offset: int, trim_at: int = 4) -> str:
             """Format bytes as hex with offset, trimming long sequences."""
             if len(data) <= trim_at:
@@ -163,6 +174,12 @@ if not HAS_SIMPLE_CBOR:
                 for i in range(length):
                     key = self.decode(f"{path}[key{i}]" if path else f"[key{i}]")
                     value = self.decode(f"{path}.{key}" if path else f".{key}")
+                    try:
+                        hash(key)
+                    except TypeError:
+                        key = self._make_hashable(key)
+                    if key in result:
+                        raise ValueError(f"Duplicate map key: {key!r}")
                     result[key] = value
                 return result
             elif major_type == MAJOR_TYPE_TAG:
@@ -2649,4 +2666,4 @@ Examples:
 
 
 if __name__ == '__main__':
-    main()
+    main()
