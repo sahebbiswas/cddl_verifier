@@ -39,6 +39,12 @@ public release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)); 
   `TypeError`.
 
 ### Fixed
+- `canonical=True` now follows RFC 8949 §4.2.1 deterministic encoding: floats
+  use the shortest exact width (float16/32/64) instead of always float64, NaN is
+  always `f97e00`, and map keys that encode identically (e.g. two NaNs) raise
+  `ValueError` ([#66](https://github.com/sahebbiswas/cddl_verifier/issues/66)).
+- Integers outside the 64-bit range encode as tag 2/3 bignums instead of
+  raising `struct.error`.
 - Validating against a root rule that is a plain primitive (`n = uint`) now
   checks the value instead of always failing with "not a concrete type".
 - A tagged root rule (`root = #6.501(inner)`) now requires the data to carry
@@ -56,8 +62,7 @@ public release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)); 
   against the installed wheel on Python 3.9–3.13 and the sdist on 3.11.
 - `MANIFEST.in`, so the sdist includes the tests, test data and docs.
 - README: installation from PyPI, quick start, supported features, known
-  limitations (`.size` [#67](https://github.com/sahebbiswas/cddl_verifier/issues/67),
-  canonical floats [#66](https://github.com/sahebbiswas/cddl_verifier/issues/66)) and release steps.
+  limitations (`.size` [#67](https://github.com/sahebbiswas/cddl_verifier/issues/67)) and release steps.
 - Versioning scheme: `_version.py` as the single version source, this
   changelog, `[project]` metadata in `pyproject.toml`, and a `--version` flag.
 - `.github/workflows/publish_pypi.yml`: builds the sdist and wheel, runs

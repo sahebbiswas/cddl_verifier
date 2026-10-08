@@ -12,6 +12,7 @@ and the standard-library **unittest** runner with no code changes required.
 | `tests/test_simple_cbor.py` | CBOR encode/decode, diagnostics, round-trips |
 | `tests/test_cbor_builder.py` | Iterative construction, nested access, merge |
 | `tests/test_canonical_and_json.py` | Canonical encoding, JSON ↔ CBOR conversion |
+| `tests/test_deterministic_encoding.py` | RFC 8949 §4.2 deterministic encoding golden vectors |
 | `tests/test_strict_decoding.py` | Strict single-item decoding, error offsets, CLI `--version` |
 | `tests/test_set_nested.py` | `set_nested` path creation and errors |
 | `tests/test_cbor_diag_dump_extra.py` | Diagnostic dump edge cases and truncated input |

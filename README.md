@@ -109,9 +109,10 @@ of the problem. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/b
   [#70](https://github.com/sahebbiswas/cddl_verifier/issues/70)).
 - **`.size`**: counts characters instead of UTF-8 bytes on `tstr`, and is not
   enforced on `uint` ([#67](https://github.com/sahebbiswas/cddl_verifier/issues/67)).
-- **Canonical encoding**: map keys are sorted and integers are shortest-form,
-  but floats are always written as 8-byte doubles, so output is not fully RFC 8949
-  §4.2 deterministic ([#66](https://github.com/sahebbiswas/cddl_verifier/issues/66)).
+- **Canonical encoding**: implements the RFC 8949 §4.2.1 core deterministic
+  profile (see [CANONICAL_AND_JSON.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CANONICAL_AND_JSON.md)).
+  The optional §4.2.2 reduction of integral floats to integers is not applied,
+  and non-canonical mode still writes floats as 8-byte doubles.
 - **CBOR**: indefinite-length items and `undefined` are not supported
   (`CBORUnsupportedError`). CBOR sequences are rejected; a sequence API is not
   available yet.

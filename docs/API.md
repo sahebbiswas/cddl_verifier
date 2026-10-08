@@ -246,10 +246,12 @@ assert h1 == h2   # always identical
 Canonical encoding is needed for CoRIM signing and anywhere CBOR bytes are hashed
 or compared. See [CANONICAL_AND_JSON.md](CANONICAL_AND_JSON.md).
 
-> **Limitation.** Canonical mode sorts map keys and uses the shortest integer
-> forms, but floats are not yet reduced to their shortest exact width (for
-> example `1.5` is written as 8 bytes, not 2). Full RFC 8949 §4.2 deterministic
-> encoding is tracked in [#66](https://github.com/sahebbiswas/cddl_verifier/issues/66).
+Canonical mode follows the RFC 8949 §4.2.1 core deterministic encoding
+requirements: shortest integer, length and tag arguments; floats in the
+shortest exact width (`1.5` is `f9 3e00`); one NaN (`f9 7e00`); map keys sorted
+bytewise by their encoding. Keys that encode identically (for example two NaNs)
+raise `ValueError`. Without `canonical=True`, floats are written as 8-byte
+doubles and maps keep insertion order.
 
 ---
 
