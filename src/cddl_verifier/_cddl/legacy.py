@@ -30,6 +30,7 @@ from typing import Any, Dict, List, Optional
 
 from .ast import (Array, Control, GroupRule, InlineGroup, IntLit, Map, Member, Name, Paren,
                   Tag, TextLit, Type, TypeRule, entry_type, registered_label, walk)
+from .parser import MAX_DEPTH
 from .printer import format_node
 
 #: How many generic instances may be expanding inside each other. Past it,
@@ -245,6 +246,10 @@ class LegacyTables:
         if isinstance(node, Map):
             return Name(self._synthetic(node, path))
         if isinstance(node, Name) and node.args:
+            if _deeper_than(node, MAX_DEPTH):
+                # arguments that grow at each level ('g<T> = { n: g<[[T]]> }')
+                # are cut off before they are hashed or printed
+                return Name('any')
             key = (node.name, node.args)
             known = self._instance_names.get(key)
             if known is not None:
@@ -297,6 +302,23 @@ class LegacyTables:
 
 
 # ------------------------------------------------------------------ helpers
+
+def _deeper_than(node, limit: int) -> bool:
+    """Whether *node* nests more than *limit* levels, checked without recursion."""
+    stack = [(node, 0)]
+    while stack:
+        current, depth = stack.pop()
+        if depth > limit:
+            return True
+        for name in getattr(current, '__dataclass_fields__', ()):
+            if name in ('span', 'comment'):
+                continue
+            child = getattr(current, name)
+            for item in (child if isinstance(child, tuple) else (child,)):
+                if hasattr(item, '__dataclass_fields__'):
+                    stack.append((item, depth + 1))
+    return False
+
 
 def _is_optional(entry) -> bool:
     return entry.occurrence is not None and entry.occurrence.text in _OPTIONAL

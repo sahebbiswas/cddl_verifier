@@ -312,6 +312,9 @@ class TestTablesUseTheModel(unittest.TestCase):
         # instances whose arguments change at each level stop at a fixed depth
         CDDLParser("r = grow<uint>\ngrow<T> = { ? next: grow<[T]> }")
         CDDLParser("grow<T> = { next: grow<[T]> }")
+        for depth in (4, 8, 16):
+            nested = "[" * depth + "T" + "]" * depth
+            CDDLParser(f"r = grow<uint>\ngrow<T> = {{ next: grow<{nested}> }}")
         # a recursive choice is expanded once and then left as a reference
         # (a choice with an inline array is not checked yet: #106)
         chain = "r = list<uint>\nlist<T> = nil / [x: T, rest: list<T>]"
