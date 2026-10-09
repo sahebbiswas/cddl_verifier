@@ -1,8 +1,29 @@
 # CDDL support
 
-`cddl-verify` and `CDDLParser` implement the subset of CDDL (RFC 8610) used by
-practical attestation schemas such as CoRIM and CoSWID. This page lists what is
-supported and how validation behaves.
+`cddl-verify` and `CDDLParser` parse the whole CDDL grammar (RFC 8610, as
+updated by RFC 9682) and validate the subset used by practical attestation
+schemas such as CoRIM and CoSWID. This page lists what is supported and how
+validation behaves.
+
+## Schema syntax
+
+A schema that is not valid CDDL is rejected with its position:
+
+```
+schema.cddl:12:7: expected a type, found '}'
+```
+
+`Validator` and `validate()` raise `SchemaError`, and `cddl-verify` exits with
+status 1. Forms that earlier versions accepted but are not CDDL are rejected
+too, for example `&(a: 0) => uint ?` (write `? &(a: 0) => uint`) and an
+occurrence with no type (`any = *`).
+
+One non-standard form is accepted: chained controls such as
+`uint .ge 0 .le 150`, read as `(uint .ge 0) .le 150`. RFC 8610 allows one
+control per type, but this form is common and its bounds are enforced. The
+standard spellings (`(uint .ge 0) .le 150`, `0..150`) parse but are not yet
+enforced ([#71](https://github.com/sahebbiswas/cddl_verifier/issues/71),
+[#76](https://github.com/sahebbiswas/cddl_verifier/issues/76)).
 
 ## Schema format
 
@@ -128,8 +149,26 @@ every nesting level.
 | Field value wrong primitive type | ❌ fail |
 | `.size` constraint violated | ❌ fail |
 | Unknown key not in schema | ❌ fail |
+| Extra key matching a computed key (`* tstr => uint`) with a matching value | ✅ pass |
+| Extra key matching a computed key with a wrong value | ❌ fail |
 | `[ + type ]` with empty array | ❌ fail |
 | Array element wrong type | ❌ fail |
+
+## Map members and inline maps
+
+Members can be written in any RFC 8610 form: `name: T`, `1: T`, `"x": T`,
+`1 => T`, and the IANA form `&(name: 1) => T`. A member with a computed key,
+such as `* tstr => uint` or `* cose-label => cose-value`, allows any number of
+extra keys that match the key type; their values must match the value type.
+
+Inline maps are validated like named rules, wherever they appear:
+
+```cddl
+r = { a: { b: uint }, c: [ + { d: tstr } ], t: #6.9({ x: int }) }
+```
+
+Error messages refer to an inline map by a generated name, `<rule>@<path>`
+(`r@a`, `r@c@0`, `r@t@tag`). EDN output does not show these names.
 
 ## `.size`
 

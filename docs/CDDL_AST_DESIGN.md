@@ -214,6 +214,9 @@ HeadNumber = Union[int, Type, None]              # .N, .<type>, or absent
   type, a rule, a generic parameter or undefined. That is #70's job. `$` and
   `$$` stay part of `name`.
 - A control's `op` has no leading dot. Any identifier is accepted.
+- The parser also accepts chained controls (`uint .ge 0 .le 150`), which
+  RFC 8610 does not allow, and reads them left to right: the `target` of the
+  outer `Control` is the inner one. See Phase B in §10.
 - `HeadNumber` is shared by `Tag` and `Major`. It holds the integer after the
   dot, the full `Type` written between `<` and `>` (RFC 9682), or `None` when
   there is no `.` part.
@@ -388,6 +391,29 @@ deliberately changes and lists in CHANGELOG.
 - Delete the line parser, `_parse_registered_param`, `_parse_type_choice`,
   `_parse_socket_extension`, `_split_top_level_commas` and `_strip_closers`,
   along with the temporary parity test.
+
+As implemented in #110 (`_cddl/legacy.py`):
+
+- The parity check ran over the 77 schemas the test suite and bundled files
+  use. Every remaining difference was a legacy parse error that the adapter
+  gets right, such as positional array elements that were dropped, maps inside
+  `non-empty<{...}>` whose nested members leaked into the outer rule, and the
+  bogus aliases from #104.
+- **Synthetic types (#100).** The validator can only follow names, so an inline
+  map, or a map or array directly inside a tag, becomes a type of its own
+  named `<owner>@<path>` (`r@a`, `r@c@0`, `r@t@tag`). The names are listed in
+  `CDDLParser.synthetic_types`, and EDN output does not annotate them. Inline
+  arrays stay as text because the validator already reads them.
+- **Computed keys (#104).** A member whose key is a type (`* tstr => any`)
+  is listed in the map's `computed_keys`. The validator accepts extra keys
+  that match one, and checks their values.
+- **Generic wrappers.** `x = non-empty<{ ... }>` (one map or array argument)
+  is read as the map inside, as the line-based parser did, until #70
+  instantiates generics.
+- **Chained controls.** `uint .ge 0 .le 150` is accepted as a non-standard
+  extension and parsed as `Control(Control(uint, ge, 0), le, 150)`, because
+  the standard forms are not enforced before #71 and #76. Each link counts
+  toward `MAX_DEPTH`.
 
 ### Phase C: consumers read nodes instead of strings ([#111](https://github.com/sahebbiswas/cddl_verifier/issues/111))
 

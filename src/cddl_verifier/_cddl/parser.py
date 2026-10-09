@@ -159,7 +159,21 @@ class Parser:
         if kind == 'CTLOP':
             op = self.advance().value
             arg = self.parse_type2()
-            return Control(t2, op, arg, span=self.span_from(start))
+            node = Control(t2, op, arg, span=self.span_from(start))
+            # Non-standard extension: 'uint .ge 0 .le 150' chains controls,
+            # read as '(uint .ge 0) .le 150'. RFC 8610 allows one control per
+            # type; the line-based parser accepted chains, so they are kept
+            # until the standard forms are enforced (#71, #76). Each link
+            # nests the tree one level deeper, so it counts toward MAX_DEPTH.
+            links = 0
+            while self.tok.kind == 'CTLOP':
+                self.enter()
+                links += 1
+                op = self.advance().value
+                arg = self.parse_type2()
+                node = Control(node, op, arg, span=self.span_from(start))
+            self.depth -= links
+            return node
         return t2
 
     def parse_type2(self):

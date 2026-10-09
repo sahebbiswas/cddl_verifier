@@ -103,10 +103,11 @@ of the problem. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/b
 
 ## Limitations
 
-- **CDDL**: a practical subset, not the full RFC 8610 grammar. Malformed schemas
-  are often accepted without an error. A standards-oriented parser is planned
-  ([#69](https://github.com/sahebbiswas/cddl_verifier/issues/69),
-  [#70](https://github.com/sahebbiswas/cddl_verifier/issues/70)).
+- **CDDL**: the whole RFC 8610 grammar (as updated by RFC 9682) is parsed, and
+  schemas that are not valid CDDL raise `SchemaError` with a line and column.
+  Validation covers a practical subset of what the grammar can express: name
+  resolution, generics, groups, ranges and most controls are still to come
+  ([#69](https://github.com/sahebbiswas/cddl_verifier/issues/69)–[#76](https://github.com/sahebbiswas/cddl_verifier/issues/76)).
 - **Canonical encoding**: implements the RFC 8949 §4.2.1 core deterministic
   profile (see [CANONICAL_AND_JSON.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CANONICAL_AND_JSON.md)).
   The optional §4.2.2 reduction of integral floats to integers is not applied,
