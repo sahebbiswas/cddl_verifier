@@ -28,6 +28,9 @@ def read_version(path):
     with open(path, encoding='utf-8') as f:
         tree = ast.parse(f.read(), path)
     assignments = [node for node in tree.body if _assigns_version(node)]
+    if any(isinstance(node, ast.AugAssign) for node in assignments):
+        raise SystemExit(f"error: {path} must assign __version__ with '=', "
+                         f"not an augmented assignment such as '+='")
     if len(assignments) != 1:
         raise SystemExit(f"error: {path} must assign __version__ exactly once at top "
                          f"level, found {len(assignments)}")
