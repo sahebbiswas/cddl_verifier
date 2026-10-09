@@ -186,9 +186,13 @@ class Range:
 
 @dataclass(frozen=True)
 class Control:
-    """``target .op arg``; ``op`` has no leading dot."""
+    """``target .op arg``; ``op`` has no leading dot.
 
-    target: Type2
+    ``target`` is a ``Control`` only for chained controls
+    (``uint .ge 0 .le 150``), a non-standard extension the parser accepts.
+    """
+
+    target: Union[Type2, "Control"]
     op: str
     arg: Type2
     span: Span = _span()

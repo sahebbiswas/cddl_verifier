@@ -1418,15 +1418,16 @@ class TestTypeChoiceResolution(unittest.TestCase):
 
 
 class TestCoverageGaps(unittest.TestCase):
-    def test_split_top_level_commas(self):
+    def test_commas_inside_regexp_strings(self):
+        # Commas in text and byte strings do not split map members.
         cddl_text = '''
         record = {
-          &( name : 0 ) => tstr .regexp "a,b\\,c",
+          &( name : 0 ) => tstr .regexp "a,b\\\\,c",
           &( p1 : 1 ) => tstr .regexp 'x,y\\\\,z',
         }
         '''
         cddl = CDDLParser(cddl_text)
-        self.assertIn('record', cddl.types)
+        self.assertEqual(sorted(cddl.types['record']['fields']), [0, 1])
 
 class TestCLIArgs(unittest.TestCase):
     def test_cli_show_types(self):

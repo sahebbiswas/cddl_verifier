@@ -165,6 +165,15 @@ class TestTypes(unittest.TestCase):
         # Any control name parses; #70 decides which are known.
         self.assertEqual(rhs("a = uint .frobnicate 1"), Control(N('uint'), 'frobnicate', I(1)))
 
+    def test_chained_controls_extension(self):
+        # Not RFC 8610 (one control per type), accepted for compatibility:
+        # 'uint .ge 0 .le 150' reads as '(uint .ge 0) .le 150'.
+        self.assertEqual(rhs("a = uint .ge 0 .le 150"),
+                         Control(Control(N('uint'), 'ge', I(0)), 'le', I(150)))
+        r = rule("a = uint .ge 0 .le 150 / tstr")
+        self.assertEqual(format_node(r), "a = uint .ge 0 .le 150 / tstr")
+        self.assertEqual(parse_cddl(format_node(r)).rules[0], r)
+
     def test_paren(self):
         self.assertEqual(rhs("a = (tstr / uint) .size 2"),
                          Control(Paren(T(N('tstr'), N('uint'))), 'size', I(2)))
@@ -410,6 +419,14 @@ class TestErrors(unittest.TestCase):
                 self.assertGreater(len(list(walk(schema))), n)
                 self.assertEqual(parse_cddl(format_node(schema)), schema)
 
+    def test_chained_controls_count_toward_the_limit(self):
+        ok = parse_cddl("r = uint" + " .ge 0" * MAX_DEPTH)
+        self.assertEqual(parse_cddl(format_node(ok)), ok)
+        repr(ok)
+        with self.assertRaises(CDDLSyntaxError) as cm:
+            parse_cddl("r = uint" + " .ge 0" * (MAX_DEPTH + 2))
+        self.assertIn("nesting deeper than", cm.exception.message)
+
     def test_nesting_limit(self):
         for opener, closer in (("[", "]"), ("{ a: ", "}"), ("(", ")"), ("#6.1(", ")"), ("x<", ">")):
             deep = "r = " + opener * (MAX_DEPTH + 1) + "int" + closer * (MAX_DEPTH + 1)
@@ -480,31 +497,68 @@ class TestCorpus(unittest.TestCase):
                                               T(N('cose-value'))))
 
 
-class TestShadowMode(unittest.TestCase):
+class TestStrictParsing(unittest.TestCase):
+    """Phase B (#110): CDDLParser is built from the AST and rejects bad CDDL."""
 
     def test_ast_built_for_valid_schema(self):
         parser = CDDLParser("person = { name: tstr }")
-        self.assertIsNone(parser.ast_error)
         self.assertEqual(parser.ast.rules[0].name, 'person')
+        self.assertIn('person', parser.types)
 
-    def test_parse_error_does_not_change_legacy_tables(self):
-        parser = CDDLParser("r = {")
-        self.assertIsNone(parser.ast)
-        self.assertIsInstance(parser.ast_error, CDDLSyntaxError)
-        self.assertEqual(parser.types, {'r': {'fields': {}, 'type': 'map'}})
+    def test_parser_raises_with_position(self):
+        with self.assertRaises(CDDLSyntaxError) as cm:
+            CDDLParser("a = int\nr = {\n  b: \n}", source_name="s.cddl")
+        self.assertEqual((cm.exception.line, cm.exception.column), (4, 1))
+        self.assertTrue(str(cm.exception).startswith("s.cddl:4:1: "))
 
-    def test_bundled_schemas_have_no_ast_error(self):
+    def test_bundled_schemas_parse(self):
         for path in sorted(SCHEMAS.glob("*.cddl")):
             with self.subTest(schema=path.name):
-                self.assertIsNone(CDDLParser(path.read_text(encoding="utf-8")).ast_error)
+                self.assertIsNotNone(CDDLParser(path.read_text(encoding="utf-8")).ast)
 
-    def test_internal_error_is_contained(self):
-        from unittest import mock
-        with mock.patch('cddl_verifier._analyzer.parse_cddl', side_effect=RuntimeError("boom")):
-            parser = CDDLParser("a = int")
-        self.assertIsNone(parser.ast)
-        self.assertIsInstance(parser.ast_error, RuntimeError)
-        self.assertIn('a', parser.type_aliases)
+    def test_public_api_raises_schema_error(self):
+        from cddl_verifier import Validator, validate
+        with self.assertRaises(SchemaError) as cm:
+            validate("r = { a: uint ?, }", {"a": 1})
+        self.assertEqual((cm.exception.line, cm.exception.column), (1, 16))
+        self.assertIn("<schema>:1:16: expected a type", str(cm.exception))
+        with self.assertRaises(SchemaError):
+            Validator("r = {")
+
+    def test_public_api_names_the_schema_file(self):
+        import tempfile
+        from cddl_verifier import Validator
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "bad.cddl"
+            path.write_text("r = [ a: int", encoding="utf-8")
+            with self.assertRaises(SchemaError) as cm:
+                Validator(path)
+        self.assertTrue(str(cm.exception).startswith(f"{path}:1:13: "), str(cm.exception))
+
+    def test_cli_reports_syntax_error(self):
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            schema = Path(tmp) / "bad.cddl"
+            schema.write_text("r = {\n  a: \n}\n", encoding="utf-8")
+            data = Path(tmp) / "d.cbor"
+            data.write_bytes(b"\xa0")
+            result = subprocess.run(
+                [sys.executable, "-m", "cddl_verifier", str(schema), str(data)],
+                capture_output=True, text=True,
+                env={**__import__("os").environ,
+                     "PYTHONPATH": str(Path(__file__).resolve().parent.parent / "src")})
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(f"{schema}:3:1: expected a type", result.stdout + result.stderr)
+
+    def test_non_standard_forms_are_rejected(self):
+        # Accepted by the line-based parser before #110; see CHANGELOG.
+        for text in ("r = { &(a: 0) => uint ? }",     # '?' after the type
+                     "r = #6.1([",                   # unterminated rule
+                     "any = *"):                     # occurrence without a type
+            with self.subTest(text=text):
+                with self.assertRaises(CDDLSyntaxError):
+                    CDDLParser(text)
 
 
 if __name__ == "__main__":

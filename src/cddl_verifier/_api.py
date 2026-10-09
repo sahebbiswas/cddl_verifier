@@ -89,15 +89,20 @@ class Validator:
 
     Raises:
         SchemaError: The schema file cannot be read or the schema cannot be
-            parsed.
+            parsed. For text that is not valid CDDL the message is
+            ``file:line:column: problem`` and the exception has ``line`` and
+            ``column`` attributes.
         TypeError: *schema* is neither ``str`` nor ``os.PathLike``.
     """
 
     def __init__(self, schema: SchemaSource):
         text = _read_schema(schema)
+        name = os.fspath(schema) if isinstance(schema, os.PathLike) else None
         try:
-            self._parser = _analyzer.CDDLParser(text)
-        except Exception as e:  # noqa: BLE001 - parser raises assorted errors
+            self._parser = _analyzer.CDDLParser(text, source_name=name)
+        except SchemaError:
+            raise  # syntax errors already say where: "file:line:col: message"
+        except Exception as e:  # noqa: BLE001 - anything else is a parser bug
             raise SchemaError(f"cannot parse CDDL schema: {e}") from e
 
     @property

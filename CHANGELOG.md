@@ -9,6 +9,23 @@ public release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)); 
 ## [Unreleased] - 0.1.0
 
 ### Changed
+- **Behaviour change:** schemas are parsed by the new CDDL parser
+  ([#110](https://github.com/sahebbiswas/cddl_verifier/issues/110), Phase B of
+  [#69](https://github.com/sahebbiswas/cddl_verifier/issues/69)), and text that
+  is not valid CDDL is rejected. `Validator` and `validate()` raise
+  `SchemaError` with the position (`schema.cddl:12:7: expected a type, found
+  '}'`, with `line` and `column` attributes), and `cddl-verify` exits with
+  status 1. Before, malformed schemas were usually accepted silently. Forms the
+  old parser tolerated that now need fixing:
+  - `?` after a member's type: `&(a: 0) => uint ?` → `? &(a: 0) => uint`
+  - unterminated rules, such as `x = #6.1([` with no closing brackets
+  - an occurrence indicator without a type: `any = *`
+  - text escapes outside RFC 9682 (`"\,"`): use `"\\,"` or drop the backslash
+
+  Chained controls (`uint .ge 0 .le 150`) are still accepted, as a documented
+  non-standard extension, so their bounds stay enforced until the standard
+  forms are ([#71](https://github.com/sahebbiswas/cddl_verifier/issues/71),
+  [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76)).
 - **Breaking:** the code is now the `cddl_verifier` package (source under
   `src/cddl_verifier/`). The top-level modules `simple_cbor`, `cbor_json`,
   `cbor_cddl_analyzer` and `_version` are no longer installed; their code lives
@@ -39,6 +56,24 @@ public release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)); 
   `TypeError`.
 
 ### Fixed
+- Inline map types are validated wherever they appear: as a field type
+  (`a: { b: uint }`), as an array element, in a choice, and inside a tag
+  (`#6.9({ x: int })`). Before, they were not checked at all
+  ([#100](https://github.com/sahebbiswas/cddl_verifier/issues/100)). Error
+  messages call them `<rule>@<path>` (`r@a`); EDN output does not show these
+  names.
+- Map members written `key => type` are parsed
+  ([#104](https://github.com/sahebbiswas/cddl_verifier/issues/104)). A literal
+  key (`1 => int`) is a field like `1: int`. A computed key
+  (`* cose-label => cose-value`) allows extra keys of that type, whose values
+  are checked. `COSE_Key` in `unified.cddl` now validates, and the bogus aliases
+  such as `'1': '> tstr / int'` are gone.
+- Other schemas the line-based parser misread: positional array elements
+  without a name (`[ environment-map, [ + measurement-map ] ]`) were dropped;
+  members of an optional inline group (`? ( a: int, b: int )`) were required;
+  members of a map nested inside `non-empty<{ ... }>` leaked into the enclosing
+  rule; a map or array inside a tag lost the tag; a whole single-line array
+  (`[ min: int, max: int ]`) was read as one element type.
 - Inline type choices (`c = a / b`) are validated
   ([#102](https://github.com/sahebbiswas/cddl_verifier/issues/102)). Before,
   a field or array element typed with one was checked against only the first
@@ -118,9 +153,9 @@ public release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)); 
   a lexer, a typed immutable syntax tree with source spans, a recursive-descent
   parser for the RFC 8610 grammar as updated by RFC 9682, a canonical printer,
   and the RFC 8610 prelude. `CDDLSyntaxError` (a `SchemaError`) reports line and
-  column. It runs in shadow mode: `CDDLParser` stores the tree in `ast` (or the
-  failure in `ast_error`) but nothing reads it yet, so validation and EDN output
-  are unchanged. See [docs/CDDL_AST_DESIGN.md](docs/CDDL_AST_DESIGN.md).
+  column. It replaces the line-based parser (#110): `CDDLParser.ast` holds the
+  tree and its lookup tables are built from it. See
+  [docs/CDDL_AST_DESIGN.md](docs/CDDL_AST_DESIGN.md).
 - `tests/test_cddl_parser.py` for the new parser.
 
 ### Removed

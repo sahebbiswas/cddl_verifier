@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from ._cddl import parse_cddl
+from ._cddl.legacy import LegacyTables
 from ._version import __version__
 
 # Import CBOR encoder/decoder from separate module
@@ -306,8 +307,9 @@ class CDDLParser:
 
     Limitations
     -----------
-    * The CDDL subset covers practical attestation schemas; it does not
-      implement the full RFC 8610 grammar.
+    * The whole RFC 8610 grammar (as updated by RFC 9682) is parsed, and
+      text that is not valid CDDL raises ``CDDLSyntaxError``. Validation
+      covers a practical subset of what the grammar can express.
     * ``.regexp`` patterns are matched with ``re.fullmatch``; Unicode locale
       flags and CDDL-specific escapes are not interpreted.
     * Value-range predicates (``.ge``, ``.gt``, ``.le``, ``.lt``) are
@@ -324,24 +326,28 @@ class CDDLParser:
         Maps ``$choice-name`` to the list of its alternatives.
     registered_params : dict
         Maps integer keyindex to human-readable keyname.
-    ast : cddl_verifier._cddl.ast.Schema or None
-        The typed syntax tree, built in shadow mode (#109): nothing reads it
-        yet. ``None`` when the schema does not parse; see ``ast_error``.
-    ast_error : Exception or None
-        Why ``ast`` could not be built, usually a ``CDDLSyntaxError``.
+    ast : cddl_verifier._cddl.ast.Schema
+        The typed syntax tree. The tables above are built from it
+        (``_cddl/legacy.py``); the validator reads only the tables until #111.
     """
     
-    def __init__(self, cddl_content: str):
+    def __init__(self, cddl_content: str, source_name: Optional[str] = None):
         """Initialise the parser and immediately parse *cddl_content*.
 
         Args:
             cddl_content: Raw CDDL schema text.  May be empty (``""``), in
                 which case only the built-in primitive aliases are available.
+            source_name: File name used in syntax error messages.
+
+        Raises:
+            CDDLSyntaxError: (a ``SchemaError``) when *cddl_content* is not
+                valid CDDL.
 
         After construction the parsed data is available through the instance
         attributes described in the class docstring.
         """
         self.content = cddl_content
+        self.source_name = source_name
         self.types: Dict[str, Dict] = {}
         self.groups: Dict[str, List] = {}  # Store group definitions
         self.type_choices: Dict[str, List] = {}  # Store type choice alternatives
@@ -349,18 +355,10 @@ class CDDLParser:
         self.registered_params: Dict[int, str] = {}  # Maps keyindex to keyname
         self.type_aliases: Dict[str, str] = {}  # Store simple type aliases (name = other_name)
         self.first_definition: Optional[str] = None  # First name defined in source order
+        self.synthetic_types: set = set()  # names given to inline maps (r@a)
+        self.ast = None
         self.parse()
 
-        # Shadow mode (#109): build the typed AST alongside the legacy tables.
-        # Nothing reads it yet, so a failure here must not change behaviour.
-        self.ast = None
-        self.ast_error: Optional[Exception] = None
-        try:
-            self.ast = parse_cddl(cddl_content)
-        except Exception as exc:  # noqa: BLE001 - see comment above
-            self.ast_error = exc
-            logger.debug(f"CDDL AST parse failed (shadow mode): {exc}")
-        
         # Add built-in CDDL primitive types
         self._add_builtin_types()
         
@@ -394,517 +392,24 @@ class CDDLParser:
                 self.type_aliases[builtin_name] = internal_type
                 logger.debug(f"Added built-in type: {builtin_name} -> {internal_type}")
     
-    @staticmethod
-    def _split_top_level_commas(text: str) -> list:
-        """Split *text* on commas that are at nesting depth 0 and outside quotes.
-
-        Tracks ``{ } [ ] ( )`` for depth and honours single/double-quoted
-        strings with backslash escapes, so commas inside nested structures or
-        ``.regexp "[a-z,]+"`` patterns are never treated as field separators.
-
-        Returns a list of stripped, non-empty token strings.
-        """
-        tokens = []
-        current: list = []
-        depth = 0
-        in_sq = False   # inside single-quoted string
-        in_dq = False   # inside double-quoted string
-        i = 0
-        while i < len(text):
-            ch = text[i]
-
-            # ── backslash escape inside a quoted string ──────────────────────
-            if (in_sq or in_dq) and ch == '\\' and i + 1 < len(text):
-                current.append(ch)
-                current.append(text[i + 1])
-                i += 2
-                continue
-
-            # ── quote boundaries ─────────────────────────────────────────────
-            if ch == "'" and not in_dq:
-                in_sq = not in_sq
-                current.append(ch)
-                i += 1
-                continue
-            if ch == '"' and not in_sq:
-                in_dq = not in_dq
-                current.append(ch)
-                i += 1
-                continue
-
-            # ── skip nesting tracking inside strings ─────────────────────────
-            if in_sq or in_dq:
-                current.append(ch)
-                i += 1
-                continue
-
-            # ── nesting depth ────────────────────────────────────────────────
-            if ch in ('{', '[', '('):
-                depth += 1
-                current.append(ch)
-            elif ch in ('}', ']', ')'):
-                depth -= 1
-                current.append(ch)
-            elif ch == ',' and depth == 0:
-                token = ''.join(current).strip()
-                if token:
-                    tokens.append(token)
-                current = []
-            else:
-                current.append(ch)
-            i += 1
-
-        # trailing token after the last comma
-        token = ''.join(current).strip()
-        if token:
-            tokens.append(token)
-
-        return tokens
-
-    def _record_first(self, name: str) -> None:
-        """Record *name* as the first-defined entry if none has been seen yet."""
-        if self.first_definition is None:
-            self.first_definition = name
-
     def parse(self):
-        """Parse CDDL content to extract type definitions."""
-        lines = self.content.split('\n')
-        current_type = None
-        current_fields = {}
-        in_group = False
-        current_group_name = None
-        current_group_fields = []
-        pending_field_line = None  # Track incomplete field definitions (multi-line)
-        
-        for line in lines:
-            line = line.strip()
-            
-            # Handle continuation of pending field (multi-line registered param)
-            if pending_field_line:
-                # This line should contain the type
-                continuation = line.rstrip(',').strip()
-                if continuation and not line.startswith(';'):
-                    full_line = pending_field_line + ' ' + continuation
-                    pending_field_line = None
-                    # Re-process the complete line
-                    line_normalized = full_line.replace('& (', '&(').replace('&  (', '&(').replace('&   (', '&(')
-                    line_normalized = line_normalized.replace(') =>', ')=>').replace(')  =>', ')=>').replace(')   =>', ')=>')
-                    if '&(' in line_normalized and ')' in line_normalized and '=>' in line_normalized:
-                        self._parse_registered_param(full_line, current_fields)
-                    continue
-                elif not line.startswith(';'):
-                    # Empty line, skip and continue waiting
-                    continue
-                # If it's a comment, clear pending and continue
-                pending_field_line = None
-            
-            # Skip comments and empty lines
-            if not line or line.startswith(';'):
-                continue
-            
-            # Normalize whitespace for various checks
-            line_normalized = line.replace('& (', '&(').replace('&  (', '&(').replace('&   (', '&(')
-            line_normalized = line_normalized.replace(') =>', ')=>').replace(')  =>', ')=>').replace(')   =>', ')=>')
-            # Strip quoted strings once; used by structural-char guards below so that
-            # .regexp patterns (e.g. "[A-Z]{3}") don't trigger map/array detection.
-            _line_unquoted = re.sub(r'"[^"]*"', '', line)
-            
-            # Handle socket extensions ($$name //= value)
-            if '//=' in line:
-                self._parse_socket_extension(line)
-                continue
-            
-            # Handle type choice additions ($name /= value)
-            if '/=' in line and '//=' not in line:
-                self._parse_type_choice(line)
-                continue
-            
-            # Handle group definitions (name = ( ... ))
-            # Note: Groups can span multiple lines, ending with )
-            # Must NOT confuse with IANA parameters &( ... ) or annotations like .size (M..N)
-            if '=' in line and '(' in line and not line_normalized.startswith('&') and not '{' in line and not '[' in line and '/=' not in line and '#6.' not in line:
-                # Check if this looks like a group (not a simple assignment)
-                # Groups have format: name = ( fields ) or name = (
-                # Annotations have format: name = type .constraint (value)
-                # Match "name = (" with optional whitespace
-                if re.match(r'^[^=]+=\s*\(', line.strip()):
-                    # This is a group definition
-                    equals_pos = line.index('=')
-                    paren_pos = line.index('(')
-                    group_name = line[:equals_pos].strip()
-                    
-                    # Clear current_type and current_fields to prevent pollution
-                    current_type = None
-                    current_fields = {}
-                    
-                    if line.count('(') > line.count(')'):
-                        # Multi-line group
-                        in_group = True
-                        current_group_name = group_name
-                        current_group_fields = []
-                        # Extract any fields on this line
-                        content = line[paren_pos+1:].strip()
-                        if content and not content.startswith('&'):
-                            current_group_fields.append(content)
-                        continue
-                    elif line.count('(') == line.count(')'):
-                        # Single-line group
-                        start = paren_pos + 1
-                        end = line.rindex(')')
-                        group_content = line[start:end].strip()
-                        if group_content and not group_content.startswith('&'):
-                            self.groups[group_name] = [group_content]
-                        continue
-            
-            # Handle multi-line group content
-            if in_group:
-                if ')' in line:
-                    # End of group
-                    in_group = False
-                    # Extract content before closing paren
-                    end_paren = line.index(')')
-                    content = line[:end_paren].strip()
-                    if content:
-                        current_group_fields.append(content)
-                    if current_group_name:
-                        self.groups[current_group_name] = current_group_fields
-                    current_group_name = None
-                    current_group_fields = []
-                else:
-                    # Middle of group - add the entire line
-                    if line.strip():
-                        current_group_fields.append(line.strip())
-                continue
-            
-            # Single-line map body: name = { ... } with all fields on one line.
-            # Must be checked BEFORE the IANA-param check, because a line like
-            #   record = { &(name:0)=>tstr, &(age:1)=>uint }
-            # also satisfies '&(' / '=>' and would otherwise be mis-dispatched
-            # to _parse_registered_param with no current_type set.
-            # Use _line_unquoted so .regexp quantifiers like {3} don't match.
-            if ('=' in line and '{' in _line_unquoted and '}' in _line_unquoted
-                    and '/=' not in line and '//=' not in line
-                    and not line_normalized.startswith('&')):
-                equals_pos  = line.index('=')
-                type_name   = line[:equals_pos].strip()
-                if '<' in type_name and '>' in type_name:
-                    type_name = type_name.split('<')[0].strip()
-                brace_open  = line.index('{')
-                brace_close = line.rindex('}')
-                body = line[brace_open + 1 : brace_close].strip()
-                current_fields = {}
-                self.types[type_name] = {'fields': current_fields, 'type': 'map'}
-                self._record_first(type_name)
-                if body:
-                    tokens = self._split_top_level_commas(body)
-                    for token in tokens:
-                        tok_norm = (token
-                                    .replace('& (', '&(').replace('&  (', '&(').replace('&   (', '&(')
-                                    .replace(') =>', ')=>').replace(')  =>', ')=>').replace(')   =>', ')=>'))
-                        if '&(' in tok_norm and '=>' in tok_norm:
-                            self._parse_registered_param(token, current_fields)
-                        elif ':' in token and '=>' not in token:
-                            token = self._strip_closers(token)
-                            optional = token.startswith('?')
-                            if optional:
-                                token = token[1:].strip()
-                            parts = token.split(':', 1)
-                            if len(parts) == 2:
-                                key        = parts[0].strip().strip('"')
-                                value_type = parts[1].strip()
-                                entry  = {'name': key, 'type': value_type, 'optional': optional}
-                                try:
-                                    current_fields[int(key)] = entry
-                                except ValueError:
-                                    current_fields[key] = entry
-                current_type = None  # fully parsed on this line
-                continue
+        """Parse the schema into :attr:`ast` and build the lookup tables from it.
 
-            # IANA registered parameter (e.g., "&( keyname : 0 ) => value" or "& ( keyname : 0 ) => value")
-            if '&(' in line_normalized and ')' in line_normalized and '=>' in line_normalized:
-                # Check if value type is on the same line
-                arrow_pos = line.index('=>')
-                value_after_arrow = line[arrow_pos + 2:].strip().rstrip(',')
-                if not value_after_arrow or value_after_arrow == '':
-                    # Type is on next line, save this line as pending
-                    pending_field_line = line
-                    continue
-                else:
-                    self._parse_registered_param(line, current_fields)
-                    continue
-            
-            # Simple type alias (e.g., "corim = concise-rim-type-choice")
-            # Also includes CBOR tag notation: tagged-unsigned-corim-map = #6.501(unsigned-corim-map)
-            # Also includes annotated primitives: short-text = tstr .size (1..10)
-            # Must come before type definition checks
-            # Strip quoted strings before structural-char guards so that .regexp
-            # patterns (which contain "[...]" literals) are not incorrectly excluded.
-            if '=' in line and '{' not in _line_unquoted and '[' not in _line_unquoted and '/=' not in line and '//=' not in line:
-                # Exclude lines that look like group definitions: name = (content)
-                # but allow .size (M..N) annotations which have '(' later in the line
-                if not re.match(r'^[^=]+=\s*\(', line.strip()):
-                    # Check if this is an alias (name = something)
-                    parts = line.split('=', 1)
-                    if len(parts) == 2:
-                        alias_name = parts[0].strip()
-                        alias_target = parts[1].strip()
-                        # Remove any comments
-                        if ';' in alias_target:
-                            alias_target = alias_target.split(';')[0].strip()
-                        # Store all single-line non-complex definitions as aliases
-                        # This includes CBOR tag notation: tagged-unsigned-corim-map = #6.501(unsigned-corim-map)
-                        # _line_unquoted (computed above) strips quoted strings so that
-                        # .regexp patterns don't trigger the structural-char exclusion.
-                        _alias_check = re.sub(r'"[^"]*"', '', alias_target)
-                        if alias_target and not any(c in _alias_check for c in ['{', '}', '[', ']', '&']):
-                            self.type_aliases[alias_name] = alias_target
-                            self._record_first(alias_name)
-                            logger.debug(f"Parsed type alias: {alias_name} = {alias_target}")
-                            continue
-            
-            # Type definition start (e.g., "person = {" or single-line "person = { ... }")
-            if '=' in line and '{' in line and '/=' not in line:
-                type_name = line.split('=')[0].strip()
-                # Handle generics like "non-empty<M>"
-                if '<' in type_name and '>' in type_name:
-                    type_name = type_name.split('<')[0].strip()
-                current_type = type_name
-                current_fields = {}
-                self.types[type_name] = {'fields': current_fields, 'type': 'map'}
-                self._record_first(type_name)
-            
-            # Array type definition (e.g., "items = [" or "numbers = [ + uint ]")
-            elif '=' in line and '[' in line and '/=' not in line and '//=' not in line:
-                type_name = line.split('=')[0].strip()
-                current_type = type_name
-                current_fields = {}
-                # Try to extract inline occurrence and element type: [ + uint ], [ * tstr ]
-                inline_match = re.match(r'.*=\s*\[\s*([+*]?)\s*([^\]]+?)\s*\]', line)
-                if inline_match:
-                    inline_occurrence = inline_match.group(1).strip()  # '+', '*', or ''
-                    inline_elem_type  = inline_match.group(2).strip()
-                    self.types[type_name] = {
-                        'fields': current_fields,
-                        'type': 'array',
-                        'element_types': {0: inline_elem_type},
-                        'occurrence': inline_occurrence,
-                    }
-                    self._record_first(type_name)
-                    current_type = None  # Single-line definition — no body to parse
-                else:
-                    self.types[type_name] = {
-                        'fields': current_fields,
-                        'type': 'array',
-                        'element_types': {},
-                        'occurrence': '',
-                    }
-                    self._record_first(type_name)
-            # Field definition (e.g., "name: tstr" or "0: tstr" or "0 : tstr")
-            # Also handles named array fields (e.g., "environment: environment-map")
-            elif ':' in line and current_type and '=>' not in line:
-                # Remove trailing comma and closing braces
-                line = self._strip_closers(line)
-                
-                # Extract comment if present (field name)
-                comment_name = None
-                if ';' in line:
-                    parts_comment = line.split(';', 1)
-                    line = parts_comment[0].strip()
-                    comment_name = parts_comment[1].strip()
-                
-                parts = line.split(':', 1)
-                if len(parts) == 2:
-                    key = parts[0].strip()
-                    value_type = parts[1].strip()
-                    
-                    # Handle optional fields (marked with ? or ?)
-                    optional = False
-                    if key.startswith('?'):
-                        optional = True
-                        key = key[1:].strip()
-                    
-                    # Handle CBOR tag notation #6.xxx(type)
-                    if '#6.' in value_type:
-                        # Extract just the base type for now
-                        # e.g., "#6.37(uuid-type)" -> "uuid-type"
-                        if '(' in value_type and ')' in value_type:
-                            start = value_type.index('(')
-                            end = value_type.rindex(')')
-                            value_type = value_type[start+1:end]
-                    
-                    # Clean up value type
-                    if '?' in value_type:
-                        optional = True
-                        value_type = value_type.replace('?', '').strip()
-                    
-                    value_type = value_type.replace('?', '').strip().rstrip(',')
-                    
-                    # Remove quotes from string keys
-                    if key.startswith('"') and key.endswith('"'):
-                        key = key[1:-1]
-                    
-                    # Use comment as field name, or key as fallback
-                    field_name = comment_name if comment_name else key
-                    
-                    # Try to convert numeric keys to integers
-                    try:
-                        numeric_key = int(key)
-                        current_fields[numeric_key] = {
-                            'name': field_name,
-                            'type': value_type,
-                            'optional': optional
-                        }
-                    except ValueError:
-                        current_fields[key] = {
-                            'name': field_name,
-                            'type': value_type,
-                            'optional': optional
-                        }
-            
-            # End of type definition
-            elif line == '}' or line == ']':
-                current_type = None
-        
-        # Post-processing: Convert named array fields to indexed element_types
-        for type_name, type_def in self.types.items():
-            if type_def.get('type') == 'array' and 'fields' in type_def:
-                fields = type_def['fields']
-                if not fields:
-                    # element_types was already set by inline parse; do not overwrite
-                    continue
-                element_types = {}
-                for idx, (field_name, field_info) in enumerate(fields.items()):
-                    element_type = field_info.get('type', '')
-                    if element_type.startswith('[') and not element_type.endswith(']'):
-                        element_type = element_type + ' ]'
-                    element_types[idx] = element_type
-                    logger.debug(f"Array type '{type_name}' element {idx}: {field_name} -> {element_type}")
-                type_def['element_types'] = element_types
-    
-    def _parse_socket_extension(self, line: str):
-        """Parse socket extension definition: $$name //= value"""
-        try:
-            # Remove comments
-            if ';' in line:
-                line = line.split(';', 1)[0].strip()
-            
-            # Split on //=
-            parts = line.split('//=', 1)
-            if len(parts) != 2:
-                return
-            
-            socket_name = parts[0].strip()
-            socket_value = parts[1].strip()
-            
-            # Initialize socket list if needed
-            if socket_name not in self.socket_extensions:
-                self.socket_extensions[socket_name] = []
-            
-            # Add this extension to the list
-            self.socket_extensions[socket_name].append(socket_value)
-            
-        except (ValueError, IndexError):
-            pass  # Skip malformed lines
-    
-    def _parse_type_choice(self, line: str):
-        """Parse type choice definition: $name /= value"""
-        try:
-            # Remove comments
-            if ';' in line:
-                line = line.split(';', 1)[0].strip()
-            
-            # Split on /=
-            parts = line.split('/=', 1)
-            if len(parts) != 2:
-                return
-            
-            choice_name = parts[0].strip()
-            choice_value = parts[1].strip()
-            
-            # Initialize choice list if needed
-            if choice_name not in self.type_choices:
-                self.type_choices[choice_name] = []
-            
-            # Add this choice to the list
-            self.type_choices[choice_name].append(choice_value)
-            
-        except (ValueError, IndexError):
-            pass  # Skip malformed lines
-    
-    @staticmethod
-    def _strip_closers(text: str) -> str:
-        """Strip trailing commas and closing braces/brackets of the enclosing
-        group, keeping a ``]`` that closes an inline array (``[* tstr]``)."""
-        text = text.strip()
-        while text and (text[-1] in ',}' or (text[-1] == ']' and text.count(']') > text.count('['))):
-            text = text[:-1].rstrip()
-        return text
+        Raises:
+            CDDLSyntaxError: (a ``SchemaError``) when the text is not valid
+                CDDL, with the line and column of the problem.
+        """
+        self.ast = parse_cddl(self.content, source_name=self.source_name)
+        tables = LegacyTables(self.ast)
+        self.types = tables.types
+        self.groups = tables.groups
+        self.type_choices = tables.type_choices
+        self.socket_extensions = tables.socket_extensions
+        self.registered_params = tables.registered_params
+        self.type_aliases = tables.type_aliases
+        self.first_definition = tables.first_definition
+        self.synthetic_types = tables.synthetic_types
 
-    def _parse_registered_param(self, line: str, current_fields: Dict):
-        """Parse IANA registered parameter format: &( keyname : keyindex ) => value_type
-        Handles variations with extra whitespace like & (, ) =>, etc.
-        Also handles optional prefix: ? & ( keyname : keyindex ) => value_type"""
-        try:
-            # Remove any comments first
-            if ';' in line:
-                line = line.split(';', 1)[0].strip()
-            
-            # Check for optional prefix
-            optional = False
-            if line.strip().startswith('?'):
-                optional = True
-                line = line.strip()[1:].strip()
-            
-            # Normalize whitespace around special characters
-            # Handle: & (, &(, & (
-            line = line.replace('& (', '&(').replace('&  (', '&(').replace('&   (', '&(')
-            # Handle: ) =>, )=>, ) =>
-            line = line.replace(') =>', ')=>').replace(')  =>', ')=>').replace(')   =>', ')=>')
-            
-            # Check if this is a registered parameter line
-            if '&(' not in line or ')' not in line or '=>' not in line:
-                return
-            
-            # Extract the part between &( and )
-            param_start = line.index('&(') + 2
-            param_end = line.index(')')
-            param_part = line[param_start:param_end].strip()
-            
-            # Extract value type after =>
-            arrow_pos = line.index('=>')
-            value_type = line[arrow_pos + 2:].strip().rstrip(',')
-            
-            # Parse keyname : keyindex (handle extra whitespace around :)
-            if ':' in param_part:
-                parts = param_part.split(':', 1)
-                keyname = parts[0].strip()
-                keyindex_str = parts[1].strip()
-                
-                # Handle optional fields in value type
-                if '?' in value_type:
-                    optional = True
-                    value_type = value_type.replace('?', '').strip()
-                
-                try:
-                    keyindex = int(keyindex_str)
-                    
-                    # Store in registered params for global lookup
-                    self.registered_params[keyindex] = keyname
-                    
-                    # Store in current fields
-                    field_info = {
-                        'name': keyname,
-                        'type': value_type,
-                        'optional': optional,
-                        'registered': True
-                    }
-                    
-                    current_fields[keyindex] = field_info
-                except ValueError:
-                    pass  # Skip if keyindex is not a number
-        except (ValueError, IndexError):
-            pass  # Skip malformed lines
-    
     def resolve_type_alias(self, type_name: str, max_depth: int = 10) -> str:
         """Follow the alias chain for *type_name* and return the terminal type.
 
@@ -2116,6 +1621,17 @@ class CBORAnalyzer:
             defined_keys = set(type_def['fields'].keys())
             actual_keys = set(data.keys())
             extra_keys = actual_keys - defined_keys
+            # Keys allowed by computed-key members ('* label => value', #104)
+            for key in sorted(extra_keys, key=repr):
+                for computed in type_def.get('computed_keys', ()):
+                    if self._check_value(key, computed['key'], strict=True):
+                        continue
+                    extra_keys.discard(key)
+                    for error in self._check_value(data[key], computed['type']):
+                        self.validation_errors.append(
+                            f"Value for key {key!r} in type '{type_name}' "
+                            f"does not match '{computed['type']}': {error}")
+                    break
             if extra_keys:
                 error_msg = f"Unknown fields not in schema for type '{type_name}': {extra_keys}"
                 logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
@@ -2139,8 +1655,13 @@ class CBORAnalyzer:
 
             # Validate element types
             element_types = type_def.get('element_types', {})
-            # Single repeating element type uses index 0 as the pattern
-            repeating_type = element_types.get(0) if element_types else None
+            # Elements past the positional ones take the repeating entry's
+            # type ('[ int, * tstr ]': index 1). A one-entry array ('[ + tstr ]')
+            # repeats entry 0. Other extra elements are not checked (#72).
+            repeat = type_def.get('repeat')
+            if repeat is None and len(element_types) == 1:
+                repeat = next(iter(element_types))
+            repeating_type = element_types.get(repeat) if repeat is not None else None
 
             for i, item in enumerate(data):
                 self._push_breadcrumb(f"[{i}]")
@@ -2323,25 +1844,29 @@ class CBORAnalyzer:
         finally:
             self.validation_errors, self.breadcrumb = saved_errors, saved_breadcrumb
 
-    def _check_value(self, value: Any, expr: str, _depth: int = 0) -> List[str]:
+    def _check_value(self, value: Any, expr: str, _depth: int = 0,
+                     strict: bool = False) -> List[str]:
         """Validate *value* against a CDDL type expression; return the errors.
 
         Handles type choices (inline ``a / b`` and ``$socket`` choices), tags,
         literals, primitives with ``.size``/``.regexp``/``.ge``-style controls
         and named rules. Recorded validation state is not changed, so the
         caller decides how to report the result. Constructs this cannot check
-        (inline arrays and maps, ranges, generics) are accepted, as elsewhere.
+        (inline arrays and maps, ranges, generics) are accepted, as elsewhere,
+        unless *strict* is set: then they count as not matching. Computed map
+        keys use *strict*, so a key type that cannot be checked does not
+        allow every extra key.
         """
         expr = expr.strip()
         if _depth > 32:
-            return []  # alias cycle
+            return [f"cannot check '{expr}'"] if strict else []  # alias cycle
         alternatives = self._split_choice(expr)
         if len(alternatives) == 1 and expr in self.cddl.type_choices:
             alternatives = self.cddl.type_choices[expr]
         if len(alternatives) > 1:
             failures = []
             for alt in alternatives:
-                alt_errors = self._check_value(value, alt, _depth + 1)
+                alt_errors = self._check_value(value, alt, _depth + 1, strict)
                 if not alt_errors:
                     return []
                 failures.append(f"{alt}: {alt_errors[0]}")
@@ -2354,7 +1879,7 @@ class CBORAnalyzer:
                 return [f"requires CBOR tag {expected_tag}, but the data is not tagged"]
             if value[0] != expected_tag:
                 return [f"requires CBOR tag {expected_tag}, got tag {value[0]}"]
-            return self._check_value(value[1], inner, _depth + 1)
+            return self._check_value(value[1], inner, _depth + 1, strict)
 
         literal = self._literal_errors(value, expr)
         if literal is not None:
@@ -2368,7 +1893,7 @@ class CBORAnalyzer:
                 nested = SimpleCBORDecoder(value).decode("cbor")
             except Exception as exc:
                 return [f"embedded CBOR (.cbor {cbor_control[1]}) does not decode: {exc}"]
-            return self._check_value(nested, cbor_control[1], _depth + 1)
+            return self._check_value(nested, cbor_control[1], _depth + 1, strict)
 
         if expr in self.cddl.types:
             return self._sandboxed_validate(value, self.cddl.types[expr], expr)
@@ -2376,7 +1901,7 @@ class CBORAnalyzer:
         name = re.split(r'\s', expr, maxsplit=1)[0]
         alias = self.cddl.type_aliases.get(name)
         if alias is not None and alias != name and name == expr:
-            return self._check_value(value, alias, _depth + 1)  # follow one alias step
+            return self._check_value(value, alias, _depth + 1, strict)  # follow one alias step
 
         base = self.cddl.resolve_type_alias(name)
         if base in self._ROOT_PRIMITIVES:
@@ -2385,6 +1910,8 @@ class CBORAnalyzer:
         type_def = self.cddl.get_type(expr, value)
         if type_def:
             return self._sandboxed_validate(value, type_def, expr)
+        if strict:
+            return [f"cannot check '{expr}'"]
         logger.debug(f"Cannot check type expression '{expr}'; accepting value")
         return []
 
@@ -2495,6 +2022,15 @@ class EDNGenerator:
         indent = self.indent_str
         return '\n'.join(indent + line if line.strip() else line for line in lines)
     
+    def _named(self, type_name: Optional[str]) -> bool:
+        """True if *type_name* is a rule the user wrote, not a synthetic name
+        given to an inline map (``r@a``), so it is worth annotating."""
+        if not type_name:
+            return False
+        synthetic = self.cddl.synthetic_types
+        return not synthetic or not any(
+            token in synthetic for token in re.findall(r'[^\s()<>,/]+', type_name))
+
     @staticmethod
     def _edn_str(s: str) -> str:
         """Return *s* as a properly escaped EDN text string literal."""
@@ -2643,7 +2179,7 @@ class EDNGenerator:
                             
                             # Tag annotation and opening - NO prefix (parent adds it to first line)
                             # But all subsequent lines have full indentation
-                            if annotate and tag_type_name:
+                            if annotate and self._named(tag_type_name):
                                 # Add type annotation comment showing the tagged type
                                 tag_comment = f"/ {tag_type_name} / "
                                 result = f"{tag_comment}{tag_num}(\n{bytes_content}\n{tag_indent})"
@@ -2682,7 +2218,7 @@ class EDNGenerator:
                 
                 # Build result - first line has no prefix (parent adds it)
                 # All subsequent lines have full absolute indentation
-                if annotate and tag_type_name:
+                if annotate and self._named(tag_type_name):
                     tag_annotation = f"/ {tag_type_name} / "
                     result = f"{tag_annotation}{tag_num}(\n"
                 else:
@@ -2693,7 +2229,7 @@ class EDNGenerator:
                 return result
             else:
                 # Single-line content
-                if annotate and tag_type_name:
+                if annotate and self._named(tag_type_name):
                     tag_annotation = f"/ {tag_type_name} / "
                     return f"{tag_annotation}{tag_num}({inner_edn})"
                 else:
@@ -2727,7 +2263,7 @@ class EDNGenerator:
         # Add type name header if we have one and annotations are enabled
         # Format: / type / {
         type_header = ""
-        if type_name and annotate and type_name not in ['map', 'dict']:
+        if annotate and self._named(type_name) and type_name not in ['map', 'dict']:
             type_header = f"/ {type_name} / "
         
         lines = [type_header + "{"]
@@ -2819,7 +2355,7 @@ class EDNGenerator:
         # Add type name header if we have a structured array type and annotations are enabled
         # Format: / type / [
         type_header = ""
-        if type_name and annotate and not type_name.startswith('['):
+        if annotate and self._named(type_name) and not type_name.startswith('['):
             # It's a named array type (not inline array syntax)
             type_header = f"/ {type_name} / "
         
@@ -2911,7 +2447,7 @@ def load_cddl(filepath: Path) -> CDDLParser:
     """
     try:
         content = filepath.read_text(encoding='utf-8')
-        return CDDLParser(content)
+        return CDDLParser(content, source_name=str(filepath))
     except Exception as e:
         print(f"Error loading CDDL file: {e}")
         sys.exit(1)

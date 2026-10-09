@@ -9,7 +9,8 @@ and the standard-library **unittest** runner with no code changes required.
 |------|--------|
 | `tests/test_public_api.py` | Public API: `validate`, `Validator`, `cddl_verifier.cbor`, `json_codec`, `python -m cddl_verifier` |
 | `tests/test_cbor_cddl_analyzer.py` | CDDL parsing, validation, EDN generation, CoRIM (internal classes) |
-| `tests/test_cddl_parser.py` | CDDL lexer, AST and parser: node shapes, spans, syntax errors, printer round trip, bundled schemas, shadow mode |
+| `tests/test_cddl_parser.py` | CDDL lexer, AST and parser: node shapes, spans, syntax errors, printer round trip, bundled schemas, strict parsing through the API and CLI |
+| `tests/test_legacy_tables.py` | `CDDLParser` tables built from the AST; inline maps (#100) and `key => type` members (#104) |
 | `tests/test_simple_cbor.py` | CBOR encode/decode, diagnostics, round-trips |
 | `tests/test_cbor_builder.py` | Iterative construction, nested access, merge |
 | `tests/test_canonical_and_json.py` | Canonical encoding, JSON ↔ CBOR conversion |
