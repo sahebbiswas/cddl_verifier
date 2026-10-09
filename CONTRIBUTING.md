@@ -18,9 +18,11 @@ work.
   when release notes are written.
 - **Close the issues it finishes.** Put `Closes #N` in the pull request
   description, one per line, for each issue the pull request completes, so
-  GitHub closes them when it merges. A mention in the title or a commit
-  message alone does not close anything. Use `Part of #N` or `Refs #N` for an
-  issue the pull request only advances.
+  GitHub links them and closes them when it merges. Naming the issue (`#N`)
+  in the title, or anywhere without a closing keyword, does not close it. A
+  closing keyword in a commit message does close it on merge, but does not
+  link the pull request, so use the description. Use `Part of #N` or
+  `Refs #N` for an issue the pull request only advances.
 - **Gaps you find but don't fix** get an issue of their own, linked from the
   pull request.
 
