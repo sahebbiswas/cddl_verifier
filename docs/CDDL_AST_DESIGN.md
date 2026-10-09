@@ -341,8 +341,8 @@ implemented in #70, not #69.
 `CDDLSyntaxError`, which is a `SchemaError` and therefore a `ValueError`, so
 callers that already catch `SchemaError` are covered. The change is made in
 one step, the switch at the end of Phase B, and recorded in CHANGELOG as a
-**Behaviour change**. Under the README versioning policy, that goes into the
-unreleased version, or a `0.x` minor bump if 0.1.0 has shipped by then. The
+**Behaviour change**. Under the README versioning policy, that is a `0.x`
+minor bump: it ships in 0.2.0, since 0.1.0 had already been released. The
 public API does not change shape, so no major bump is needed.
 
 **Comment-derived field names stay.** `0: tstr ; name` names field `0`
