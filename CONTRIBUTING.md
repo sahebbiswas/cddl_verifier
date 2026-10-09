@@ -16,6 +16,11 @@ work.
   change that users can notice (different results, newly rejected input,
   removed or renamed options) with **Behaviour change:**, so it can be found
   when release notes are written.
+- **Close the issues it finishes.** Put `Closes #N` in the pull request
+  description, one per line, for each issue the pull request completes, so
+  GitHub closes them when it merges. A mention in the title or a commit
+  message alone does not close anything. Use `Part of #N` or `Refs #N` for an
+  issue the pull request only advances.
 - **Gaps you find but don't fix** get an issue of their own, linked from the
   pull request.
 
