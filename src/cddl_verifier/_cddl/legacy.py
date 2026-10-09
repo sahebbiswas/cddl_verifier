@@ -32,6 +32,10 @@ from .ast import (Array, Control, GroupRule, InlineGroup, IntLit, Map, Member, N
                   Tag, TextLit, Type, TypeRule, entry_type, registered_label, walk)
 from .printer import format_node
 
+#: How many generic instances may be expanding inside each other. Past it,
+#: a reference is kept as text, so 'g<T> = { n: g<[T]> }' terminates.
+_MAX_INSTANCE_DEPTH = 16
+
 # Occurrences that make a map member optional.
 _OPTIONAL = ('?', '*')
 
@@ -245,8 +249,10 @@ class LegacyTables:
             known = self._instance_names.get(key)
             if known is not None:
                 return Name(known)  # 'tree<T> = { ? l: tree<T> }' refers to itself
-            if key in self._expanding:
-                return node  # a recursive choice ('list<T> = nil / [T, list<T>]')
+            if key in self._expanding or len(self._expanding) >= _MAX_INSTANCE_DEPTH:
+                # a recursive choice ('list<T> = nil / [T, list<T>]'), or one
+                # whose arguments keep changing ('g<T> = { n: g<[T]> }')
+                return node
             self._expanding.add(key)
             try:
                 expanded = self._expand(Type((node,)))

@@ -309,6 +309,9 @@ class TestTablesUseTheModel(unittest.TestCase):
         nested = "r = [ * tree<uint> ]\ntree<T> = [ T, * tree<T> ]"
         self.assertTrue(validate(nested, [[1], [2, [3]]]).valid)
         self.assertFalse(validate(nested, [[1], ["x"]]).valid)
+        # instances whose arguments change at each level stop at a fixed depth
+        CDDLParser("r = grow<uint>\ngrow<T> = { ? next: grow<[T]> }")
+        CDDLParser("grow<T> = { next: grow<[T]> }")
         # a recursive choice is expanded once and then left as a reference
         # (a choice with an inline array is not checked yet: #106)
         chain = "r = list<uint>\nlist<T> = nil / [x: T, rest: list<T>]"
