@@ -387,3 +387,16 @@ def parse_cddl(text: str, *, source_name: Optional[str] = None) -> Schema:
     if not isinstance(text, str):
         raise TypeError(f"CDDL text must be str, not {type(text).__name__}")
     return Parser(Source(text, source_name)).parse_schema()
+
+
+def parse_type_expr(text: str) -> Type:
+    """Parse a standalone type expression (``tstr .size 2 / uint``).
+
+    Used for the type text in the ``CDDLParser`` tables (#111). Raises
+    :class:`CDDLSyntaxError` unless the whole of *text* is one type.
+    """
+    parser = Parser(Source(text))
+    ty = parser.parse_type()
+    if parser.tok.kind != 'EOF':
+        raise parser.error("expected end of type expression")
+    return ty

@@ -29,6 +29,7 @@ import tempfile
 import struct
 
 
+from cddl_verifier._cddl import CDDLSyntaxError
 from cddl_verifier._analyzer import (
     CDDLParser, 
     CBORAnalyzer, 
@@ -184,15 +185,15 @@ class TestCDDLParsing(unittest.TestCase):
         self.assertEqual(size['max'], 64)
         self.assertIsNone(size['exact'])
         
-        # Minimum only
-        size = cddl.extract_size_constraint('bytes .size (16..)')
-        self.assertEqual(size['min'], 16)
-        self.assertIsNone(size['max'])
-        
-        # Maximum only
-        size = cddl.extract_size_constraint('tstr .size (..100)')
-        self.assertIsNone(size['min'])
-        self.assertEqual(size['max'], 100)
+        # Exclusive upper bound
+        size = cddl.extract_size_constraint('text .size (8...64)')
+        self.assertEqual((size['min'], size['max']), (8, 63))
+
+        # Open-ended ranges are not CDDL: a range needs both bounds
+        for text in ('bytes .size (16..)', 'tstr .size (..100)'):
+            self.assertIsNone(cddl.extract_size_constraint(text))
+            with self.assertRaises(CDDLSyntaxError):
+                CDDLParser(f"a = {text}")
     
     def test_multiline_field_parsing(self):
         """Test multi-line field definition parsing"""

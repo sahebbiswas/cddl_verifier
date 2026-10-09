@@ -435,6 +435,27 @@ When Phase C ends, the `type` strings are gone and #69 is done. Name lookup
 (`resolve_type_alias`, `get_type`) still goes by name until #70 replaces it
 with the resolved model.
 
+As implemented in #111, in two steps by agreement:
+
+- **#111 (done).** The tables keep canonical type text, but only as a
+  handle. `_cddl/query.py` parses the text with the real grammar
+  (`parse_type_expr`, cached per string) and answers every question the
+  validator and EDN generator ask: `alternatives`, `head` (the base of a
+  control chain), `controls`, `tag`, `cbor_control`, `literal`,
+  `inline_array`, `is_array`, `names`. Pieces it returns are slices of the
+  original text, so spelling is kept (`_split_choice("[a / b] / c")` is still
+  `["[a / b]", "c"]`). `_analyzer.py` has no regex or character scan over type
+  text left; the only regex matches data against a `.regexp` pattern.
+- **#115 (after #70).** Remove the text from the tables and pass nodes through
+  every function.
+
+Behaviour that changed because the grammar now decides (see CHANGELOG):
+names may contain dots (`coswid.tag-id` was cut at the dot, and `lo..hi` is
+one name, not a range); `.regexp` strings are decoded (`"\\."` is the regex
+`\.`); byte-string literals (`h'01'`) and controls on literals are checked;
+the primitive check of an alias to a choice tries every alternative instead
+of the first token.
+
 ### Example: `.size` before and after
 
 ```python

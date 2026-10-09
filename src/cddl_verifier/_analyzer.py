@@ -15,7 +15,8 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from ._cddl import parse_cddl
+from ._cddl import parse_cddl, query
+from ._cddl.ast import BytesLit, FloatLit, IntLit, Name, Paren, Range, TextLit
 from ._cddl.legacy import LegacyTables
 from ._version import __version__
 
@@ -444,33 +445,42 @@ class CDDLParser:
         return resolved
     
     def extract_cbor_control(self, type_string: str) -> Optional[Tuple[str, str]]:
-        """Extract .cbor control operator from type string.
-        
-        E.g., 'bytes .cbor concise-mid-tag' -> ('bytes', 'concise-mid-tag')
-              'bstr .cbor my-type' -> ('bstr', 'my-type')
-        """
-        # Match: (bytes|bstr) .cbor type-name
-        match = re.match(r'(bytes?|bstr)\s+\.cbor\s+(.+)', type_string.strip())
-        if match:
-            base_type = match.group(1)
-            inner_type = match.group(2).strip()
-            logger.debug(f"Extracted .cbor control: {base_type} contains CBOR-encoded {inner_type}")
-            return (base_type, inner_type)
-        return None
-    
-    _SIZE_CONTROL = re.compile(r'\.size\s+(\([^)]*\)|[^\s,)\]}]+)')
-    _INT_LITERAL = re.compile(r'^(?:0x[0-9a-fA-F]+|0b[01]+|\d+)$')
+        """``(base, inner)`` for ``bstr .cbor inner`` / ``bytes .cbor inner``.
 
-    def _size_bound(self, token: str) -> Optional[int]:
-        """Resolve a ``.size`` bound (int literal or named constant) to an int."""
-        seen = set()
-        token = token.strip()
-        while not self._INT_LITERAL.match(token):
-            if token in seen or token not in self.type_aliases:
+        E.g., 'bytes .cbor concise-mid-tag' -> ('bytes', 'concise-mid-tag')
+        """
+        return query.cbor_control(type_string)
+
+    def _size_bound(self, node, seen=None) -> Optional[Tuple[Optional[int], Optional[int]]]:
+        """``(min, max)`` byte counts for a ``.size`` argument node.
+
+        The argument is a non-negative integer, a range (``1..64``,
+        ``1...64``), either in parentheses, or a name for one of those.
+        Returns ``None`` when it is none of these.
+        """
+        seen = set() if seen is None else seen
+        if isinstance(node, Paren) and len(node.type.alternatives) == 1:
+            return self._size_bound(node.type.alternatives[0], seen)
+        if isinstance(node, IntLit):
+            return (node.value, node.value) if node.value >= 0 else None
+        if isinstance(node, Range):
+            lo, hi = self._size_int(node.low, seen), self._size_int(node.high, seen)
+            if lo is None or hi is None:
                 return None
-            seen.add(token)
-            token = self.type_aliases[token].strip()
-        return int(token, 0)
+            return lo, hi if node.inclusive else hi - 1
+        if isinstance(node, Name) and node.name not in seen:
+            seen.add(node.name)
+            alias = self.type_aliases.get(node.name)
+            parsed = query.parse(alias) if alias is not None else None
+            if parsed is not None and len(parsed.node.alternatives) == 1:
+                return self._size_bound(parsed.node.alternatives[0], seen)
+        return None
+
+    def _size_int(self, node, seen) -> Optional[int]:
+        bound = self._size_bound(node, seen)
+        if bound is None or bound[0] != bound[1]:
+            return None
+        return bound[0]
 
     def extract_size_constraint(self, type_string: str) -> Optional[dict]:
         """Extract the ``.size`` control (RFC 8610 §3.8.1) from a type string.
@@ -488,39 +498,42 @@ class CDDLParser:
         - 'bytes .size 16' -> {'exact': 16, 'min': None, 'max': None}
         - 'text .size (8..64)' -> {'exact': None, 'min': 8, 'max': 64}
         - 'text .size (8...64)' -> {'exact': None, 'min': 8, 'max': 63}
-        - 'bstr .size (16..)' -> {'exact': None, 'min': 16, 'max': None}
-        - 'tstr .size (..100)' -> {'exact': None, 'min': None, 'max': 100}
         """
-        match = self._SIZE_CONTROL.search(type_string)
-        if not match:
+        size = next((c for c in query.controls(type_string) if c.op == 'size'), None)
+        if size is None:
             return None
-        arg = match.group(1)
-        invalid = {'error': f"Invalid .size argument '{arg}': expected a non-negative "
-                            f"integer, a range (M..N) / (M...N), or a constant naming one"}
-
-        inner = arg[1:-1].strip() if arg.startswith('(') else arg
-        if not arg.startswith('(') and '..' not in inner:
-            # Named constant may itself be a range: lim = 1..4
-            resolved = self.type_aliases.get(inner, '').strip()
-            if '..' in resolved:
-                inner = resolved.strip('()').strip()
-        if '..' not in inner:
-            value = self._size_bound(inner)
-            if value is None:
-                return invalid
-            return {'exact': value, 'min': None, 'max': None}
-
-        exclusive = '...' in inner
-        lo_tok, hi_tok = inner.split('...' if exclusive else '..', 1)
-        lo = self._size_bound(lo_tok) if lo_tok.strip() else None
-        hi = self._size_bound(hi_tok) if hi_tok.strip() else None
-        if (lo_tok.strip() and lo is None) or (hi_tok.strip() and hi is None):
-            return invalid
-        if exclusive and hi is not None:
-            hi -= 1
-        if lo is not None and hi is not None and lo > hi:
-            return {'error': f"Invalid .size argument '{arg}': empty range"}
+        bound = self._size_bound(size.arg)
+        if bound is None:
+            message = (f"Invalid .size argument '{size.arg_text}': expected a non-negative "
+                       f"integer, a range (M..N) / (M...N), or a constant naming one")
+            dotted = [n for n in query.names(size.arg_text)
+                      if '..' in n and n not in self.type_aliases]
+            if dotted:
+                lo, _, hi = dotted[0].partition('..')
+                message += (f" ('{dotted[0]}' is one name, since names may contain dots; "
+                            f"write '{lo} .. {hi.lstrip('.')}' for a range)")
+            return {'error': message}
+        lo, hi = bound
+        if lo > hi:
+            return {'error': f"Invalid .size argument '{size.arg_text}': empty range"}
+        if lo == hi and not self._is_range(size.arg):
+            return {'exact': lo, 'min': None, 'max': None}
         return {'exact': None, 'min': lo, 'max': hi}
+
+    def _is_range(self, node, seen=None) -> bool:
+        """True if a ``.size`` argument is (or names) a range, not one number."""
+        seen = set() if seen is None else seen
+        if isinstance(node, Paren) and len(node.type.alternatives) == 1:
+            return self._is_range(node.type.alternatives[0], seen)
+        if isinstance(node, Range):
+            return True
+        if isinstance(node, Name) and node.name not in seen:
+            seen.add(node.name)
+            alias = self.type_aliases.get(node.name)
+            parsed = query.parse(alias) if alias is not None else None
+            if parsed is not None and len(parsed.node.alternatives) == 1:
+                return self._is_range(parsed.node.alternatives[0], seen)
+        return False
 
     def size_violation(self, value: Any, base_type: str, constraint: Optional[dict]) -> Optional[str]:
         """Check *value* against a ``.size`` constraint (RFC 8610 §3.8.1).
@@ -539,6 +552,14 @@ class CDDLParser:
         if 'error' in constraint:
             return constraint['error']
         base_type = self.resolve_type_alias(base_type)  # text -> tstr, bytes -> bstr
+        alternatives = query.alternatives(base_type)
+        if len(alternatives) > 1:
+            # 'm .size 2' with 'm = bstr / tstr': measure as the alternative
+            # whose type the value has (the caller has checked that it fits).
+            wanted = ('tstr' if isinstance(value, str) else 'bstr' if isinstance(value, bytes)
+                      else 'uint' if isinstance(value, int) and not isinstance(value, bool) else None)
+            if wanted in {self.resolve_type_alias(query.head(a)) for a in alternatives}:
+                base_type = wanted
         exact, lo, hi = constraint.get('exact'), constraint.get('min'), constraint.get('max')
         if base_type == 'uint':
             limit = exact if exact is not None else hi
@@ -562,76 +583,45 @@ class CDDLParser:
     def extract_value_range(self, type_string: str) -> Optional[dict]:
         """Extract numeric value-range predicates from a CDDL type string.
 
-        Supports ``.ge``, ``.gt``, ``.le``, ``.lt`` (RFC 8610 §3.8.1).
-        Multiple predicates on the same type string are all captured.
+        Supports ``.ge``, ``.gt``, ``.le``, ``.lt`` (RFC 8610 §3.8.1) with a
+        numeric literal argument, including chained controls (the parser's
+        ``uint .ge 0 .le 100`` extension).
 
         Examples::
 
             'uint .le 150'          -> {'ge': None, 'gt': None, 'le': 150, 'lt': None}
             'uint .ge 0 .le 100'    -> {'ge': 0,    'gt': None, 'le': 100, 'lt': None}
-            'int .gt -1 .lt 128'    -> {'ge': None, 'gt': -1,   'le': None, 'lt': 128}
 
         Returns ``None`` if no range predicates are found.
         """
         result = {'ge': None, 'gt': None, 'le': None, 'lt': None}
         found = False
-        for op in ('ge', 'gt', 'le', 'lt'):
-            m = re.search(rf'\.{op}\s+(-?\d+(?:\.\d+)?)', type_string)
-            if m:
-                # Use int if value has no decimal point, float otherwise
-                raw = m.group(1)
-                result[op] = float(raw) if '.' in raw else int(raw)
+        for control in query.controls(type_string):
+            if control.op in result and isinstance(control.arg, (IntLit, FloatLit)):
+                result[control.op] = control.arg.value
                 found = True
         return result if found else None
 
     def extract_regexp(self, type_string: str) -> Optional[str]:
-        """Extract a ``.regexp`` pattern from a CDDL type string.
+        """The pattern of a ``.regexp`` control, with string escapes decoded.
 
         Example::
 
             'tstr .regexp "[a-z]+"' -> '[a-z]+'
-
-        Returns the pattern string (without surrounding quotes), or ``None``.
         """
-        m = re.search(r'\.regexp\s+"([^"]*)"', type_string)
-        return m.group(1) if m else None
+        for control in query.controls(type_string):
+            if control.op == 'regexp' and isinstance(control.arg, TextLit):
+                return control.arg.value
+        return None
 
     def extract_cbor_tag(self, type_string: str) -> Optional[Tuple[int, str]]:
-        """Extract CBOR tag number and inner type from tag notation.
-        
-        E.g., '#6.501(unsigned-corim-map)' -> (501, 'unsigned-corim-map')
+        """``(tag, inner)`` when the whole expression is ``#6.N(inner)``.
+
+        E.g., '#6.501(unsigned-corim-map)' -> (501, 'unsigned-corim-map');
+        '#6.1(#6.2(m))' -> (1, '#6.2(m)'); '#6.7(m) / tstr' -> None (a choice).
         """
-        text = type_string.strip()
-        match = re.match(r'#6\.(\d+)\(', text)
-        if not match:
-            return None
-        # Find the matching ')' so nested tags work: '#6.1(#6.2(m))' -> (1, '#6.2(m)')
-        depth, quote = 0, None
-        pos = match.end() - 1
-        while pos < len(text):
-            ch = text[pos]
-            if quote:  # skip text literals: '#6.7(")")'
-                if ch == '\\':
-                    pos += 1
-                elif ch == quote:
-                    quote = None
-            elif ch in '"\'':
-                quote = ch
-            elif ch == '(':
-                depth += 1
-            elif ch == ')':
-                depth -= 1
-                if depth == 0:
-                    inner_type = text[match.end():pos].strip()
-                    # The tag must be the whole expression: '#6.7(m) / tstr' is a choice
-                    if not inner_type or text[pos + 1:].strip():
-                        return None
-                    tag_num = int(match.group(1))
-                    logger.debug(f"Extracted CBOR tag {tag_num} with inner type: {inner_type}")
-                    return (tag_num, inner_type)
-            pos += 1
-        return None
-    
+        return query.tag(type_string)
+
     def resolve_type_choice_for_data(self, choice_name: str, cbor_data: Any, validator=None) -> Optional[str]:
         """Resolve a type choice by checking which alternative matches the CBOR data.
         
@@ -842,7 +832,7 @@ class CDDLParser:
         # no structured type definition — that is correct and expected, not an error.
         _PRIMITIVES = {'uint', 'int', 'bool', 'nil', 'null', 'float', 'tstr', 'bstr', 'any'}
         terminal = resolved_name if resolved_name != type_name else type_name
-        if re.split(r'[\s.]', terminal)[0] in _PRIMITIVES:
+        if query.head(terminal) in _PRIMITIVES:
             logger.debug(f"  Resolved to primitive: {terminal}")
             return None
 
@@ -1108,7 +1098,7 @@ class CBORAnalyzer:
             stripped = name.strip()
             # Primitives (with controls), literals and inline choices are
             # checked by the same code as map fields and array elements.
-            first = re.split(r'\s', stripped, maxsplit=1)[0]
+            first = query.head(stripped)
             if (len(self._split_choice(stripped)) > 1
                     or self.cddl.resolve_type_alias(first) in self._ROOT_PRIMITIVES
                     or self._literal_errors(value, stripped) is not None):
@@ -1421,7 +1411,7 @@ class CBORAnalyzer:
                                 f"Field '{field_name}' in '{type_name}' {choice_error}")
                         self._pop_breadcrumb()
                         continue
-                    _base_type = re.split(r'[\s.]', _resolved)[0] if _resolved else ''
+                    _base_type = query.head(_resolved) if _resolved else ''
                     # Normalize CDDL built-in aliases to their canonical base types
                     _alias_map = {
                         'text': 'tstr', 'bytes': 'bstr', 'true': 'bool', 'false': 'bool',
@@ -1521,11 +1511,13 @@ class CBORAnalyzer:
                     # Recursively validate nested structures
                     if field_type and field_type not in ['tstr', 'uint', 'int', 'bstr', 'bool', 'float', 'any']:
                         # Check if field_type is an inline array definition: [ + type ] or [ * type ]
-                        array_match = re.match(r'^\[\s*([+*]?)\s*(.+?)\s*\]$', field_type)
+                        # An inline array with several entries ('[ a, * b ]') is
+                        # checked to be an array; its elements need #72.
+                        array_match = query.inline_array(field_type) or (
+                            ('', None) if query.is_array(field_type) else None)
                         if array_match:
                             # It's an inline array definition
-                            quantifier = array_match.group(1)  # + or * or empty
-                            element_type = array_match.group(2).strip()
+                            quantifier, element_type = array_match  # '+', '*' or 
                             
                             logger.debug(f"{Colors.CDDL}[{field_breadcrumb}]{Colors.RESET} Field is inline array: [{quantifier} {element_type}]")
                             
@@ -1545,7 +1537,10 @@ class CBORAnalyzer:
                                     item_breadcrumb = self._get_breadcrumb()
                                     item_repr = self._format_value_for_log(item)
                                     logger.debug(f"{Colors.CDDL}[{item_breadcrumb}]{Colors.RESET} Element: {item_repr}")
-                                    
+                                    if element_type is None:
+                                        self._pop_breadcrumb()
+                                        continue
+
                                     # Check if element type is a type choice
                                     if element_type.startswith('$'):
                                         logger.debug(f"{Colors.CDDL}[{item_breadcrumb}]{Colors.RESET} Element type is a choice: {element_type}")
@@ -1566,7 +1561,7 @@ class CBORAnalyzer:
                                                     f"Element [{i}] of field '{field_name}' {choice_error}")
                                             self._pop_breadcrumb()
                                             continue
-                                        base_elem = re.split(r'[\s.]', resolved_elem)[0] if resolved_elem else ''
+                                        base_elem = query.head(resolved_elem) if resolved_elem else ''
                                         elem_valid = self._check_primitive_type(item, base_elem)
                                         if elem_valid is False:
                                             self.validation_errors.append(
@@ -1686,7 +1681,7 @@ class CBORAnalyzer:
                         self._pop_breadcrumb()
                         continue
                     # Extract base type and any .size constraint
-                    base_elem_type = re.split(r'[\s.]', resolved_elem)[0] if resolved_elem else ''
+                    base_elem_type = query.head(resolved_elem) if resolved_elem else ''
                     size_constraint = self.cddl.extract_size_constraint(resolved_elem)
 
                     # Check primitive type first
@@ -1749,61 +1744,41 @@ class CBORAnalyzer:
 
     @staticmethod
     def _split_choice(expr: str) -> List[str]:
-        """Split a type expression on top-level ``/`` (type choice).
+        """The top-level type choices in *expr* (``'a / b'`` gives ``['a', 'b']``).
 
-        Ignores ``/`` inside brackets, parentheses, braces and quoted strings,
-        and the group-choice operator ``//``. Returns ``[expr]`` when there is
-        no top-level choice.
+        Returns ``[expr]`` when there is no choice, or when *expr* is not a
+        type expression (a group choice ``a // b``).
         """
-        parts, depth, quote, start, i = [], 0, None, 0, 0
-        while i < len(expr):
-            ch = expr[i]
-            if quote:
-                if ch == '\\':
-                    i += 1
-                elif ch == quote:
-                    quote = None
-            elif ch in '"\'':
-                quote = ch
-            elif ch in '([{':
-                depth += 1
-            elif ch in ')]}':
-                depth -= 1
-            elif ch == '/' and depth == 0:
-                if expr[i + 1:i + 2] == '/' or expr[i - 1:i] == '/':
-                    return [expr.strip()]  # group choice '//': not handled here
-                if expr[i + 1:i + 2] != '=':
-                    parts.append(expr[start:i].strip())
-                    start = i + 1
-            i += 1
-        parts.append(expr[start:].strip())
-        return [p for p in parts if p] if len(parts) > 1 else [expr.strip()]
-
-    _LITERAL_INT = re.compile(r'^-?(?:0x[0-9a-fA-F]+|0b[01]+|\d+)$')
-    _LITERAL_FLOAT = re.compile(r'^-?\d+\.\d+(?:[eE][-+]?\d+)?$')
+        return query.alternatives(expr)
 
     def _literal_errors(self, value: Any, expr: str) -> Optional[List[str]]:
-        """Check *value* against a literal type (``1``, ``1.5``, ``"x"``, ``true``).
+        """Check *value* against a literal type (``1``, ``1.5``, ``"x"``, ``h'01'``, ``true``).
 
         Returns ``None`` when *expr* is not a literal.
         """
-        if self._LITERAL_INT.match(expr):
-            expected = int(expr, 0)
-            ok = isinstance(value, int) and not isinstance(value, bool) and value == expected
-        elif self._LITERAL_FLOAT.match(expr):
-            expected = float(expr)
-            ok = isinstance(value, float) and value == expected
-        elif len(expr) >= 2 and expr[0] == expr[-1] == '"':
-            expected = expr[1:-1]
-            ok = isinstance(value, str) and value == expected
+        lit = query.literal(expr)
+        if isinstance(lit, IntLit):
+            ok = isinstance(value, int) and not isinstance(value, bool) and value == lit.value
+        elif isinstance(lit, FloatLit):
+            ok = isinstance(value, float) and value == lit.value
+        elif isinstance(lit, TextLit):
+            ok = isinstance(value, str) and value == lit.value
+        elif isinstance(lit, BytesLit):
+            ok = isinstance(value, bytes) and value == lit.value
         elif expr in ('true', 'false') and self.cddl.type_aliases.get(expr) in (None, 'bool'):
             # The prelude aliases true/false to bool; as a choice alternative
             # they are the literal values.
-            expected = expr == 'true'
-            ok = value is expected
+            ok = value is (expr == 'true')
         else:
             return None
-        return [] if ok else [f"expected {expr}, got {self._format_value_for_log(value)}"]
+        if not ok:
+            return [f"expected {expr}, got {self._format_value_for_log(value)}"]
+        if lit is None or not query.controls(expr):
+            return []
+        # '"t" .regexp "[a-c]+"', '1 .ge 0': the controls apply to the literal too
+        base = {TextLit: 'tstr', BytesLit: 'bstr', FloatLit: 'float'}.get(
+            type(lit), 'uint' if isinstance(lit, IntLit) and lit.value >= 0 else 'int')
+        return self._primitive_errors(value, base, expr)
 
     def _primitive_errors(self, value: Any, base: str, expr: str) -> List[str]:
         """Check *value* against primitive *base* and the controls in *expr*."""
@@ -1814,10 +1789,9 @@ class CBORAnalyzer:
                 else type(value).__name__
             return [f"expected {base}, got {got}"]
         errors = []
-        if '.size' in expr:
-            size_error = self.cddl.size_violation(value, base, self.cddl.extract_size_constraint(expr))
-            if size_error:
-                errors.append(f".size {size_error}")
+        size_error = self.cddl.size_violation(value, base, self.cddl.extract_size_constraint(expr))
+        if size_error:
+            errors.append(f".size {size_error}")
         if base in ('uint', 'int', 'nint', 'float', 'float16', 'float32', 'float64'):
             vrange = self.cddl.extract_value_range(expr)
             if vrange:
@@ -1872,7 +1846,7 @@ class CBORAnalyzer:
                 failures.append(f"{alt}: {alt_errors[0]}")
             return [f"matches none of {' / '.join(alternatives)} ({'; '.join(failures)})"]
 
-        tag_info = self.cddl.extract_cbor_tag(expr) if expr.startswith('#6.') else None
+        tag_info = self.cddl.extract_cbor_tag(expr)
         if tag_info:
             expected_tag, inner = tag_info
             if not self._is_tagged(value):
@@ -1898,7 +1872,7 @@ class CBORAnalyzer:
         if expr in self.cddl.types:
             return self._sandboxed_validate(value, self.cddl.types[expr], expr)
 
-        name = re.split(r'\s', expr, maxsplit=1)[0]
+        name = query.head(expr)
         alias = self.cddl.type_aliases.get(name)
         if alias is not None and alias != name and name == expr:
             return self._check_value(value, alias, _depth + 1, strict)  # follow one alias step
@@ -1915,7 +1889,7 @@ class CBORAnalyzer:
         logger.debug(f"Cannot check type expression '{expr}'; accepting value")
         return []
 
-    def _check_primitive_type(self, value, type_name):
+    def _check_primitive_type(self, value, type_name, _depth: int = 0):
         """Check whether value matches the named CDDL primitive type.
 
         Returns True if compatible, False if definitely incompatible, and None
@@ -1927,8 +1901,16 @@ class CBORAnalyzer:
                        'bstr', 'float', 'int', 'nil', or 'null'.
         """
         resolved = self.cddl.resolve_type_alias(type_name)
+        alternatives = query.alternatives(resolved) if resolved else []
+        if len(alternatives) > 1 and _depth < 16:
+            # A choice ('m = bstr / [* int]'): compatible if any alternative is,
+            # incompatible only if every alternative is a mismatching primitive.
+            results = [self._check_primitive_type(value, alt, _depth + 1) for alt in alternatives]
+            if True in results:
+                return True
+            return False if all(r is False for r in results) else None
         # Strip any CDDL annotations (.size, etc.) to get just the base type
-        t = re.split(r'[\s.]', resolved)[0] if resolved else type_name
+        t = query.head(resolved) if resolved else type_name
         if t == 'uint':
             if not isinstance(value, int) or isinstance(value, bool):
                 return False
@@ -2028,8 +2010,7 @@ class EDNGenerator:
         if not type_name:
             return False
         synthetic = self.cddl.synthetic_types
-        return not synthetic or not any(
-            token in synthetic for token in re.findall(r'[^\s()<>,/]+', type_name))
+        return not synthetic or not (synthetic & query.names(type_name))
 
     @staticmethod
     def _edn_str(s: str) -> str:
@@ -2333,9 +2314,9 @@ class EDNGenerator:
         
         if type_name:
             # Try inline array: [ + type ] or [ * type ]
-            array_match = re.match(r'^\[\s*([+*]?)\s*(.+?)\s*\]$', type_name)
+            array_match = query.inline_array(type_name)
             if array_match:
-                element_type = array_match.group(2).strip()
+                element_type = array_match[1]
                 logger.debug(f"EDN: Inline array type detected, element type: {element_type}")
             else:
                 # Try to get array type definition for structured arrays
@@ -2355,7 +2336,7 @@ class EDNGenerator:
         # Add type name header if we have a structured array type and annotations are enabled
         # Format: / type / [
         type_header = ""
-        if annotate and self._named(type_name) and not type_name.startswith('['):
+        if annotate and self._named(type_name) and not query.is_array(type_name):
             # It's a named array type (not inline array syntax)
             type_header = f"/ {type_name} / "
         
@@ -2403,18 +2384,11 @@ class EDNGenerator:
                     if resolved_alias != resolved_element_type:
                         logger.debug(f"EDN: Resolved array element [{i}] type alias {resolved_element_type} -> {resolved_alias}")
                         resolved_element_type = resolved_alias
-                    else:
-                        # Check if we can get a type definition directly
-                        # This handles cases like 'comid-entity-map' which isn't an alias but 'entity-map' exists
-                        type_def = self.cddl.get_type(resolved_element_type)
-                        if not type_def and '-' in resolved_element_type:
-                            # Try variants like removing prefix
-                            base_type = resolved_element_type.split('-', 1)[1] if resolved_element_type.count('-') > 0 else resolved_element_type
-                            if base_type != resolved_element_type:
-                                alt_type_def = self.cddl.get_type(base_type)
-                                if alt_type_def:
-                                    logger.debug(f"EDN: Using base type {base_type} for {resolved_element_type}")
-                                    resolved_element_type = base_type
+                        # A generic instance ('entity-map<$role, $$ext>') is
+                        # annotated as its generic rule until #70 instantiates it.
+                        generic = query.head(resolved_alias)
+                        if generic != resolved_alias and self.cddl.get_type(generic):
+                            resolved_element_type = generic
             
             value_str = self._generate_value(value, resolved_element_type, annotate)
             comma = "," if i < len(data) - 1 else ""

@@ -18,6 +18,13 @@ status 1. Forms that earlier versions accepted but are not CDDL are rejected
 too, for example `&(a: 0) => uint ?` (write `? &(a: 0) => uint`) and an
 occurrence with no type (`any = *`).
 
+Names may contain dots and hyphens, as RFC 8610 allows (`coswid.tag-id`). So
+`lo..hi` is one name: write `lo .. hi` for a range between two names. A
+`.size` argument that is such an undefined name says so in its error.
+
+`.regexp` patterns are CDDL text strings, so their escapes are decoded first,
+as in RFC 8610's examples: `"a\\.b"` is the regular expression `a\.b`.
+
 One non-standard form is accepted: chained controls such as
 `uint .ge 0 .le 150`, read as `(uint .ge 0) .le 150`. RFC 8610 allows one
 control per type, but this form is common and its bounds are enforced. The
@@ -116,8 +123,9 @@ digest = bstr .size 32 / tagged-digest
 A value is valid when it matches any alternative. Inline choices are checked in
 map fields, array elements, inline arrays and at the root. Alternatives can be
 primitives with controls (`.size`, `.regexp`, `.ge`/`.gt`/`.le`/`.lt`), named
-rules, tagged rules and literals (integers, floats, quoted text, `true`,
-`false`). When nothing matches, the error lists each alternative and why it
+rules, tagged rules and literals (integers, floats, quoted text, byte strings
+such as `h'0102'`, `true`, `false`), including literals with controls
+(`"t" .size 1`). When nothing matches, the error lists each alternative and why it
 failed, for example:
 
 ```text

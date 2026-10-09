@@ -103,7 +103,8 @@ class TestSizeArguments(SizeTestCase):
             ("r = {a: tstr .size m}\nm = 2", {"a": "abc"}, False),
             ("r = {a: tstr .size m}\nm = n\nn = 2", {"a": "ab"}, True),
             ("r = {a: tstr .size m}\nm = 1..2", {"a": "abc"}, False),
-            ("r = {a: tstr .size (lo..hi)}\nlo = 1\nhi = 2", {"a": "ab"}, True),
+            ("r = {a: tstr .size (lo .. hi)}\nlo = 1\nhi = 2", {"a": "ab"}, True),
+            ("r = {a: tstr .size (lo .. hi)}\nlo = 1\nhi = 2", {"a": "abc"}, False),
         ])
 
     def test_invalid_arguments_reported(self):
@@ -112,6 +113,8 @@ class TestSizeArguments(SizeTestCase):
             ("r = {a: tstr .size -1}", "Invalid .size argument '-1'"),
             ("r = {a: tstr .size (3..1)}", "empty range"),
             ("r = {a: tstr .size (1..x)}", "Invalid .size argument '(1..x)'"),
+            # A name may contain dots (RFC 8610): 'lo..hi' is one name, not a range
+            ("r = {a: tstr .size (lo..hi)}\nlo = 1\nhi = 2", "write 'lo .. hi' for a range"),
             ("r = {a: int .size 1}", ".size is not defined for 'int'"),
             ("r = {a: float .size 4}", ".size is not defined for 'float'"),
         ]:
