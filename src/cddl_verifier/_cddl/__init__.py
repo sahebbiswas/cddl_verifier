@@ -8,12 +8,13 @@ change in any release.
 """
 
 from .ast import Source, Span, entry_type, registered_label, walk
-from .errors import CDDLSyntaxError
+from .errors import CDDLSemanticError, CDDLSyntaxError
 from .parser import MAX_DEPTH, parse_cddl
 from .prelude import PRELUDE, parse_prelude
 from .printer import format_node
 
 __all__ = [
+    "CDDLSemanticError",
     "CDDLSyntaxError",
     "MAX_DEPTH",
     "PRELUDE",

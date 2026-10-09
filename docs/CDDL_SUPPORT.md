@@ -32,6 +32,51 @@ standard spellings (`(uint .ge 0) .le 150`, `0..150`) parse but are not yet
 enforced ([#71](https://github.com/sahebbiswas/cddl_verifier/issues/71),
 [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76)).
 
+## Schema semantics
+
+A schema that parses is then checked as a whole
+([#70](https://github.com/sahebbiswas/cddl_verifier/issues/70)), and the first
+problem is reported the same way, with its position:
+
+```
+schema.cddl:4:12: undefined name 'tsrt'; did you mean 'tstr'?
+```
+
+| Check | Rejected example |
+|-------|------------------|
+| Every name is defined by the schema or the RFC 8610 prelude, or is a generic parameter in scope | `r = { a: tsrt }` |
+| A name is defined once with `=`; alternatives are added with `/=` (types) or `//=` (groups). Writing the same rule twice is allowed | `a = 1` then `a = 2` |
+| `$name` is a type socket and `$$name` a group socket; either may have no alternatives | `$$ext /= int`, `a: $$ext` |
+| A group is not used as a type, and a map entry without a key is a group | `a: pii` where `pii = (x: int)`; `{ uint }` |
+| `~x` names a map, array or tag; `&x` names a group | `~uint`, `&tstr` |
+| A generic is given as many arguments as it has parameters | `pair<int>` where `pair<A, B> = [A, B]` |
+| Control operators are those of RFC 8610, RFC 9165 and RFC 9741 | `tstr .sise 3` |
+| A control fits its target and argument, where their kinds are evident | `float .size 4`, `tstr .regexp 'x'`, `tstr .le 5` |
+| A range is between two integers or two floats, and is not empty | `5..1`, `1..2.5`, `"a".."z"` |
+| An occurrence `n*m` has `n <= m` | `[ 3*2 int ]` |
+| A rule is not defined only in terms of itself | `a = b` and `b = a` |
+
+`a = b` and `a = ( b )` define a group when `b` is a group and a type
+otherwise. Recursive rules (`tree = [ uint, * tree ]`) are fine.
+
+Names from other modules are not checked when the schema imports the module in
+the comment syntax of the CDDL modules draft (draft-ietf-cbor-cddl-modules), as
+the CoRIM drafts do: after `;# import rfc9393 as coswid`, `coswid.tag-id` is
+accepted, and after an `;# import` or `;# include` without `as`, any undefined
+name is. The module is not loaded, so these names match any value
+([#121](https://github.com/sahebbiswas/cddl_verifier/issues/121)).
+
+### Generics
+
+Generic rules are instantiated where they are used: `pair<uint, tstr>`, with
+`pair<A, B> = [A, B]`, checks a two-element array of an unsigned integer and a
+text string, as a rule, a map field or an array element. `opt<uint>`, with
+`opt<T> = T / nil`, is the choice `uint / nil`. Recursive generics such as
+`tree<T> = { v: T, ? l: tree<T> }` are checked at every depth. A control around a generic
+structure is not enforced: `non-empty<{ a: int }>`, with
+`non-empty<M> = (M) .and ({ + any => any })`, is checked as the map
+`{ a: int }` ([#120](https://github.com/sahebbiswas/cddl_verifier/issues/120)).
+
 ## Schema format
 
 The tool supports the IANA registered-parameter syntax used in CoRIM and CoSWID:

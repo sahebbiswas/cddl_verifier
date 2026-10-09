@@ -26,8 +26,48 @@ public release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)). 
   non-standard extension, so their bounds stay enforced until the standard
   forms are ([#71](https://github.com/sahebbiswas/cddl_verifier/issues/71),
   [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76)).
+- **Behaviour change:** schemas that parse but do not make sense are rejected
+  the same way, with the position of the problem
+  ([#70](https://github.com/sahebbiswas/cddl_verifier/issues/70)):
+  `schema.cddl:4:12: undefined name 'tsrt'; did you mean 'tstr'?`. Before, such
+  schemas were accepted and the affected fields matched anything or nothing.
+  Rejected:
+  - undefined names, and a second `=` definition of a name (write `/=` or `//=`
+    to add alternatives; writing the identical rule twice is still fine)
+  - a group used as a type (`a: pii` where `pii = (x: int)`), a type without a
+    key in a map (`{ uint }`), `~x` on something that is not a map, array or
+    tag, `&x` on a type, `$$socket /= ...` and `$socket //= ...`
+  - a generic given the wrong number of arguments (`pair<int>`)
+  - unknown control operators (`.sise`), and `.size`, `.bits`, `.regexp`,
+    `.cbor`, `.cborseq`, `.lt`/`.le`/`.gt`/`.ge`, `.abnf` and `.abnfb` applied
+    to a target or argument of the wrong kind (`float .size 4`,
+    `tstr .regexp 'x'`). These `.size` arguments used to be reported by
+    `validate()` as invalid data, and are now schema errors: undefined names,
+    negative numbers, empty ranges and `lo..hi` (one name; write `lo .. hi`)
+  - empty or mixed ranges (`5..1`, `1...1`, `1..2.5`, `"a".."z"`) and
+    occurrences such as `3*2`
+  - rules that only rename each other (`a = b`, `b = a`)
+
+  Names from a module the schema imports with the CDDL modules draft's
+  comment syntax (`;# import rfc9393 as coswid`, then `coswid.tag-id`) are
+  allowed and match anything. See
+  [CDDL_SUPPORT.md](docs/CDDL_SUPPORT.md#schema-semantics).
 
 ### Fixed
+- Generic rules are instantiated
+  ([#70](https://github.com/sahebbiswas/cddl_verifier/issues/70)).
+  `pair<uint, tstr>`, with `pair<A, B> = [A, B]`, is checked as a two-element
+  array of those types as a rule, map field or array element, and
+  `opt<uint>`, with `opt<T> = T / nil`, as `uint / nil`. Recursive generics
+  (`tree<T> = { v: T, ? l: tree<T> }`) are supported. Before, only a
+  generic with a single map or array argument (`non-empty<{ ... }>`) was read,
+  as that argument; other generic references were not checked.
+- `a = ( b )` is a group only when `b` is a group; otherwise it is the type
+  `b`. Before, it was always stored as a group, so `a` matched anything.
+- The bundled schemas had undefined names that the checks above found:
+  `corim_test.cddl` referred to `$`-sockets without the `$` (so those fields
+  were not checked), and `unified.cddl` used `TBD1` and `tagged-corim-map`
+  without defining them.
 - The validator and EDN generator no longer pick type text apart with regular
   expressions ([#111](https://github.com/sahebbiswas/cddl_verifier/issues/111),
   Phase C of [#69](https://github.com/sahebbiswas/cddl_verifier/issues/69));
@@ -127,6 +167,13 @@ public release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)). 
   tree and its lookup tables are built from it. See
   [docs/CDDL_AST_DESIGN.md](docs/CDDL_AST_DESIGN.md).
 - `tests/test_cddl_parser.py` for the new parser.
+- Semantic analysis and name resolution (`cddl_verifier._cddl.resolve`,
+  [#70](https://github.com/sahebbiswas/cddl_verifier/issues/70)):
+  `resolve()` checks a parsed schema and returns a resolved model that maps
+  each name to its rule (with the RFC 8610 prelude) and instantiates generics
+  on demand. It raises `CDDLSemanticError`, a `SchemaError` with `line` and
+  `column`. `CDDLParser.resolved` holds the model, and the parser's tables are
+  built from it. Tests in `tests/test_resolve.py`.
 
 ## [0.1.0] - 2026-10-08
 

@@ -84,6 +84,11 @@ corim-cbor-collection = {
 
 }
 
+; The CoRIM draft leaves these undefined: TBD1 is a CoAP content-format number
+; still to be assigned by IANA, and tagged-corim-map is the tagged CoRIM.
+TBD1 = uint
+tagged-corim-map = tagged-unsigned-corim-map
+
 cmw-label = text / int
 comid-entity-map =
 

@@ -87,6 +87,7 @@ src/cddl_verifier/_cddl/
     printer.py      # format_node(node) -> canonical CDDL text
     errors.py       # CDDLSyntaxError
     prelude.py      # RFC 8610 Appendix D prelude as CDDL text, parsed like any schema
+    resolve.py      # semantic checks and the resolved model (#70)
 ```
 
 A subpackage keeps the new code out of the 2,900-line `_analyzer.py` and is
@@ -327,6 +328,45 @@ implemented in #70, not #69.
   rule, or to a generic instance. The validator and EDN generator consume that
   model.
 
+As implemented in #70 (`_cddl/resolve.py`):
+
+- `resolve(schema)` returns a `ResolvedSchema` or raises `CDDLSemanticError`
+  (a `SchemaError`, with `line`, `column` and `span`) for the first problem.
+  `CDDLParser` calls it after parsing and keeps the result in
+  `CDDLParser.resolved`. The checks are listed in
+  [CDDL_SUPPORT.md](CDDL_SUPPORT.md#schema-semantics).
+- `ResolvedSchema.rules` maps each name to a `RuleDef`: its kind (`type` or
+  `group`), generic parameters, and defining rules (the `=` rule first, then
+  `/=` or `//=` extensions). `RuleDef.type()` and `RuleDef.group()` combine
+  them. Prelude rules follow the user's and are shadowed by a user rule of the
+  same name. `lookup`, `kind` and `is_group` answer by name, and an undefined
+  `$x`/`$$x` is an empty type/group socket.
+- **Classification.** `//=`, member keys and occurrences make a group; `/=`
+  and every other type rule make a type. A `maybe_group` rule (`a = b`,
+  `a = (b)`) takes the kind of `b`, decided to a fixed point.
+- **Generics.** `instantiate(name, args)` substitutes the arguments into the
+  rule's type or group and memoizes the result by `(name, args)`; node
+  equality ignores spans, so equal arguments share an instance. A parameter
+  used as a group entry becomes a group reference (a name argument) or a
+  keyless member. A `Range` or `Control` argument in a place that takes only
+  a `Type2` is wrapped in `Paren`. A generic argument may name a group
+  (`entity-map<$role, $$extension>` in CoRIM).
+- **Controls** are checked against `KNOWN_CONTROLS` (RFC 8610, RFC 9165,
+  RFC 9741). For `.size`, `.bits`, `.regexp`, `.cbor`, `.cborseq`,
+  `.lt`/`.le`/`.gt`/`.ge`, `.abnf` and `.abnfb`, the kinds of data item the
+  target and argument can match are computed by following names to the
+  prelude's major types; a mismatch is reported only when every alternative's
+  kind is known, so `int .size 1` (partly `uint`) and sockets pass.
+- **Imports.** The modules draft's `;# import X as P` and `;# include X`
+  comments make undefined names from that module acceptable; they are listed
+  in `ResolvedSchema.external`.
+- **Tables.** `LegacyTables` takes the model: a `maybe_group` rule goes into
+  `groups` only when it is a group, and a reference to a generic rule is
+  replaced by its instance, so `pair<uint, tstr>` gets a synthetic structure
+  and `opt<uint>` becomes `uint / nil`. Name lookup in the validator still goes
+  through the tables; passing `RuleDef`s and nodes instead of text is
+  [#115](https://github.com/sahebbiswas/cddl_verifier/issues/115).
+
 ## 9. Compatibility boundaries
 
 | Surface | Status | Rule |
@@ -408,8 +448,8 @@ As implemented in #110 (`_cddl/legacy.py`):
   is listed in the map's `computed_keys`. The validator accepts extra keys
   that match one, and checks their values.
 - **Generic wrappers.** `x = non-empty<{ ... }>` (one map or array argument)
-  is read as the map inside, as the line-based parser did, until #70
-  instantiates generics.
+  is read as the map inside, as the line-based parser did. #70 replaced this
+  with real instantiation.
 - **Chained controls.** `uint .ge 0 .le 150` is accepted as a non-standard
   extension and parsed as `Control(Control(uint, ge, 0), le, 150)`, because
   the standard forms are not enforced before #71 and #76. Each link counts
@@ -432,8 +472,8 @@ in the same commit:
 | EDN inline arrays and tags | the `[ + T ]` regex in `_generate_array`, `extract_cbor_tag` in `_generate_value` | `Array`, `Tag` |
 
 When Phase C ends, the `type` strings are gone and #69 is done. Name lookup
-(`resolve_type_alias`, `get_type`) still goes by name until #70 replaces it
-with the resolved model.
+(`resolve_type_alias`, `get_type`) still goes by name. #70 builds the resolved
+model and the tables from it; moving name lookup onto it is #115.
 
 As implemented in #111, in two steps by agreement:
 
@@ -537,5 +577,5 @@ PR #107.
 2. **Comment-derived field names are kept for now and deprecated later**, once
    EDN takes labels from `registered_label` and bareword keys everywhere
    ([#108](https://github.com/sahebbiswas/cddl_verifier/issues/108)).
-3. **Unknown control operators are accepted and ignored**, as they are today,
-   until #70 rejects them as schema errors.
+3. **Unknown control operators were accepted and ignored** until #70, which
+   rejects them as schema errors.

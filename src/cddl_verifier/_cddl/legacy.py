@@ -17,15 +17,25 @@ Two things the validator cannot read from text get a table entry instead:
   map's ``computed_keys``; the validator accepts extra keys that match one
   (#104).
 
+With the resolved model from #70, a rule is a group or a type as the
+resolver decided (``h = ( name )`` is a group only if ``name`` is one), and a
+reference to a generic rule (``pair<uint, tstr>``) is replaced by the rule
+with its parameters substituted.
+
 See ``docs/CDDL_AST_DESIGN.md`` §10.
 """
 
 import re
 from typing import Any, Dict, List, Optional
 
-from .ast import (Array, GroupRule, InlineGroup, IntLit, Map, Member, Name, Paren, Tag,
-                  TextLit, Type, TypeRule, entry_type, registered_label, walk)
+from .ast import (Array, Control, GroupRule, InlineGroup, IntLit, Map, Member, Name, Paren,
+                  Tag, TextLit, Type, TypeRule, entry_type, registered_label, walk)
+from .parser import MAX_DEPTH
 from .printer import format_node
+
+#: How many generic instances may be expanding inside each other. Past it,
+#: a reference is kept as text, so 'g<T> = { n: g<[T]> }' terminates.
+_MAX_INSTANCE_DEPTH = 16
 
 # Occurrences that make a map member optional.
 _OPTIONAL = ('?', '*')
@@ -34,7 +44,9 @@ _OPTIONAL = ('?', '*')
 class LegacyTables:
     """The dictionaries ``CDDLParser`` exposes, built from a ``Schema``."""
 
-    def __init__(self, schema):
+    def __init__(self, schema, resolved=None):
+        #: ``ResolvedSchema`` (#70), used for rule kinds and generics.
+        self.resolved = resolved
         self.types: Dict[str, Dict] = {}
         self.groups: Dict[str, List[str]] = {}
         self.type_choices: Dict[str, List[str]] = {}
@@ -44,6 +56,10 @@ class LegacyTables:
         self.first_definition: Optional[str] = None
         #: Names given to inline maps and to structures inside tags (``r@a``).
         self.synthetic_types: set = set()
+        # Generic instances (name, args): the synthetic type built for each,
+        # and those being expanded now, so recursive generics terminate.
+        self._instance_names: Dict[tuple, str] = {}
+        self._expanding: set = set()
         self._rule_names = {rule.name for rule in schema.rules}
 
         for rule in schema.rules:
@@ -70,19 +86,46 @@ class LegacyTables:
             for alt in rule.type.alternatives:
                 choices.append(self._text(Type((alt,)), f'{name}@{len(choices)}'))
             return
-        if self.first_definition is None:
+        if self.first_definition is None and not self._is_group(rule):
             self.first_definition = name
 
-        structure = _structure(rule.type)
         alt = rule.type.alternatives[0]
+        if self._is_group(rule):
+            # 'g = ( name )' or 'g = name' where 'name' is a group
+            inner = alt.type if isinstance(alt, Paren) else rule.type
+            self.groups[name] = [format_node(inner)]
+            return
+        ty = rule.type
         if rule.maybe_group and isinstance(alt, Paren):
-            # 'g = ( name )' could be a group or a type; like the line-based
-            # parser, treat it as a group until #70 resolves the name.
-            self.groups[name] = [format_node(alt.type)]
-        elif structure is not None:
+            ty = alt.type  # 'h = ( name )' where 'name' is a type
+        expanded = ty if rule.params else self._expand(ty)
+        structure = _structure(expanded, instance=expanded is not ty)
+        ty = expanded
+        if structure is not None:
             self.types[name] = self._structure_def(structure, name)
         else:
-            self.type_aliases[name] = self._text(rule.type, name)
+            self.type_aliases[name] = self._text(ty, name)
+
+    def _is_group(self, rule: TypeRule) -> bool:
+        """Whether a type rule the parser could not classify names a group."""
+        if not rule.maybe_group:
+            return False
+        if self.resolved is None:
+            # without resolution, 'g = ( name )' is read as a group
+            return isinstance(rule.type.alternatives[0], Paren)
+        return self.resolved.is_group(rule.name)
+
+    def _expand(self, ty: Type, depth: int = 0) -> Type:
+        """*ty* with a lone generic reference (``pair<A, B>``) instantiated."""
+        if self.resolved is None or len(ty.alternatives) != 1 or depth > 8:
+            return ty
+        node = ty.alternatives[0]
+        if not isinstance(node, Name) or not node.args:
+            return ty
+        rule = self.resolved.lookup(node.name)
+        if rule is None or rule.kind != 'type' or len(rule.params) != len(node.args):
+            return ty
+        return self._expand(self.resolved.instantiate(node.name, node.args), depth + 1)
 
     def _group_rule(self, rule: GroupRule):
         if rule.assign == '//=':
@@ -189,14 +232,46 @@ class LegacyTables:
     def _lift(self, node, path: str):
         if isinstance(node, Type):
             alts = node.alternatives
-            if len(alts) == 1:
-                return Type((self._lift(alts[0], path),))
-            return Type(tuple(self._lift(a, f'{path}@{i}') for i, a in enumerate(alts)))
+            paths = [path] if len(alts) == 1 else [f'{path}@{i}' for i in range(len(alts))]
+            lifted = []
+            for alt, alt_path in zip(alts, paths):
+                new = self._lift(alt, alt_path)
+                if isinstance(new, Paren) and isinstance(alt, Name):
+                    # a generic instance that is a choice ('opt<uint>' gives
+                    # 'uint / nil'): its alternatives join this choice
+                    lifted.extend(new.type.alternatives)
+                else:
+                    lifted.append(new)
+            return Type(tuple(lifted))
         if isinstance(node, Map):
             return Name(self._synthetic(node, path))
-        if isinstance(node, Name) and len(node.args) == 1 and isinstance(node.args[0], Map):
-            # 'non-empty<{ ... }>': read the map inside, as for rules (_structure)
-            return Name(self._synthetic(node.args[0], path))
+        if isinstance(node, Name) and node.args:
+            if _deeper_than(node, MAX_DEPTH):
+                # arguments that grow at each level ('g<T> = { n: g<[[T]]> }')
+                # are cut off before they are hashed or printed
+                return Name('any')
+            key = (node.name, node.args)
+            known = self._instance_names.get(key)
+            if known is not None:
+                return Name(known)  # 'tree<T> = { ? l: tree<T> }' refers to itself
+            if key in self._expanding or len(self._expanding) >= _MAX_INSTANCE_DEPTH:
+                # a recursive choice ('list<T> = nil / [T, list<T>]'), or one
+                # whose arguments keep changing ('g<T> = { n: g<[T]> }')
+                return node
+            self._expanding.add(key)
+            try:
+                expanded = self._expand(Type((node,)))
+                structure = _structure(expanded, instance=True)
+                if structure is not None:
+                    # 'non-empty<{ ... }>', 'pair<int, tstr>': a structure of its own
+                    return Name(self._synthetic(structure, path, key))
+                if expanded.alternatives != (node,):
+                    lifted = self._lift(expanded, path)
+                    if len(lifted.alternatives) == 1:
+                        return lifted.alternatives[0]
+                    return Paren(lifted)
+            finally:
+                self._expanding.discard(key)
         if isinstance(node, Tag):
             inner = node.type.alternatives
             if len(inner) == 1 and isinstance(inner[0], (Map, Array)):
@@ -209,7 +284,7 @@ class LegacyTables:
             return Array(_map_group(node.group, lambda v, i: self._lift(v, f'{path}@{i}')))
         return node
 
-    def _synthetic(self, structure, path: str) -> str:
+    def _synthetic(self, structure, path: str, instance: Optional[tuple] = None) -> str:
         # The validator splits type text on '.' and whitespace: keep them out.
         path = re.sub(r'[^A-Za-z0-9_@$-]', '_', path)
         if path.endswith('-'):
@@ -220,11 +295,30 @@ class LegacyTables:
             name, n = f'{path}-{n}', n + 1
         self.synthetic_types.add(name)
         self.types[name] = {}  # reserve the name before recursing
+        if instance is not None:
+            self._instance_names[instance] = name
         self.types[name] = self._structure_def(structure, name)
         return name
 
 
 # ------------------------------------------------------------------ helpers
+
+def _deeper_than(node, limit: int) -> bool:
+    """Whether *node* nests more than *limit* levels, checked without recursion."""
+    stack = [(node, 0)]
+    while stack:
+        current, depth = stack.pop()
+        if depth > limit:
+            return True
+        for name in getattr(current, '__dataclass_fields__', ()):
+            if name in ('span', 'comment'):
+                continue
+            child = getattr(current, name)
+            for item in (child if isinstance(child, tuple) else (child,)):
+                if hasattr(item, '__dataclass_fields__'):
+                    stack.append((item, depth + 1))
+    return False
+
 
 def _is_optional(entry) -> bool:
     return entry.occurrence is not None and entry.occurrence.text in _OPTIONAL
@@ -252,19 +346,29 @@ def _map_group(group, fn):
     return Group(tuple(choices), span=group.span)
 
 
-def _structure(ty):
+def _structure(ty, instance: bool = False):
     """The map or array a rule's type stands for, if it is one.
 
-    ``x = { ... }`` and ``x = [ ... ]`` give that node. So does a single
-    generic argument (``x = non-empty<{ ... }>``): generics are not
-    instantiated before #70, and the line-based parser also read the map
-    inside them.
+    ``x = { ... }`` and ``x = [ ... ]`` give that node. For an instantiated
+    generic (*instance*), parentheses and controls around the structure are
+    looked through, so ``non-empty<{ ... }>``, which instantiates to
+    ``({ ... }) .and ({ + any => any })``, is read as its map (the control is
+    not enforced). Without a resolved model, a single generic argument
+    (``x = non-empty<{ ... }>``) is read as the map inside, as the
+    line-based parser did.
     """
     if len(ty.alternatives) != 1:
         return None
     node = ty.alternatives[0]
     if isinstance(node, Name) and len(node.args) == 1:
         node = node.args[0]
+    while instance:
+        if isinstance(node, Control):
+            node = node.target
+        elif isinstance(node, Paren) and len(node.type.alternatives) == 1:
+            node = node.type.alternatives[0]
+        else:
+            break
     return node if isinstance(node, (Map, Array)) else None
 
 

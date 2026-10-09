@@ -30,6 +30,7 @@ import struct
 
 
 from cddl_verifier._cddl import CDDLSyntaxError
+from cddl_verifier import SchemaError
 from cddl_verifier._analyzer import (
     CDDLParser, 
     CBORAnalyzer, 
@@ -92,7 +93,7 @@ class TestCDDLParsing(unittest.TestCase):
     
     def test_cbor_tag_alias(self):
         """Test CBOR tag definition parsing"""
-        cddl = CDDLParser("tagged-corim = #6.501(corim-map)")
+        cddl = CDDLParser("tagged-corim = #6.501(corim-map)\ncorim-map = {}")
         self.assertIn('tagged-corim', cddl.type_aliases)
         self.assertEqual(cddl.type_aliases['tagged-corim'], '#6.501(corim-map)')
         
@@ -104,7 +105,7 @@ class TestCDDLParsing(unittest.TestCase):
     
     def test_cbor_control_nested(self):
         """Test .cbor control operator parsing"""
-        cddl = CDDLParser("tagged-mid = #6.506(bytes .cbor concise-mid-tag)")
+        cddl = CDDLParser("tagged-mid = #6.506(bytes .cbor concise-mid-tag)\nconcise-mid-tag = {}")
         
         # Verify it parses as alias
         self.assertIn('tagged-mid', cddl.type_aliases)
@@ -120,6 +121,8 @@ class TestCDDLParsing(unittest.TestCase):
         cddl_text = """
         $my-choice /= option-a
         $my-choice /= option-b
+        option-a = uint
+        option-b = tstr
         """
         cddl = CDDLParser(cddl_text)
         
@@ -202,6 +205,7 @@ class TestCDDLParsing(unittest.TestCase):
           ? &(long-field-name: 0) =>
             [ + nested-type ]
         }
+        nested-type = uint
         """
         cddl = CDDLParser(cddl_text)
         
@@ -237,6 +241,7 @@ class TestTypeResolution(unittest.TestCase):
         cddl_text = """
         tagged-corim = #6.501(unsigned-corim-map)
         unsigned-corim-map = corim-map
+        corim-map = { a: uint }
         """
         cddl = CDDLParser(cddl_text)
         
@@ -668,18 +673,18 @@ class TestEdgeCases(unittest.TestCase):
         # Should still generate EDN
         self.assertIn('"test"', edn)
     
-    def test_circular_alias_prevention(self):
-        """Test prevention of circular alias resolution"""
+    def test_circular_alias_rejected(self):
+        """Rules that only rename each other are a schema error (#70)"""
         cddl_text = """
         a = b
         b = a
         """
-        cddl = CDDLParser(cddl_text)
-        
-        # Should not infinite loop
-        resolved = cddl.resolve_type_alias('a')
-        # Should return one of the names (can't fully resolve)
-        self.assertIn(resolved, ['a', 'b'])
+        with self.assertRaisesRegex(SchemaError, r"'a' is defined only in terms of itself \(a -> b -> a\)"):
+            CDDLParser(cddl_text)
+
+    def test_long_alias_chain_stops_at_max_depth(self):
+        cddl = CDDLParser("a = b\nb = c\nc = d\nd = uint")
+        self.assertEqual(cddl.resolve_type_alias('a', max_depth=2), 'c')
 
 
 class TestIndentationAccuracy(unittest.TestCase):
@@ -1260,7 +1265,7 @@ class TestSocketExtensions(unittest.TestCase):
     """Tests for $$socket //= extension parsing."""
 
     def test_socket_extension_stored(self):
-        cddl = CDDLParser("$$my-ext //= extra-field")
+        cddl = CDDLParser("$$my-ext //= extra-field\nextra-field = (x: uint)")
         self.assertIn('$$my-ext', cddl.socket_extensions)
         self.assertIn('extra-field', cddl.socket_extensions['$$my-ext'])
 
@@ -1268,6 +1273,8 @@ class TestSocketExtensions(unittest.TestCase):
         cddl_text = """
         $$my-ext //= field-a
         $$my-ext //= field-b
+        field-a = (a: uint)
+        field-b = (b: uint)
         """
         cddl = CDDLParser(cddl_text)
         exts = cddl.socket_extensions.get('$$my-ext', [])
@@ -1275,7 +1282,7 @@ class TestSocketExtensions(unittest.TestCase):
         self.assertIn('field-b', exts)
 
     def test_get_socket_extensions_helper(self):
-        cddl = CDDLParser("$$sock //= val")
+        cddl = CDDLParser("$$sock //= val\nval = (v: uint)")
         self.assertIsNotNone(cddl.get_socket_extensions('$$sock'))
         self.assertIsNone(cddl.get_socket_extensions('$$nonexistent'))
 
@@ -1374,11 +1381,11 @@ class TestGroupParsing(unittest.TestCase):
     """Tests for CDDL group definitions."""
 
     def test_single_line_group_stored(self):
-        cddl = CDDLParser("my-group = ( field-a )")
+        cddl = CDDLParser("my-group = ( field-a )\nfield-a = (a: uint)")
         self.assertIn('my-group', cddl.groups)
 
     def test_get_group_helper(self):
-        cddl = CDDLParser("my-group = ( field-a )")
+        cddl = CDDLParser("my-group = ( field-a )\nfield-a = (a: uint)")
         self.assertIsNotNone(cddl.get_group('my-group'))
         self.assertIsNone(cddl.get_group('nonexistent'))
 
@@ -1388,6 +1395,8 @@ class TestGroupParsing(unittest.TestCase):
           corim-meta-identity,
           ? cwt-claims-identity,
         )
+        corim-meta-identity = (0: tstr)
+        cwt-claims-identity = (1: tstr)
         """
         cddl = CDDLParser(cddl_text)
         self.assertIn('meta-group', cddl.groups)
@@ -1424,7 +1433,7 @@ class TestCoverageGaps(unittest.TestCase):
         cddl_text = '''
         record = {
           &( name : 0 ) => tstr .regexp "a,b\\\\,c",
-          &( p1 : 1 ) => tstr .regexp 'x,y\\\\,z',
+          &( p1 : 1 ) => bstr .eq 'x,y\\\\,z',
         }
         '''
         cddl = CDDLParser(cddl_text)

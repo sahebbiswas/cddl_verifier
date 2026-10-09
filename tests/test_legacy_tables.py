@@ -61,7 +61,7 @@ class TestMaps(unittest.TestCase):
         self.assertTrue(fields['c']['optional'])
 
     def test_controls_and_choices_are_canonical_text(self):
-        p = CDDLParser("m = { a: tstr .size (1..64), b: uint/tstr, c: #6.1(x) }")
+        p = CDDLParser("m = { a: tstr .size (1..64), b: uint/tstr, c: #6.1(x) }\nx = uint")
         types = [f['type'] for f in p.types['m']['fields'].values()]
         self.assertEqual(types, ['tstr .size (1..64)', 'uint / tstr', '#6.1(x)'])
 
@@ -89,7 +89,7 @@ class TestArrays(unittest.TestCase):
         self.assertNotIn('repeat', CDDLParser("r = [ int, 1*2 tstr ]").types['r'])
 
     def test_positional_elements(self):
-        p = CDDLParser("a = [ min: int / null, max: int, extra ]")
+        p = CDDLParser("a = [ min: int / null, max: int, extra ]\nextra = tstr")
         self.assertEqual(p.types['a']['element_types'],
                          {0: 'int / null', 1: 'int', 2: 'extra'})
         self.assertEqual(sorted(p.types['a']['fields']), ['max', 'min'])
@@ -99,7 +99,7 @@ class TestArrays(unittest.TestCase):
 class TestRulesAndTables(unittest.TestCase):
 
     def test_aliases(self):
-        p = CDDLParser("a = b\nt = #6.501(m)\nc = uint / tstr\ns = bstr .size 16")
+        p = CDDLParser("a = b\nt = #6.501(m)\nc = uint / tstr\ns = bstr .size 16\nb = tstr\nm = {}")
         self.assertEqual(p.type_aliases['a'], 'b')
         self.assertEqual(p.type_aliases['t'], '#6.501(m)')
         self.assertEqual(p.type_aliases['c'], 'uint / tstr')
@@ -107,14 +107,15 @@ class TestRulesAndTables(unittest.TestCase):
 
     def test_choices_sockets_and_groups(self):
         p = CDDLParser("$c /= a\n$c /= b / c\n$$s //= ( x: int )\n"
-                       "g = ( a: int, ? b: tstr )\nh = ( name )")
+                       "g = ( a: int, ? b: tstr )\nh = ( name )\n"
+                       "a = uint\nb = tstr\nc = bstr\nx = int\nname = ( n: tstr )")
         self.assertEqual(p.type_choices['$c'], ['a', 'b', 'c'])
         self.assertEqual(p.socket_extensions['$$s'], ['(x: int)'])
         self.assertEqual(p.groups['g'], ['a: int', '? b: tstr'])
         self.assertEqual(p.groups['h'], ['name'])
 
     def test_first_definition_skips_choices_and_groups(self):
-        self.assertEqual(CDDLParser("$c /= a\ng = (a: int)\nroot = { a: int }").first_definition,
+        self.assertEqual(CDDLParser("$c /= a\ng = (a: int)\nroot = { a: int }\na = uint").first_definition,
                          'root')
 
     def test_empty_schema_keeps_builtins(self):

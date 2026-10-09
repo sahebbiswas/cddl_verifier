@@ -21,7 +21,7 @@ except ImportError:
 
 import unittest
 
-from cddl_verifier import validate
+from cddl_verifier import SchemaError, validate
 from cddl_verifier import _analyzer
 from cddl_verifier._analyzer import CDDLParser
 from cddl_verifier._cddl import query
@@ -154,8 +154,8 @@ class TestBehaviour(unittest.TestCase):
                     self.assertFalse(validate(schema, wrap(too_big)).valid)
 
     def test_dotted_range_hint(self):
-        result = validate("r = { a: tstr .size (lo..hi) }\nlo = 1\nhi = 2", {"a": "ab"})
-        self.assertIn("write 'lo .. hi' for a range", result.errors[0])
+        with self.assertRaisesRegex(SchemaError, "write 'lo .. hi' for a range"):
+            validate("r = { a: tstr .size (lo..hi) }\nlo = 1\nhi = 2", {"a": "ab"})
 
 
 if __name__ == "__main__":

@@ -14,7 +14,7 @@ except ImportError:
 
 import unittest
 
-from cddl_verifier import validate
+from cddl_verifier import SchemaError, validate
 from cddl_verifier._analyzer import CDDLParser
 from cddl_verifier.cbor import encode
 
@@ -107,16 +107,26 @@ class TestSizeArguments(SizeTestCase):
             ("r = {a: tstr .size (lo .. hi)}\nlo = 1\nhi = 2", {"a": "abc"}, False),
         ])
 
-    def test_invalid_arguments_reported(self):
+    def test_invalid_arguments_rejected_with_the_schema(self):
+        # The resolver (#70) rejects these before any data is checked.
         for schema, fragment in [
-            ("r = {a: tstr .size foo}", "Invalid .size argument 'foo'"),
-            ("r = {a: tstr .size -1}", "Invalid .size argument '-1'"),
-            ("r = {a: tstr .size (3..1)}", "empty range"),
-            ("r = {a: tstr .size (1..x)}", "Invalid .size argument '(1..x)'"),
+            ("r = {a: tstr .size foo}", "undefined name 'foo'"),
+            ("r = {a: tstr .size -1}", "argument of '.size' must be an unsigned integer"),
+            ("r = {a: tstr .size (3..1)}", "range '3..1' is empty"),
+            ("r = {a: tstr .size (1..x)}", "undefined name 'x'"),
             # A name may contain dots (RFC 8610): 'lo..hi' is one name, not a range
             ("r = {a: tstr .size (lo..hi)}\nlo = 1\nhi = 2", "write 'lo .. hi' for a range"),
+            ("r = {a: float .size 4}", "'.size' cannot be applied to a float"),
+        ]:
+            with self.subTest(schema=schema):
+                with self.assertRaises(SchemaError) as ctx:
+                    validate(schema, encode({"a": 1}))
+                self.assertIn(fragment, str(ctx.exception))
+
+    def test_invalid_arguments_reported(self):
+        for schema, fragment in [
+            ("r = {a: tstr .size foo}\nfoo = any", "Invalid .size argument 'foo'"),
             ("r = {a: int .size 1}", ".size is not defined for 'int'"),
-            ("r = {a: float .size 4}", ".size is not defined for 'float'"),
         ]:
             with self.subTest(schema=schema):
                 data = {"a": "ab"} if "tstr" in schema else {"a": 1.5 if "float" in schema else 1}
