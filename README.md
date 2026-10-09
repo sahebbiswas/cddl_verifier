@@ -131,6 +131,7 @@ of the problem. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/b
 | [docs/CBOR_DIAGNOSTIC_DUMP.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CBOR_DIAGNOSTIC_DUMP.md) | Diagnostic dump format |
 | [docs/CANONICAL_AND_JSON.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CANONICAL_AND_JSON.md) | Canonical encoding and JSON round-trips |
 | [docs/](https://github.com/sahebbiswas/cddl_verifier/tree/main/docs) | EDN formatting, tag notation, and annotation notes |
+| [docs/CDDL_AST_DESIGN.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CDDL_AST_DESIGN.md) | Contributor design: CDDL AST, parser and migration plan |
 | [TESTING.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/TESTING.md) | Running and writing tests, CI setup |
 | [CHANGELOG.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/CHANGELOG.md) | Release history |
 
