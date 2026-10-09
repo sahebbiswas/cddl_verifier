@@ -164,6 +164,18 @@ class TestSizeContexts(SizeTestCase):
             ("r = {a: [* l]}\nl = uint .size 1", {"a": [256]}, False),
         ])
 
+    def test_text_and_bytes_aliases(self):
+        self.check([
+            ("r = [* text .size 2]", ["ab"], True),
+            ("r = [* text .size 2]", ["abc"], False),
+            ("r = {a: [* bytes .size 1]}", {"a": [b"a"]}, True),
+            ("r = {a: [* bytes .size 1]}", {"a": [b"ab"]}, False),
+            ("id = bytes .size 2", b"ab", True),
+            ("id = bytes .size 2", b"abc", False),
+            ("id = text .size 2", "\u00fc", True),
+            ("id = text .size 2", "abc", False),
+        ])
+
     def test_inline_array_elements_type_checked(self):
         self.check([
             ("r = {a: [* uint]}", {"a": [1, 2]}, True),

@@ -1001,8 +1001,7 @@ class CDDLParser:
             return {'error': f"Invalid .size argument '{arg}': empty range"}
         return {'exact': None, 'min': lo, 'max': hi}
 
-    @staticmethod
-    def size_violation(value: Any, base_type: str, constraint: Optional[dict]) -> Optional[str]:
+    def size_violation(self, value: Any, base_type: str, constraint: Optional[dict]) -> Optional[str]:
         """Check *value* against a ``.size`` constraint (RFC 8610 §3.8.1).
 
         - ``tstr``: length of the UTF-8 encoding in bytes.
@@ -1018,6 +1017,7 @@ class CDDLParser:
             return None
         if 'error' in constraint:
             return constraint['error']
+        base_type = self.resolve_type_alias(base_type)  # text -> tstr, bytes -> bstr
         exact, lo, hi = constraint.get('exact'), constraint.get('min'), constraint.get('max')
         if base_type == 'uint':
             limit = exact if exact is not None else hi
@@ -1541,8 +1541,8 @@ class CBORAnalyzer:
                 continue
             stripped = name.strip()
             size_root = re.match(r'^(\w+)\s+\.size\s+(\([^)]*\)|\S+)$', stripped)
-            if size_root and size_root.group(1) in self._ROOT_PRIMITIVES:
-                base = size_root.group(1)
+            base = self.cddl.resolve_type_alias(size_root.group(1)) if size_root else None
+            if base in self._ROOT_PRIMITIVES:
                 if not self._check_primitive_type(value, base):
                     self.validation_errors.append(
                         f"Value does not match type '{type_name}' (expected {base})")
