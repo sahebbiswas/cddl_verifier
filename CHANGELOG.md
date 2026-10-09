@@ -113,6 +113,15 @@ public release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)); 
 - `tests/test_strict_decoding.py`: regression tests for scalars, maps, arrays,
   tags and nested data with trailing bytes, truncation at every prefix, and
   error offsets.
+- Internal CDDL parser (`cddl_verifier._cddl`, Phase A of
+  [#69](https://github.com/sahebbiswas/cddl_verifier/issues/69), [#109](https://github.com/sahebbiswas/cddl_verifier/issues/109)):
+  a lexer, a typed immutable syntax tree with source spans, a recursive-descent
+  parser for the RFC 8610 grammar as updated by RFC 9682, a canonical printer,
+  and the RFC 8610 prelude. `CDDLSyntaxError` (a `SchemaError`) reports line and
+  column. It runs in shadow mode: `CDDLParser` stores the tree in `ast` (or the
+  failure in `ast_error`) but nothing reads it yet, so validation and EDN output
+  are unchanged. See [docs/CDDL_AST_DESIGN.md](docs/CDDL_AST_DESIGN.md).
+- `tests/test_cddl_parser.py` for the new parser.
 
 ### Removed
 - `fix_indent_proper.py`, a one-off script that edited `cbor_cddl_analyzer.py`

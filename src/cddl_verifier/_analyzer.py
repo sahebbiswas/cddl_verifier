@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from ._cddl import parse_cddl
 from ._version import __version__
 
 # Import CBOR encoder/decoder from separate module
@@ -323,6 +324,11 @@ class CDDLParser:
         Maps ``$choice-name`` to the list of its alternatives.
     registered_params : dict
         Maps integer keyindex to human-readable keyname.
+    ast : cddl_verifier._cddl.ast.Schema or None
+        The typed syntax tree, built in shadow mode (#109): nothing reads it
+        yet. ``None`` when the schema does not parse; see ``ast_error``.
+    ast_error : Exception or None
+        Why ``ast`` could not be built, usually a ``CDDLSyntaxError``.
     """
     
     def __init__(self, cddl_content: str):
@@ -344,6 +350,16 @@ class CDDLParser:
         self.type_aliases: Dict[str, str] = {}  # Store simple type aliases (name = other_name)
         self.first_definition: Optional[str] = None  # First name defined in source order
         self.parse()
+
+        # Shadow mode (#109): build the typed AST alongside the legacy tables.
+        # Nothing reads it yet, so a failure here must not change behaviour.
+        self.ast = None
+        self.ast_error: Optional[Exception] = None
+        try:
+            self.ast = parse_cddl(cddl_content)
+        except Exception as exc:  # noqa: BLE001 - see comment above
+            self.ast_error = exc
+            logger.debug(f"CDDL AST parse failed (shadow mode): {exc}")
         
         # Add built-in CDDL primitive types
         self._add_builtin_types()
