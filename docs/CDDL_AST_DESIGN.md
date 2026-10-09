@@ -33,6 +33,7 @@ The validator and EDN generator then parse that text again, each in its own way:
 | `_split_choice`, `_check_value`, `resolve_type_choice_for_data` | `a / b / c` |
 | `_split_top_level_commas`, `_strip_closers` | map bodies, inline arrays |
 | `_parse_registered_param` | `&(name: N) => T` |
+| `EDNGenerator._generate_array`, `_generate_value` | `[ + T ]` inline arrays, `#6.N(T)` aliases |
 | `type_name.split('<')[0]` | generic parameters (discarded) |
 
 This causes recurring bugs that share one root cause. The parser can't
@@ -118,8 +119,15 @@ class Source:
   occurrence indicator or member key that belongs to it.
 - `span` is declared with `field(compare=False)`, so two trees with the same
   structure compare equal whatever their positions. Tests can then write the
-  expected trees without spans.
+  expected trees without spans. The `comment` field on group entries (§6) is
+  declared the same way, so node equality covers syntax only.
 - Prelude nodes have spans into `prelude.cddl` and `Source.name == "<prelude>"`.
+
+An empty schema, or one that holds only comments and whitespace, is valid
+(RFC 9682) and parses to `Schema(rules=())`. The parser does not reject it.
+`Validator` keeps its current behaviour for such a schema: without a
+`root_type` there is no default root, and `validate("", 1)` raises
+`SchemaError`.
 
 ## 5. Lexing
 
@@ -187,9 +195,11 @@ Map(group: Group)                                # { group }
 Array(group: Group)                              # [ group ]
 Unwrap(name: str, args: Tuple[Type1, ...])       # ~name
 ChoiceFrom(group: Group | None, name: str | None, args: ...)   # &( group ) or &name
-Tag(tag: Optional[int], tag_type: Optional[Type2], type: Type)  # #6.501(t), #6(t), #6.<uint>(t)
-Major(major: int, info: Optional[int])           # #0, #1.5, #7.25
+Tag(tag: HeadNumber, type: Type)                 # #6.501(t), #6(t), #6.<1..3>(t)
+Major(major: int, info: HeadNumber)              # #0, #1.5, #7.25, #7.<1..2>
 AnyItem()                                        # #
+
+HeadNumber = Union[int, Type, None]              # .N, .<type>, or absent
 ```
 
 - A `Type` always wraps its alternatives, even when there is only one. Consumers
@@ -201,6 +211,9 @@ AnyItem()                                        # #
   type, a rule, a generic parameter or undefined. That is #70's job. `$` and
   `$$` stay part of `name`.
 - A control's `op` has no leading dot. Any identifier is accepted.
+- `HeadNumber` is shared by `Tag` and `Major`. It holds the integer after the
+  dot, the full `Type` written between `<` and `>` (RFC 9682), or `None` when
+  there is no `.` part.
 
 ### Groups
 
@@ -272,6 +285,7 @@ order. There is no visitor class until a consumer needs one.
   [#82](https://github.com/sahebbiswas/cddl_verifier/issues/82) relies on this.
 - `printer.format_node(node)` writes canonical CDDL: single spaces, no
   comments. For every schema `s`, `parse(format(parse(s))) == parse(s)`.
+  This holds because equality ignores `span` and `comment` (§4).
   Phase B uses the printer to fill the legacy `'type'` strings.
 
 ## 8. What #70 builds on the AST
@@ -375,6 +389,7 @@ in the same commit:
 | `.cbor` | `extract_cbor_control` | `Control(op="cbor")` |
 | tags | `extract_cbor_tag`, `_peel_tagged_primitive`, string parts of `_with_tag` | `Tag` |
 | choices | `_split_choice`, string parts of `_check_value` | `Type.alternatives` |
+| EDN inline arrays and tags | the `[ + T ]` regex in `_generate_array`, `extract_cbor_tag` in `_generate_value` | `Array`, `Tag` |
 
 When Phase C ends, the `type` strings are gone and #69 is done. Name lookup
 (`resolve_type_alias`, `get_type`) still goes by name until #70 replaces it
@@ -391,6 +406,26 @@ for alt in field['node'].alternatives:
     if isinstance(alt, Control) and alt.op == "size":
         constraint = size_bound(alt.arg)   # IntLit | Range | Name
 ```
+
+### Example: EDN array elements before and after
+
+```python
+# Before: EDNGenerator._generate_array matches the field's type text
+array_match = re.match(r'^\[\s*([+*]?)\s*(.+?)\s*\]$', type_name)  # '[ + corim-locator-map ]'
+if array_match:
+    element_type = array_match.group(2).strip()               # 'corim-locator-map'
+
+# After: the field's type is an Array node, and the element type is a node too
+for alt in field['node'].alternatives:
+    if isinstance(alt, Array):
+        entry = alt.group.choices[0].entries[0]               # Member(occ=+, value=Type[Name ...])
+        element_node = entry.value                            # annotate with format_node(element_node)
+```
+
+The same change applies to tags. `_generate_value` currently looks up the
+alias text `#6.501(unsigned-corim-map)` and runs `extract_cbor_tag` on it.
+Instead it reads `Tag(tag=501, type=...)` from the rule's node and compares
+`tag` with the decoded tag number.
 
 ### Example: a CoRIM rule
 
