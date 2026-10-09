@@ -113,6 +113,10 @@ class TestArrayAndChoiceTags(TagTestCase):
             ("r = [* #6.7(uint)]", [(8, 1)], False),
         ])
 
+    def test_declared_array_error_names_element_rule(self):
+        result = validate("r = [* t]" + T + M, [WRONG_TAG])
+        self.assertEqual(result.errors[0], "Type 't' requires CBOR tag 7, got tag 8")
+
     def test_inline_array_field_elements(self):
         self.check([
             ("r = {x: [* m]}" + M, {"x": [(9, {"a": 1})]}, False),

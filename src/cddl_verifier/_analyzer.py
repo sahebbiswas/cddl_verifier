@@ -2149,13 +2149,16 @@ class CBORAnalyzer:
                     elif elem_valid is None:
                         # Look up the rule by name first: a tagged rule resolves
                         # to '#6.n(...)', whose first token is not a type name.
-                        nested_type_def = (self.cddl.get_type(elem_type, item)
-                                           or self.cddl.get_type(base_elem_type, item))
+                        elem_name = elem_type
+                        nested_type_def = self.cddl.get_type(elem_type, item)
+                        if not nested_type_def:
+                            elem_name = base_elem_type
+                            nested_type_def = self.cddl.get_type(base_elem_type, item)
                         if nested_type_def:
-                            logger.debug(f"{Colors.CDDL}[{item_breadcrumb}]{Colors.RESET} Recursing into nested type: {base_elem_type}")
-                            self._validate_type(item, nested_type_def, base_elem_type)
+                            logger.debug(f"{Colors.CDDL}[{item_breadcrumb}]{Colors.RESET} Recursing into nested type: {elem_name}")
+                            self._validate_type(item, nested_type_def, elem_name)
                         else:
-                            logger.warning(f"{Colors.WARNING}[{item_breadcrumb}]{Colors.RESET} Unknown element type: {base_elem_type}")
+                            logger.warning(f"{Colors.WARNING}[{item_breadcrumb}]{Colors.RESET} Unknown element type: {elem_type}")
 
                 self._pop_breadcrumb()
         
