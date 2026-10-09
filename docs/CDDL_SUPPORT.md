@@ -85,12 +85,31 @@ decoder described in [API.md](API.md#strict-single-item-decoding).
 ## Type choices
 
 ```cddl
-$kind /= option-a
+$kind /= option-a                  ; socket choice
 $kind /= option-b
+label = int / tstr                  ; inline choice
+version = 1 / 2 / "draft"           ; choice of literal values
+digest = bstr .size 32 / tagged-digest
 ```
 
-When the root type resolves to a type choice the tool attempts to auto-select the matching
-alternative based on the data structure.
+A value is valid when it matches any alternative. Inline choices are checked in
+map fields, array elements, inline arrays and at the root. Alternatives can be
+primitives with controls (`.size`, `.regexp`, `.ge`/`.gt`/`.le`/`.lt`), named
+rules, tagged rules and literals (integers, floats, quoted text, `true`,
+`false`). When nothing matches, the error lists each alternative and why it
+failed, for example:
+
+```text
+Field 'x' in 'r' matches none of uint / tstr (uint: expected uint, got 1.5; tstr: expected tstr, got 1.5)
+```
+
+The root rule may also be a primitive with controls (`id = tstr .size 2`,
+`n = uint .le 5`) or an inline choice (`n = uint / tstr`). Ranges as types
+(`0..255`) are not supported yet
+([#71](https://github.com/sahebbiswas/cddl_verifier/issues/71)).
+
+When the root type resolves to a socket choice the tool selects the matching
+alternative based on the data.
 
 ## IANA registered parameters and CoRIM
 

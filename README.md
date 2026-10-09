@@ -89,7 +89,7 @@ of the problem. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/b
 
 ## What is supported
 
-- CDDL maps, arrays, type aliases, groups, type choices (`/=`), sockets (`//=`),
+- CDDL maps, arrays, type aliases, groups, type choices (`a / b` and `/=`), sockets (`//=`),
   optional fields, occurrence indicators, IANA-registered parameters
   (`&(name: n)`), CBOR tags (`#6.n(...)`), `.cbor`, `.size`, `.regexp` and
   value-range controls on integers. Details: [docs/CDDL_SUPPORT.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CDDL_SUPPORT.md).
