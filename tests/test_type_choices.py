@@ -66,6 +66,16 @@ class TestFieldChoices(ChoiceTestCase):
             ('r = {x: c}\nc = tstr .regexp "a/b" / uint', {"x": "zz"}, False),
         ])
 
+    def test_embedded_cbor_alternative(self):
+        from cddl_verifier.cbor import encode
+        schema = "r = [p]\np = bstr .cbor m / tstr\nm = {a: uint}"
+        self.check([
+            (schema, [encode({"a": 1})], True),
+            (schema, [encode({"a": "x"})], False),   # was accepted: any bytes passed
+            (schema, [b"\xff"], False),              # does not decode
+            (schema, ["s"], True),
+        ])
+
     def test_literal_alternatives(self):
         schema = 'r = {x: c}\nc = 1 / 2 / "three" / 1.5'
         self.check([

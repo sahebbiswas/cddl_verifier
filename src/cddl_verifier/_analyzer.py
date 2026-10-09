@@ -2331,6 +2331,16 @@ class CBORAnalyzer:
         if literal is not None:
             return literal
 
+        cbor_control = self.cddl.extract_cbor_control(expr)
+        if cbor_control:  # 'bstr .cbor inner': decode the bytes, check the item inside
+            if not isinstance(value, bytes):
+                return [f"expected bstr (.cbor {cbor_control[1]}), got {type(value).__name__}"]
+            try:
+                nested = SimpleCBORDecoder(value).decode("cbor")
+            except Exception as exc:
+                return [f"embedded CBOR (.cbor {cbor_control[1]}) does not decode: {exc}"]
+            return self._check_value(nested, cbor_control[1], _depth + 1)
+
         if expr in self.cddl.types:
             return self._sandboxed_validate(value, self.cddl.types[expr], expr)
 
