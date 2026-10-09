@@ -171,8 +171,14 @@ class LegacyTables:
         if len(entries) == 1 and entries[0].occurrence is not None \
                 and entries[0].occurrence.text in ('+', '*'):
             occurrence = entries[0].occurrence.text
-        return {'fields': fields, 'type': 'array',
-                'element_types': element_types, 'occurrence': occurrence}
+        type_def = {'fields': fields, 'type': 'array',
+                    'element_types': element_types, 'occurrence': occurrence}
+        # '[ int, * tstr ]': elements past the last position repeat its type
+        last = len(entries) - 1
+        if last > 0 and last in element_types and entries[last].occurrence is not None \
+                and entries[last].occurrence.max is None:
+            type_def['repeat'] = last
+        return type_def
 
     # --------------------------------------------------------------- text
 

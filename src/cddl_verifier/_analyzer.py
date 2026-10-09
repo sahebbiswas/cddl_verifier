@@ -1624,7 +1624,7 @@ class CBORAnalyzer:
             # Keys allowed by computed-key members ('* label => value', #104)
             for key in sorted(extra_keys, key=repr):
                 for computed in type_def.get('computed_keys', ()):
-                    if self._check_value(key, computed['key']):
+                    if self._check_value(key, computed['key'], strict=True):
                         continue
                     extra_keys.discard(key)
                     for error in self._check_value(data[key], computed['type']):
@@ -1655,8 +1655,13 @@ class CBORAnalyzer:
 
             # Validate element types
             element_types = type_def.get('element_types', {})
-            # Single repeating element type uses index 0 as the pattern
-            repeating_type = element_types.get(0) if element_types else None
+            # Elements past the positional ones take the repeating entry's
+            # type ('[ int, * tstr ]': index 1). A one-entry array ('[ + tstr ]')
+            # repeats entry 0. Other extra elements are not checked (#72).
+            repeat = type_def.get('repeat')
+            if repeat is None and len(element_types) == 1:
+                repeat = next(iter(element_types))
+            repeating_type = element_types.get(repeat) if repeat is not None else None
 
             for i, item in enumerate(data):
                 self._push_breadcrumb(f"[{i}]")
@@ -1839,25 +1844,29 @@ class CBORAnalyzer:
         finally:
             self.validation_errors, self.breadcrumb = saved_errors, saved_breadcrumb
 
-    def _check_value(self, value: Any, expr: str, _depth: int = 0) -> List[str]:
+    def _check_value(self, value: Any, expr: str, _depth: int = 0,
+                     strict: bool = False) -> List[str]:
         """Validate *value* against a CDDL type expression; return the errors.
 
         Handles type choices (inline ``a / b`` and ``$socket`` choices), tags,
         literals, primitives with ``.size``/``.regexp``/``.ge``-style controls
         and named rules. Recorded validation state is not changed, so the
         caller decides how to report the result. Constructs this cannot check
-        (inline arrays and maps, ranges, generics) are accepted, as elsewhere.
+        (inline arrays and maps, ranges, generics) are accepted, as elsewhere,
+        unless *strict* is set: then they count as not matching. Computed map
+        keys use *strict*, so a key type that cannot be checked does not
+        allow every extra key.
         """
         expr = expr.strip()
         if _depth > 32:
-            return []  # alias cycle
+            return [f"cannot check '{expr}'"] if strict else []  # alias cycle
         alternatives = self._split_choice(expr)
         if len(alternatives) == 1 and expr in self.cddl.type_choices:
             alternatives = self.cddl.type_choices[expr]
         if len(alternatives) > 1:
             failures = []
             for alt in alternatives:
-                alt_errors = self._check_value(value, alt, _depth + 1)
+                alt_errors = self._check_value(value, alt, _depth + 1, strict)
                 if not alt_errors:
                     return []
                 failures.append(f"{alt}: {alt_errors[0]}")
@@ -1870,7 +1879,7 @@ class CBORAnalyzer:
                 return [f"requires CBOR tag {expected_tag}, but the data is not tagged"]
             if value[0] != expected_tag:
                 return [f"requires CBOR tag {expected_tag}, got tag {value[0]}"]
-            return self._check_value(value[1], inner, _depth + 1)
+            return self._check_value(value[1], inner, _depth + 1, strict)
 
         literal = self._literal_errors(value, expr)
         if literal is not None:
@@ -1884,7 +1893,7 @@ class CBORAnalyzer:
                 nested = SimpleCBORDecoder(value).decode("cbor")
             except Exception as exc:
                 return [f"embedded CBOR (.cbor {cbor_control[1]}) does not decode: {exc}"]
-            return self._check_value(nested, cbor_control[1], _depth + 1)
+            return self._check_value(nested, cbor_control[1], _depth + 1, strict)
 
         if expr in self.cddl.types:
             return self._sandboxed_validate(value, self.cddl.types[expr], expr)
@@ -1892,7 +1901,7 @@ class CBORAnalyzer:
         name = re.split(r'\s', expr, maxsplit=1)[0]
         alias = self.cddl.type_aliases.get(name)
         if alias is not None and alias != name and name == expr:
-            return self._check_value(value, alias, _depth + 1)  # follow one alias step
+            return self._check_value(value, alias, _depth + 1, strict)  # follow one alias step
 
         base = self.cddl.resolve_type_alias(name)
         if base in self._ROOT_PRIMITIVES:
@@ -1901,6 +1910,8 @@ class CBORAnalyzer:
         type_def = self.cddl.get_type(expr, value)
         if type_def:
             return self._sandboxed_validate(value, type_def, expr)
+        if strict:
+            return [f"cannot check '{expr}'"]
         logger.debug(f"Cannot check type expression '{expr}'; accepting value")
         return []
 

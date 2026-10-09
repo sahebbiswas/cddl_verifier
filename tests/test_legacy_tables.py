@@ -78,6 +78,16 @@ class TestArrays(unittest.TestCase):
         self.assertEqual(p.types['a'], {'type': 'array', 'fields': {},
                                         'element_types': {0: 'tstr'}, 'occurrence': '+'})
 
+    def test_repeating_entry_after_positional_ones(self):
+        p = CDDLParser("r = [ int, * tstr ]")
+        self.assertEqual(p.types['r']['repeat'], 1)
+        self.assertTrue(validate("r = [ int, * tstr ]", [1]).valid)
+        self.assertTrue(validate("r = [ int, * tstr ]", [1, "a", "b"]).valid)
+        result = validate("r = [ int, * tstr ]", [1, "a", 2])
+        self.assertIn("expected tstr", result.errors[0])
+        self.assertNotIn('repeat', CDDLParser("r = [ int, tstr ]").types['r'])
+        self.assertNotIn('repeat', CDDLParser("r = [ int, 1*2 tstr ]").types['r'])
+
     def test_positional_elements(self):
         p = CDDLParser("a = [ min: int / null, max: int, extra ]")
         self.assertEqual(p.types['a']['element_types'],
@@ -194,6 +204,22 @@ class TestKeyTypeMembers(unittest.TestCase):
         self.assertIn("Value for key 'x'", result.errors[0])
         result = validate(schema, {"a": 1, 5: 2})
         self.assertIn("Unknown fields", result.errors[0])
+
+    def test_uncheckable_computed_key_matches_nothing(self):
+        # A key type the validator cannot check yet must not let every extra
+        # key through (range keys are #71; '&(n: c)' with a named value is #70).
+        for schema in ("m = { a: int, 0..255 => tstr }",
+                       "m = { a: int, &(n: c) => tstr }\nc = 1"):
+            with self.subTest(schema=schema):
+                result = validate(schema, {"a": 1, "foo": "x"})
+                self.assertFalse(result.valid)
+                self.assertIn("Unknown fields", result.errors[0])
+
+    def test_any_and_socket_keys(self):
+        self.assertTrue(validate("m = { * any => int }", {"x": 1, 2: 3}).valid)
+        socket = "m = { * $k => int }\n$k /= tstr\n$k /= uint"
+        self.assertTrue(validate(socket, {"x": 1, 2: 3}).valid)
+        self.assertFalse(validate(socket, {1.5: 1}).valid)
 
     def test_computed_key_table_entry(self):
         p = CDDLParser("m = { * tstr => any, ? int => { a: int } }")
