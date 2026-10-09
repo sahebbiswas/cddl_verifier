@@ -2,5 +2,6 @@
 include CONTRIBUTING.md TESTING.md requirements.txt
 recursive-include docs *.md
 recursive-include tests *.py
+include .github/scripts/check_version_bump.py
 recursive-include cddl-schemas *.cddl *.edn
 recursive-include test-data *.cbor
