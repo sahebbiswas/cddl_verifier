@@ -380,9 +380,10 @@ As implemented in #70 (`_cddl/resolve.py`):
 `Validator("r = {")` succeeds. With the AST parser it raises a
 `CDDLSyntaxError`, which is a `SchemaError` and therefore a `ValueError`, so
 callers that already catch `SchemaError` are covered. The change is made in
-one step, the switch at the end of Phase B, and recorded in CHANGELOG as a
-**Behaviour change**. Under the README versioning policy, that is a `0.x`
-minor bump: it ships in 0.2.0, since 0.1.0 had already been released. The
+one step, the switch at the end of Phase B, and marked as a
+**Behaviour change** in its pull request. Under the versioning policy in
+CONTRIBUTING.md, that is a `0.x` minor bump: it ships in 0.2.0, since 0.1.0 had
+already been released. The
 public API does not change shape, so no major bump is needed.
 
 **Comment-derived field names stay.** `0: tstr ; name` names field `0`
@@ -396,7 +397,7 @@ does. It will be deprecated later
 
 Each phase is its own sub-issue of #69 and its own PR. The existing test suite
 passes unchanged at the end of every phase, except for tests that the phase
-deliberately changes and lists in CHANGELOG.
+deliberately changes and lists in its pull request.
 
 ### Phase A: parser and AST, run in shadow mode ([#109](https://github.com/sahebbiswas/cddl_verifier/issues/109))
 
@@ -425,7 +426,7 @@ deliberately changes and lists in CHANGELOG.
   every bundled schema. Every difference is either fixed or listed as an
   intended fix. The differences we expect are the parse-shape bugs #100
   (inline maps) and #104 (`key => type` members and bogus aliases). Each one
-  that is fixed is recorded in CHANGELOG and its issue closed.
+  that is fixed is listed in the pull request and its issue closed.
 - Switch on strict parsing: `CDDLSyntaxError` propagates from `Validator`.
   This is a behaviour change (§9).
 - Delete the line parser, `_parse_registered_param`, `_parse_type_choice`,
@@ -489,7 +490,7 @@ As implemented in #111, in two steps by agreement:
 - **#115 (after #70).** Remove the text from the tables and pass nodes through
   every function.
 
-Behaviour that changed because the grammar now decides (see CHANGELOG):
+Behaviour that changed because the grammar now decides (see PR #116):
 names may contain dots (`coswid.tag-id` was cut at the dot, and `lo..hi` is
 one name, not a range); `.regexp` strings are decoded (`"\\."` is the regex
 `\.`); byte-string literals (`h'01'`) and controls on literals are checked;

@@ -36,7 +36,7 @@ dev = ["pytest>=8", "build", "twine"]
 Homepage = "https://github.com/sahebbiswas/cddl_verifier"
 Source = "https://github.com/sahebbiswas/cddl_verifier"
 Issues = "https://github.com/sahebbiswas/cddl_verifier/issues"
-Changelog = "https://github.com/sahebbiswas/cddl_verifier/blob/main/CHANGELOG.md"
+"Release notes" = "https://github.com/sahebbiswas/cddl_verifier/releases"
 
 [project.scripts]
 cddl-verify = "cddl_verifier.cli:main"

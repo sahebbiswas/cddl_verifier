@@ -102,7 +102,7 @@ CDDL_VERIFIER_REQUIRE_INSTALLED=1 /tmp/venv/bin/python -m pytest tests/
 │   ├── _cbor.py            ← CBOR encoder/decoder (internal)
 │   ├── _json_codec.py      ← JSON conversion (internal)
 │   └── _version.py         ← single source of the project version
-├── CHANGELOG.md
+├── CONTRIBUTING.md         ← pull request checklist, versioning, releases
 ├── MANIFEST.in             ← extra files (tests, test data, docs) for the sdist
 ├── pyproject.toml          ← package metadata + pytest configuration
 ├── cddl-schemas/, test-data/  ← sample schemas and CBOR used by the tests
@@ -126,14 +126,17 @@ addopts   = "--tb=short -q"
 
 `.github/workflows/ci.yml` runs on pushes and pull requests to `main`:
 
-1. **build** builds the sdist and wheel and runs `twine check --strict`.
-2. **test** installs the wheel on Python 3.9–3.13 (and the sdist on 3.11),
+1. **version-bump** (pull requests only) checks that `_version.py` is exactly
+   one SemVer step above the version on `main`, using
+   `.github/scripts/check_version_bump.py` (see CONTRIBUTING.md).
+2. **build** builds the sdist and wheel and runs `twine check --strict`.
+3. **test** installs the wheel on Python 3.9–3.13 (and the sdist on 3.11),
    checks `import cddl_verifier`, `cddl-verify --help` and `--version` from
    outside the checkout, then runs the suite with
    `CDDL_VERIFIER_REQUIRE_INSTALLED=1`.
 
 `.github/workflows/publish_pypi.yml` repeats the build and installed-package
-checks before publishing; see the README's *Releasing* section.
+checks before publishing; see *Releasing* in CONTRIBUTING.md.
 
 ---
 
@@ -163,9 +166,9 @@ Tests of internals import from the private modules, for example
 pytest discovers any `TestCase` subclass automatically; no registration in a
 `run_tests()` function is needed.
 
-When a change alters behaviour, also bump `__version__` in
-`src/cddl_verifier/_version.py`, add a `CHANGELOG.md` entry, and update the
-README/docs (see the README's *Versioning* section).
+Every pull request also bumps `__version__` in
+`src/cddl_verifier/_version.py` and updates the README/docs it affects (see
+[CONTRIBUTING.md](CONTRIBUTING.md)).
 `tests/test_strict_decoding.py` checks that the CLI reports that version.
 
 Decoder error tests should assert the specific `CBORDecodeError` subclass and its
