@@ -62,6 +62,19 @@ class TestQuery(unittest.TestCase):
         self.assertIsNone(query.inline_array("[ a: int ]"))
         self.assertTrue(query.is_array("[ a, b ]"))
 
+    def test_cbor_control_through_a_chain(self):
+        self.assertEqual(query.cbor_control("bstr .cbor uint .size 1"), ("bstr", "uint"))
+        self.assertEqual(query.cbor_control("bstr .size 1 .cbor uint"), ("bstr", "uint"))
+        self.assertIsNone(query.cbor_control("tstr .cbor uint"))
+
+    def test_long_text_is_not_cached(self):
+        long_text = "tstr / " * 300 + "uint"
+        query.parse(long_text)
+        cached = query._parse_cached.cache_info().currsize
+        query.parse(long_text)
+        self.assertEqual(query._parse_cached.cache_info().currsize, cached)
+        self.assertEqual(len(query.alternatives(long_text)), 301)
+
     def test_names(self):
         self.assertEqual(query.names("#6.1(r@a) / [ + b ]"), {"r@a", "b"})
         self.assertEqual(query.names("not ( a type"), set())
@@ -121,6 +134,24 @@ class TestBehaviour(unittest.TestCase):
         schema = "r = { p: [ int, tstr ] }"
         self.assertFalse(validate(schema, {"p": 1}).valid)
         self.assertTrue(validate(schema, {"p": [1, "a"]}).valid)
+
+    def test_embedded_cbor_is_checked_everywhere(self):
+        from cddl_verifier.cbor import encode
+        bad, good, too_big = encode(True), encode(5), encode(300)
+        cases = [
+            ("r = bstr .cbor uint .size 1", lambda d: encode(d)),          # root
+            ("r = { a: bstr .cbor uint .size 1 }", lambda d: {"a": d}),   # field
+            ("r = { a: bstr .cbor uint }", lambda d: {"a": d}),          # field, no chain
+            ("r = [ * bstr .cbor uint .size 1 ]", lambda d: [d]),         # array element
+            ("r = { a: [ * bstr .cbor uint ] }", lambda d: {"a": [d]}),   # inline array
+            ("r = { a: bstr .cbor uint .size 1 / tstr }", lambda d: {"a": d}),  # choice
+        ]
+        for schema, wrap in cases:
+            with self.subTest(schema=schema):
+                self.assertFalse(validate(schema, wrap(bad)).valid)
+                self.assertTrue(validate(schema, wrap(good)).valid)
+                if ".size 1" in schema:
+                    self.assertFalse(validate(schema, wrap(too_big)).valid)
 
     def test_dotted_range_hint(self):
         result = validate("r = { a: tstr .size (lo..hi) }\nlo = 1\nhi = 2", {"a": "ab"})

@@ -76,6 +76,10 @@ public release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)); 
     was checked against its first alternative only
   - a field typed with an inline array of several entries (`p: [ int, tstr ]`)
     accepted a non-array value
+  - embedded CBOR (`bstr .cbor T`) is checked in every context: a map field or
+    array element whose inner type was not a named map or array (`bstr .cbor
+    uint`) accepted any embedded item, and controls chained after `.cbor`
+    (`bstr .cbor uint .size 1`) apply to the bytes as well
   - inline maps in a choice got synthetic names like `r1`; they are `r@1`,
     like other synthetic names
   - `lo..hi` is one name (names may contain dots); a `.size` argument naming

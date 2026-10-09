@@ -1388,7 +1388,11 @@ class CBORAnalyzer:
                                     logger.debug(f"{Colors.CDDL}[{field_breadcrumb}]{Colors.RESET} Validating nested CBOR against: {inner_type}")
                                     self._validate_type(nested_data, nested_type_def, inner_type)
                                 else:
-                                    logger.warning(f"{Colors.WARNING}[{field_breadcrumb}]{Colors.RESET} Could not find type definition for: {inner_type}")
+                                    # A primitive or other expression ('bstr .cbor uint')
+                                    for error in self._check_value(nested_data, inner_type):
+                                        self.validation_errors.append(
+                                            f"Embedded CBOR in field '{field_name}' of '{type_name}' "
+                                            f"does not match '{inner_type}': {error}")
                             except Exception as e:
                                 logger.error(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Failed to decode nested CBOR: {e}")
                                 self.validation_errors.append(f"Failed to decode nested CBOR in field '{field_name}': {e}")
@@ -1517,7 +1521,9 @@ class CBORAnalyzer:
                             ('', None) if query.is_array(field_type) else None)
                         if array_match:
                             # It's an inline array definition
-                            quantifier, element_type = array_match  # '+', '*' or 
+                            # quantifier is '+', '*' or ''; element_type is None
+                            # for an array with several entries
+                            quantifier, element_type = array_match
                             
                             logger.debug(f"{Colors.CDDL}[{field_breadcrumb}]{Colors.RESET} Field is inline array: [{quantifier} {element_type}]")
                             
@@ -1559,6 +1565,12 @@ class CBORAnalyzer:
                                             for choice_error in self._check_value(item, resolved_elem):
                                                 self.validation_errors.append(
                                                     f"Element [{i}] of field '{field_name}' {choice_error}")
+                                            self._pop_breadcrumb()
+                                            continue
+                                        if self.cddl.extract_cbor_control(resolved_elem):
+                                            for cbor_error in self._check_value(item, resolved_elem):
+                                                self.validation_errors.append(
+                                                    f"Element [{i}] of field '{field_name}' {cbor_error}")
                                             self._pop_breadcrumb()
                                             continue
                                         base_elem = query.head(resolved_elem) if resolved_elem else ''
@@ -1678,6 +1690,13 @@ class CBORAnalyzer:
                         for choice_error in self._check_value(item, resolved_elem):
                             self.validation_errors.append(
                                 f"Array element [{i}] of '{type_name}' {choice_error}")
+                        self._pop_breadcrumb()
+                        continue
+                    if resolved_elem and self.cddl.extract_cbor_control(resolved_elem):
+                        # 'bstr .cbor T': decode the bytes and check the item inside
+                        for cbor_error in self._check_value(item, resolved_elem):
+                            self.validation_errors.append(
+                                f"Array element [{i}] of '{type_name}' {cbor_error}")
                         self._pop_breadcrumb()
                         continue
                     # Extract base type and any .size constraint
@@ -1867,7 +1886,9 @@ class CBORAnalyzer:
                 nested = SimpleCBORDecoder(value).decode("cbor")
             except Exception as exc:
                 return [f"embedded CBOR (.cbor {cbor_control[1]}) does not decode: {exc}"]
-            return self._check_value(nested, cbor_control[1], _depth + 1, strict)
+            # 'bstr .cbor uint .size 1': the bytes' own controls apply too
+            errors = self._primitive_errors(value, 'bstr', expr)
+            return errors or self._check_value(nested, cbor_control[1], _depth + 1, strict)
 
         if expr in self.cddl.types:
             return self._sandboxed_validate(value, self.cddl.types[expr], expr)

@@ -31,13 +31,26 @@ class Parsed(NamedTuple):
         return self.text[node.span.start:node.span.end].strip()
 
 
-@lru_cache(maxsize=8192)
+#: Longer type text is parsed each time instead of being kept in the
+#: process-wide cache, so large or many distinct schemas cannot pin memory.
+_CACHE_MAX_TEXT = 1024
+
+
 def parse(text: str) -> Optional[Parsed]:
     """The parsed type for *text*, or ``None`` if it is not one type expression."""
+    if len(text) > _CACHE_MAX_TEXT:
+        return _parse(text)
+    return _parse_cached(text)
+
+
+def _parse(text: str) -> Optional[Parsed]:
     try:
         return Parsed(parse_type_expr(text), text)
     except (CDDLSyntaxError, RecursionError):
         return None
+
+
+_parse_cached = lru_cache(maxsize=4096)(_parse)
 
 
 def _single(text: str):
@@ -115,14 +128,21 @@ def tag(text: str) -> Optional[Tuple[int, str]]:
 
 
 def cbor_control(text: str) -> Optional[Tuple[str, str]]:
-    """``(base, inner text)`` for ``bstr .cbor inner`` / ``bytes .cbor inner``."""
+    """``(base, inner text)`` for ``bstr .cbor inner`` / ``bytes .cbor inner``.
+
+    Chained controls are looked through, so ``bstr .cbor uint .size 1`` gives
+    ``('bstr', 'uint')``: the embedded item must still be checked.
+    """
     single = _single(text)
     if single is None:
         return None
     parsed, node = single
-    if (isinstance(node, Control) and node.op == 'cbor' and isinstance(node.target, Name)
-            and node.target.name in ('bstr', 'bytes')):
-        return node.target.name, parsed.slice(node.arg)
+    base, ops = _unwrap_controls(node)
+    if not isinstance(base, Name) or base.name not in ('bstr', 'bytes'):
+        return None
+    for op, arg in ops:
+        if op == 'cbor':
+            return base.name, parsed.slice(arg)
     return None
 
 
