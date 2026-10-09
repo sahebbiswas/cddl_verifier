@@ -126,14 +126,17 @@ addopts   = "--tb=short -q"
 
 `.github/workflows/ci.yml` runs on pushes and pull requests to `main`:
 
-1. **build** builds the sdist and wheel and runs `twine check --strict`.
-2. **test** installs the wheel on Python 3.9–3.13 (and the sdist on 3.11),
+1. **version-bump** (pull requests only) checks that `_version.py` is exactly
+   one SemVer step above the version on `main`, using
+   `.github/scripts/check_version_bump.py` (see CONTRIBUTING.md).
+2. **build** builds the sdist and wheel and runs `twine check --strict`.
+3. **test** installs the wheel on Python 3.9–3.13 (and the sdist on 3.11),
    checks `import cddl_verifier`, `cddl-verify --help` and `--version` from
    outside the checkout, then runs the suite with
    `CDDL_VERIFIER_REQUIRE_INSTALLED=1`.
 
 `.github/workflows/publish_pypi.yml` repeats the build and installed-package
-checks before publishing; see the README's *Releasing* section.
+checks before publishing; see *Releasing* in CONTRIBUTING.md.
 
 ---
 

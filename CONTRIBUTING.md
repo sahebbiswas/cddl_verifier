@@ -32,6 +32,16 @@ releases are cut from `main` whenever it is stable enough (see
 - Bump it once per pull request, against the version on `main`, not once per
   commit. If `main` moves to the same version before you merge, bump again on
   top of it.
+- CI enforces this. The *Version bumped* job checks that the pull request's
+  version is exactly one step above the version on `main`: patch + 1, minor + 1
+  with patch 0, or major + 1 with the rest 0. It reads the `main` version from
+  the first parent of GitHub's test merge commit, so it needs no stored copy
+  and no extra fetch. Whether the step is the right one is left to review.
+- GitHub computes that merge commit when the check runs and does not re-run the
+  check when `main` moves. To stop two pull requests from merging with the same
+  version, turn on branch protection for `main` with *Require status checks to
+  pass* (including *Version bumped*) and *Require branches to be up to date
+  before merging*.
 - Pick the part to bump by the largest change in the pull request:
 
   | Bump | When | Example |
