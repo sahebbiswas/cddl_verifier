@@ -137,7 +137,8 @@ of the problem. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/b
 | [docs/](https://github.com/sahebbiswas/cddl_verifier/tree/main/docs) | EDN formatting, tag notation, and annotation notes |
 | [docs/CDDL_AST_DESIGN.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CDDL_AST_DESIGN.md) | Contributor design: CDDL AST, parser and migration plan |
 | [TESTING.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/TESTING.md) | Running and writing tests, CI setup |
-| [CHANGELOG.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/CHANGELOG.md) | Release history |
+| [CONTRIBUTING.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/CONTRIBUTING.md) | Pull request checklist, versioning and releases |
+| [Releases](https://github.com/sahebbiswas/cddl_verifier/releases) | Release notes |
 
 ## Development
 
@@ -151,40 +152,17 @@ pytest
 The package source is in `src/cddl_verifier/`. Modules whose names start with
 an underscore are internal. See [TESTING.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/TESTING.md).
 
-## Versioning
+## Versioning and releases
 
-The project follows [Semantic Versioning 2.0.0](https://semver.org/). While the
-major version is `0`, a minor bump (`0.x.0`) may contain breaking changes and a
-patch bump (`0.x.y`) is for backward-compatible fixes. The stable surface is the
-public API above (`cddl_verifier`, `cddl_verifier.cbor`,
-`cddl_verifier.json_codec`) and the `cddl-verify` CLI; underscore modules are not
-covered.
-
-- The version is defined once, as `__version__` in
-  [`src/cddl_verifier/_version.py`](https://github.com/sahebbiswas/cddl_verifier/blob/main/src/cddl_verifier/_version.py).
-  `pyproject.toml` reads it, `cddl_verifier.__version__` exposes it, and
-  `cddl-verify --version` prints it. Don't repeat the version number elsewhere.
-- A change that alters behaviour bumps the version and adds an entry to
-  [CHANGELOG.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/CHANGELOG.md) (format: [Keep a Changelog](https://keepachangelog.com/)).
-  Follow-up commits before a release go into the same, still-unreleased version.
-- Update this README and `docs/` in the same change as the code they describe.
-
-## Releasing
-
-Releases go to PyPI through [`publish_pypi.yml`](https://github.com/sahebbiswas/cddl_verifier/blob/main/.github/workflows/publish_pypi.yml),
-which uses PyPI Trusted Publishing (no API tokens are stored).
-
-1. Set the version in `_version.py`, date its CHANGELOG section, and merge to `main`.
-2. Optional dry run: start the workflow manually (Actions → *Publish to PyPI /
-   TestPyPI* → *Run workflow*); manual runs only upload to TestPyPI. A version can
-   only be uploaded once per index, so use a pre-release such as `0.1.1rc1` for
-   trial uploads. A release fails if its version is already on TestPyPI.
-3. Publish a GitHub release with tag `vX.Y.Z` matching the version. The workflow
-   builds and checks the distributions, tests the wheel and sdist, uploads to
-   TestPyPI, installs from there, and then uploads to PyPI.
-
-One-time setup: on pypi.org and test.pypi.org, add a (pending) trusted publisher
-for repository `sahebbiswas/cddl_verifier`, workflow `publish_pypi.yml`, and
-environment `pypi` / `testpypi` respectively (or "any" environment). GitHub
-creates the environments on first use; add a required reviewer to `pypi` to gate
-production uploads.
+Every pull request merged to `main` bumps the version in
+[`src/cddl_verifier/_version.py`](https://github.com/sahebbiswas/cddl_verifier/blob/main/src/cddl_verifier/_version.py),
+following [Semantic Versioning 2.0.0](https://semver.org/): a patch bump for
+fixes and docs, a minor bump for new features, and a major bump only for an
+incompatible change to the public API (`cddl_verifier`, `cddl_verifier.cbor`,
+`cddl_verifier.json_codec` and the `cddl-verify` CLI). While the major version
+is `0`, a breaking change is a minor bump. Releases are cut from `main` when it
+is stable, so not every version is published. Each release's notes are on the
+[GitHub releases page](https://github.com/sahebbiswas/cddl_verifier/releases);
+there is no changelog file. See
+[CONTRIBUTING.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/CONTRIBUTING.md)
+for the rules and the release steps.

@@ -552,7 +552,7 @@ class TestStrictParsing(unittest.TestCase):
         self.assertIn(f"{schema}:3:1: expected a type", result.stdout + result.stderr)
 
     def test_non_standard_forms_are_rejected(self):
-        # Accepted by the line-based parser before #110; see CHANGELOG.
+        # Accepted by the line-based parser before #110; see PR #114.
         for text in ("r = { &(a: 0) => uint ? }",     # '?' after the type
                      "r = #6.1([",                   # unterminated rule
                      "any = *"):                     # occurrence without a type
