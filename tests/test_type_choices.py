@@ -76,6 +76,21 @@ class TestFieldChoices(ChoiceTestCase):
             (schema, ["s"], True),
         ])
 
+    def test_inline_cbor_and_tag_alternatives_in_field(self):
+        from cddl_verifier.cbor import encode
+        cbor_field = "r = {x: bstr .cbor m / tstr}\nm = {a: uint}"
+        self.check([
+            (cbor_field, {"x": "s"}, True),
+            (cbor_field, {"x": encode({"a": 1})}, True),
+            (cbor_field, {"x": encode({"a": "z"})}, False),
+            ("r = {x: #6.7(uint) / tstr}", {"x": "s"}, True),
+            ("r = {x: #6.7(uint) / tstr}", {"x": (7, 1)}, True),
+            ("r = {x: #6.7(uint) / tstr}", {"x": (8, 1)}, False),
+            ("r = [#6.7(uint) / tstr]", ["s"], True),
+            ("n = #6.7(uint) / tstr", "s", True),
+            ("n = #6.7(uint) / tstr", (8, 1), False),
+        ])
+
     def test_literal_alternatives(self):
         schema = 'r = {x: c}\nc = 1 / 2 / "three" / 1.5'
         self.check([

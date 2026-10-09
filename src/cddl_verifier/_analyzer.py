@@ -1093,7 +1093,8 @@ class CDDLParser:
                 depth -= 1
                 if depth == 0:
                     inner_type = text[match.end():pos].strip()
-                    if not inner_type:
+                    # The tag must be the whole expression: '#6.7(m) / tstr' is a choice
+                    if not inner_type or text[pos + 1:].strip():
                         return None
                     tag_num = int(match.group(1))
                     logger.debug(f"Extracted CBOR tag {tag_num} with inner type: {inner_type}")
@@ -1840,7 +1841,9 @@ class CBORAnalyzer:
                     type_mismatch = False
                     
                     # Check for .cbor control operator (bytes containing CBOR data)
-                    cbor_control = self.cddl.extract_cbor_control(field_type) if field_type else None
+                    # An inline choice ('bstr .cbor m / tstr') is checked as a whole below
+                    cbor_control = (self.cddl.extract_cbor_control(field_type)
+                                    if field_type and len(self._split_choice(field_type)) == 1 else None)
                     if cbor_control:
                         base_type, inner_type = cbor_control
                         logger.debug(f"{Colors.CDDL}[{field_breadcrumb}]{Colors.RESET} Field has .cbor control: {base_type} .cbor {inner_type}")
