@@ -1,6 +1,6 @@
 # CDDL AST and migration design
 
-Status: **proposed** ([#87](https://github.com/sahebbiswas/cddl_verifier/issues/87)).
+Status: **accepted** ([#87](https://github.com/sahebbiswas/cddl_verifier/issues/87)).
 This document is for contributors. It defines the typed syntax tree that
 [#69](https://github.com/sahebbiswas/cddl_verifier/issues/69) introduces, the
 rules every parser and consumer must follow, and the order in which the current
@@ -318,7 +318,8 @@ public API does not change shape, so no major bump is needed.
 "name" in EDN output. This isn't RFC behaviour, but it is how the current
 parser works and the EDN tests depend on it. The AST keeps the comment on the
 entry (`comment`), and the legacy adapter uses it the way the current parser
-does.
+does. It will be deprecated later
+([#108](https://github.com/sahebbiswas/cddl_verifier/issues/108)).
 
 ## 10. Migration plan
 
@@ -326,7 +327,7 @@ Each phase is its own sub-issue of #69 and its own PR. The existing test suite
 passes unchanged at the end of every phase, except for tests that the phase
 deliberately changes and lists in CHANGELOG.
 
-### Phase A: parser and AST, run in shadow mode
+### Phase A: parser and AST, run in shadow mode ([#109](https://github.com/sahebbiswas/cddl_verifier/issues/109))
 
 - Add `_cddl/` (lexer, AST, parser, printer, errors, prelude).
 - `CDDLParser.__init__` also calls `parse_cddl()` and stores the result in
@@ -342,7 +343,7 @@ deliberately changes and lists in CHANGELOG.
     parse with `ast_error is None`
   - printer round trip on all of the above
 
-### Phase B: the AST becomes the only parser
+### Phase B: the AST becomes the only parser ([#110](https://github.com/sahebbiswas/cddl_verifier/issues/110))
 
 - Replace the line-based `parse()` with an adapter that builds the same dicts
   (`types`, `type_aliases`, `groups`, `type_choices`, `socket_extensions`,
@@ -360,7 +361,7 @@ deliberately changes and lists in CHANGELOG.
   `_parse_socket_extension`, `_split_top_level_commas` and `_strip_closers`,
   along with the temporary parity test.
 
-### Phase C: consumers read nodes instead of strings
+### Phase C: consumers read nodes instead of strings ([#111](https://github.com/sahebbiswas/cddl_verifier/issues/111))
 
 Each legacy dict entry gains a `node` next to its `type` string. Consumers move
 one construct at a time, and the string re-parser for that construct is deleted
@@ -430,14 +431,15 @@ to recognise it.
 | #86 | The conformance matrix gets a "parser/AST" column, filled in from Phase A's tests. |
 | #94, #99, #100, #104 | Fixed by, or made simple by, Phases B and C and #70. |
 
-## 12. Open questions
+## 12. Decisions
 
-1. **When strict parsing starts.** This document turns it on at the end of
-   Phase B. Turning it on in Phase A would be simpler, but it would ship a
-   behaviour change before the AST has replaced anything.
-2. **Comment-derived field names.** They are kept for compatibility (§9).
-   Should they be deprecated once EDN can use `registered_label` and bareword
-   keys everywhere?
-3. **Unknown control operators.** The parser accepts any `.name`. #70 should
-   reject unknown ones as schema errors. Until #70, they are kept and ignored,
-   as they are now.
+These were open questions in the first draft. They were agreed in review of
+PR #107.
+
+1. **Strict parsing starts at the end of Phase B**, not in Phase A, so no
+   behaviour change ships before the AST has replaced the line parser.
+2. **Comment-derived field names are kept for now and deprecated later**, once
+   EDN takes labels from `registered_label` and bareword keys everywhere
+   ([#108](https://github.com/sahebbiswas/cddl_verifier/issues/108)).
+3. **Unknown control operators are accepted and ignored**, as they are today,
+   until #70 rejects them as schema errors.
