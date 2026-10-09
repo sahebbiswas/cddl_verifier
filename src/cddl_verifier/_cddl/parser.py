@@ -13,10 +13,13 @@ from .ast import (AnyItem, Array, BytesLit, ChoiceFrom, Control, FloatLit, Group
 from .errors import CDDLSyntaxError, describe
 from .lexer import Lexer, Token
 
-#: Deepest nesting of brackets, parentheses and generic arguments accepted.
-#: Each level uses several Python frames, so this stays well below the
-#: interpreter's recursion limit.
-MAX_DEPTH = 100
+#: Deepest nesting of brackets, parentheses, tags and generic arguments
+#: accepted. Everything that recurses over the tree (the parser, the printer,
+#: and the dataclass ``__eq__``/``__hash__``/``__repr__``) uses several Python
+#: frames per level, and on Python 3.9-3.11 C calls count toward the recursion
+#: limit too. ``==`` and ``repr()`` fail at about 54 levels there, so 32 keeps
+#: room for the caller's own frames. Real schemas nest far less (CoRIM: ~8).
+MAX_DEPTH = 32
 
 _VALUE_KINDS = ('INT', 'FLOAT', 'TEXT', 'BYTES')
 _ASSIGN = ('=', '/=', '//=')

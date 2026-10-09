@@ -393,9 +393,24 @@ class TestErrors(unittest.TestCase):
         copy = pickle.loads(pickle.dumps(cm.exception))
         self.assertEqual(str(copy), str(cm.exception))
 
+    # (opener, closer, nesting levels per repetition)
+    NESTINGS = [("[", "]", 1), ("{ a: ", "}", 1), ("(", ")", 1), ("#6.1(", ")", 1),
+                ("x<", ">", 1), ("[ + (", ") ]", 2), ("{ a: [", "] }", 2)]
+
+    def test_trees_at_the_limit_are_usable(self):
+        # Everything that recurses over the tree must work at MAX_DEPTH.
+        for opener, closer, per in self.NESTINGS:
+            n = MAX_DEPTH // per
+            text = "r = " + opener * n + "int" + closer * n
+            with self.subTest(opener=opener):
+                schema = parse_cddl(text)
+                self.assertEqual(parse_cddl(text), schema)
+                hash(schema.rules[0].type)
+                repr(schema)
+                self.assertGreater(len(list(walk(schema))), n)
+                self.assertEqual(parse_cddl(format_node(schema)), schema)
+
     def test_nesting_limit(self):
-        ok = "r = " + "[" * MAX_DEPTH + "]" * MAX_DEPTH
-        parse_cddl(ok)
         for opener, closer in (("[", "]"), ("{ a: ", "}"), ("(", ")"), ("#6.1(", ")"), ("x<", ">")):
             deep = "r = " + opener * (MAX_DEPTH + 1) + "int" + closer * (MAX_DEPTH + 1)
             with self.subTest(opener=opener):

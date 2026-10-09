@@ -290,9 +290,12 @@ array elements such as `[ + T ]`, which parse as `GroupRef`.
   Parsing stops at the first error. Recovery and reporting several errors are
   left for #75.
 - Nesting depth (brackets, parentheses, tags and generic arguments) is
-  limited to 100 and the parser raises `CDDLSyntaxError` past that, so hostile
-  input can't cause a `RecursionError`. Each level uses several Python frames,
-  so 100 stays well below the interpreter's default recursion limit. The fuzzing work in
+  limited to 32 and the parser raises `CDDLSyntaxError` past that, so hostile
+  input can't cause a `RecursionError`, in the parser or in anything that
+  later recurses over the tree. The printer and the dataclass `==`, `hash()`
+  and `repr()` use several Python frames per level, and on Python 3.9–3.11 C
+  calls count toward the recursion limit too: `==` and `repr()` fail at about
+  54 levels there. Real schemas nest far less (CoRIM about 8 levels). The fuzzing work in
   [#82](https://github.com/sahebbiswas/cddl_verifier/issues/82) relies on this.
 - `printer.format_node(node)` writes canonical CDDL: single spaces, no
   comments. For every schema `s`, `parse(format(parse(s))) == parse(s)`.
