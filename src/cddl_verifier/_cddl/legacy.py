@@ -51,6 +51,10 @@ class LegacyTables:
         self.first_definition: Optional[str] = None
         #: Names given to inline maps and to structures inside tags (``r@a``).
         self.synthetic_types: set = set()
+        # Generic instances (name, args): the synthetic type built for each,
+        # and those being expanded now, so recursive generics terminate.
+        self._instance_names: Dict[tuple, str] = {}
+        self._expanding: set = set()
         self._rule_names = {rule.name for rule in schema.rules}
 
         for rule in schema.rules:
@@ -237,16 +241,26 @@ class LegacyTables:
         if isinstance(node, Map):
             return Name(self._synthetic(node, path))
         if isinstance(node, Name) and node.args:
-            expanded = self._expand(Type((node,)))
-            structure = _structure(expanded, instance=True)
-            if structure is not None:
-                # 'non-empty<{ ... }>', 'pair<int, tstr>': a structure of its own
-                return Name(self._synthetic(structure, path))
-            if expanded.alternatives != (node,):
-                lifted = self._lift(expanded, path)
-                if len(lifted.alternatives) == 1:
-                    return lifted.alternatives[0]
-                return Paren(lifted)
+            key = (node.name, node.args)
+            known = self._instance_names.get(key)
+            if known is not None:
+                return Name(known)  # 'tree<T> = { ? l: tree<T> }' refers to itself
+            if key in self._expanding:
+                return node  # a recursive choice ('list<T> = nil / [T, list<T>]')
+            self._expanding.add(key)
+            try:
+                expanded = self._expand(Type((node,)))
+                structure = _structure(expanded, instance=True)
+                if structure is not None:
+                    # 'non-empty<{ ... }>', 'pair<int, tstr>': a structure of its own
+                    return Name(self._synthetic(structure, path, key))
+                if expanded.alternatives != (node,):
+                    lifted = self._lift(expanded, path)
+                    if len(lifted.alternatives) == 1:
+                        return lifted.alternatives[0]
+                    return Paren(lifted)
+            finally:
+                self._expanding.discard(key)
         if isinstance(node, Tag):
             inner = node.type.alternatives
             if len(inner) == 1 and isinstance(inner[0], (Map, Array)):
@@ -259,7 +273,7 @@ class LegacyTables:
             return Array(_map_group(node.group, lambda v, i: self._lift(v, f'{path}@{i}')))
         return node
 
-    def _synthetic(self, structure, path: str) -> str:
+    def _synthetic(self, structure, path: str, instance: Optional[tuple] = None) -> str:
         # The validator splits type text on '.' and whitespace: keep them out.
         path = re.sub(r'[^A-Za-z0-9_@$-]', '_', path)
         if path.endswith('-'):
@@ -270,6 +284,8 @@ class LegacyTables:
             name, n = f'{path}-{n}', n + 1
         self.synthetic_types.add(name)
         self.types[name] = {}  # reserve the name before recursing
+        if instance is not None:
+            self._instance_names[instance] = name
         self.types[name] = self._structure_def(structure, name)
         return name
 

@@ -71,7 +71,8 @@ name is. The module is not loaded, so these names match any value
 Generic rules are instantiated where they are used: `pair<uint, tstr>`, with
 `pair<A, B> = [A, B]`, checks a two-element array of an unsigned integer and a
 text string, as a rule, a map field or an array element. `opt<uint>`, with
-`opt<T> = T / nil`, is the choice `uint / nil`. A control around a generic
+`opt<T> = T / nil`, is the choice `uint / nil`. Recursive generics such as
+`tree<T> = { v: T, ? l: tree<T> }` are checked at every depth. A control around a generic
 structure is not enforced: `non-empty<{ a: int }>`, with
 `non-empty<M> = (M) .and ({ + any => any })`, is checked as the map
 `{ a: int }` ([#120](https://github.com/sahebbiswas/cddl_verifier/issues/120)).

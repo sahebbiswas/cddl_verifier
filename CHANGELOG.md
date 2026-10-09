@@ -58,7 +58,8 @@ public release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)). 
   ([#70](https://github.com/sahebbiswas/cddl_verifier/issues/70)).
   `pair<uint, tstr>`, with `pair<A, B> = [A, B]`, is checked as a two-element
   array of those types as a rule, map field or array element, and
-  `opt<uint>`, with `opt<T> = T / nil`, as `uint / nil`. Before, only a
+  `opt<uint>`, with `opt<T> = T / nil`, as `uint / nil`. Recursive generics
+  (`tree<T> = { v: T, ? l: tree<T> }`) are supported. Before, only a
   generic with a single map or array argument (`non-empty<{ ... }>`) was read,
   as that argument; other generic references were not checked.
 - `a = ( b )` is a group only when `b` is a group; otherwise it is the type

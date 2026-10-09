@@ -299,6 +299,23 @@ class TestTablesUseTheModel(unittest.TestCase):
         self.assertTrue(validate(schema, [[1, "a"], [2, "b"]]).valid)
         self.assertFalse(validate(schema, [[1, "a"], [2, 3]]).valid)
 
+    def test_recursive_generics(self):
+        # Each instance gets one synthetic structure, so building the tables
+        # terminates (review of #122). An unused recursive generic is fine too.
+        tree = "r = tree<uint>\ntree<T> = { v: T, ? l: tree<T> }"
+        self.assertTrue(validate(tree, {"v": 1, "l": {"v": 2, "l": {"v": 3}}}).valid)
+        self.assertFalse(validate(tree, {"v": 1, "l": {"v": 2, "l": {"v": "x"}}}).valid)
+        CDDLParser("tree<T> = { v: T, ? l: tree<T> }")
+        nested = "r = [ * tree<uint> ]\ntree<T> = [ T, * tree<T> ]"
+        self.assertTrue(validate(nested, [[1], [2, [3]]]).valid)
+        self.assertFalse(validate(nested, [[1], ["x"]]).valid)
+        # a recursive choice is expanded once and then left as a reference
+        # (a choice with an inline array is not checked yet: #106)
+        chain = "r = list<uint>\nlist<T> = nil / [x: T, rest: list<T>]"
+        self.assertEqual(CDDLParser(chain).type_aliases['r'],
+                         'nil / [ x: uint, rest: nil / [ x: uint, rest: list<uint> ] ]')
+        self.assertTrue(validate(chain, [1, [2, None]]).valid)
+
     def test_generic_alias_rule(self):
         schema = "r = opt<uint>\nopt<T> = T / nil"
         self.assertEqual(CDDLParser(schema).type_aliases['r'], 'uint / nil')
