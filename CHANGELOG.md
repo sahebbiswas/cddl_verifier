@@ -56,6 +56,34 @@ public release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)); 
   `TypeError`.
 
 ### Fixed
+- The validator and EDN generator no longer pick type text apart with regular
+  expressions ([#111](https://github.com/sahebbiswas/cddl_verifier/issues/111),
+  Phase C of [#69](https://github.com/sahebbiswas/cddl_verifier/issues/69));
+  `_cddl/query.py` answers from the parsed type. Fixed along the way:
+  - names containing dots (`coswid.tag-id`) were cut at the dot when checking
+    a field or element type
+  - **Behaviour change:** `.regexp` strings are decoded like any CDDL text
+    string, so `"a\\.b"` is the regex `a\.b` (a literal dot), as in
+    RFC 8610. Before, the raw text was used, so `"\\d"` matched a backslash
+    followed by `d`.
+  - byte-string literals (`h'0102'`, `b64'AQI'`, `'x'`) and literals with
+    controls (`"t" .size 1`, `1 .ge 0`) are checked at the root and in choices.
+    Before, a choice with such an alternative accepted any value
+    ([#106](https://github.com/sahebbiswas/cddl_verifier/issues/106) for these
+    alternatives). Literal field and element types are still unchecked
+    ([#73](https://github.com/sahebbiswas/cddl_verifier/issues/73)).
+  - an alias to a choice used with a control (`m .size 2`, `m = bstr / tstr`)
+    was checked against its first alternative only
+  - a field typed with an inline array of several entries (`p: [ int, tstr ]`)
+    accepted a non-array value
+  - embedded CBOR (`bstr .cbor T`) is checked in every context: a map field or
+    array element whose inner type was not a named map or array (`bstr .cbor
+    uint`) accepted any embedded item, and controls chained after `.cbor`
+    (`bstr .cbor uint .size 1`) apply to the bytes as well
+  - inline maps in a choice got synthetic names like `r1`; they are `r@1`,
+    like other synthetic names
+  - `lo..hi` is one name (names may contain dots); a `.size` argument naming
+    an undefined `lo..hi` now suggests writing `lo .. hi`
 - Inline map types are validated wherever they appear: as a field type
   (`a: { b: uint }`), as an array element, in a choice, and inside a tag
   (`#6.9({ x: int })`). Before, they were not checked at all

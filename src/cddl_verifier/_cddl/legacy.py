@@ -191,7 +191,7 @@ class LegacyTables:
             alts = node.alternatives
             if len(alts) == 1:
                 return Type((self._lift(alts[0], path),))
-            return Type(tuple(self._lift(a, f'{path}{i}') for i, a in enumerate(alts)))
+            return Type(tuple(self._lift(a, f'{path}@{i}') for i, a in enumerate(alts)))
         if isinstance(node, Map):
             return Name(self._synthetic(node, path))
         if isinstance(node, Name) and len(node.args) == 1 and isinstance(node.args[0], Map):
@@ -211,11 +211,13 @@ class LegacyTables:
 
     def _synthetic(self, structure, path: str) -> str:
         # The validator splits type text on '.' and whitespace: keep them out.
-        path = re.sub(r'[^A-Za-z0-9_@$~-]', '_', path)
+        path = re.sub(r'[^A-Za-z0-9_@$-]', '_', path)
+        if path.endswith('-'):
+            path += '_'  # a trailing '-' is not part of a CDDL name
         name = path
         n = 2
         while name in self.types or name in self._rule_names:
-            name, n = f'{path}~{n}', n + 1
+            name, n = f'{path}-{n}', n + 1
         self.synthetic_types.add(name)
         self.types[name] = {}  # reserve the name before recursing
         self.types[name] = self._structure_def(structure, name)
