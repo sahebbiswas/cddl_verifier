@@ -14,6 +14,7 @@ and the standard-library **unittest** runner with no code changes required.
 | `tests/test_canonical_and_json.py` | Canonical encoding, JSON ↔ CBOR conversion |
 | `tests/test_deterministic_encoding.py` | RFC 8949 §4.2 deterministic encoding golden vectors |
 | `tests/test_size_control.py` | RFC 8610 `.size` on `tstr`/`bstr`/`uint`, arguments, nested and root contexts |
+| `tests/test_tag_validation.py` | CBOR tag checks for tagged and untagged rules at the root, in fields, arrays and choices |
 | `tests/test_strict_decoding.py` | Strict single-item decoding, error offsets, CLI `--version` |
 | `tests/test_set_nested.py` | `set_nested` path creation and errors |
 | `tests/test_cbor_diag_dump_extra.py` | Diagnostic dump edge cases and truncated input |
