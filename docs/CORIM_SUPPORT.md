@@ -188,7 +188,8 @@ $class-id-type-choice /= tagged-oid-type
 - CBOR tag notation parsed
 - Underlying types extracted
 - Type references maintained
-- Tag validation not performed (acceptable for schema parsing)
+- Tag numbers are validated: a tagged rule requires its tag, and an untagged
+  rule rejects tagged data
 
 ## Usage with CoRIM Files
 
@@ -203,6 +204,11 @@ cddl-verify corim.cddl corim_data.cbor --show-types
 ```bash
 cddl-verify corim.cddl corim_data.cbor --type corim-map
 ```
+
+`--type` must match how the data is tagged. A CoRIM wrapped in tag 501 (as in
+`test-data/minimal-corim.cbor`) validates against `tagged-unsigned-corim-map`
+or `corim`, not against the untagged `corim-map`, which rejects it with
+"expects an untagged map, but the data has CBOR tag 501".
 
 ### Generating EDN for CoRIM
 

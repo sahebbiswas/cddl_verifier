@@ -44,6 +44,17 @@ aliases = [ + tstr ]   ; one or more (empty array fails validation)
 tagged-corim = #6.501(unsigned-corim-map)
 ```
 
+Tag numbers are checked wherever a rule is used: at the root, in map fields, in
+array elements and in `$socket` choices.
+
+- A tagged rule requires its tag: `tagged-corim` rejects untagged data and
+  data with any other tag. Nested tags (`#6.1(#6.2(m))`) must appear in order.
+- An untagged rule rejects tagged data: `unsigned-corim-map` rejects
+  `501({...})` with "expects an untagged map, but the data has CBOR tag 501".
+  Validate tagged data against the tagged rule.
+- Tags around primitives (`#6.1(tstr .size 2)`) are checked, and then the
+  value inside is checked against the primitive and its controls.
+
 ## Nested CBOR (`.cbor` control operator)
 
 When a field is typed as `bytes .cbor inner-type`, the EDN generator automatically

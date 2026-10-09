@@ -118,10 +118,18 @@ class TestValidate(unittest.TestCase):
             validate("", 1)
 
     def test_corim_root_type(self):
-        result = validate(SCHEMAS / "unified.cddl",
-                          (DATA / "minimal-corim.cbor").read_bytes(),
-                          root_type="corim-map")
-        self.assertTrue(result.valid, result.errors)
+        # minimal-corim.cbor is tagged 501, so it matches the tagged rule
+        raw = (DATA / "minimal-corim.cbor").read_bytes()
+        for root_type in ("tagged-unsigned-corim-map", "corim"):
+            with self.subTest(root_type=root_type):
+                result = validate(SCHEMAS / "unified.cddl", raw, root_type=root_type)
+                self.assertTrue(result.valid, result.errors)
+
+    def test_untagged_corim_rule_rejects_tagged_data(self):
+        raw = (DATA / "minimal-corim.cbor").read_bytes()
+        result = validate(SCHEMAS / "unified.cddl", raw, root_type="corim-map")
+        self.assertFalse(result.valid)
+        self.assertIn("CBOR tag 501", result.errors[0])
 
     def test_primitive_root(self):
         self.assertTrue(validate("n = uint", 1).valid)

@@ -1080,12 +1080,24 @@ class CDDLParser:
         
         E.g., '#6.501(unsigned-corim-map)' -> (501, 'unsigned-corim-map')
         """
-        match = re.match(r'#6\.(\d+)\(([^)]+)\)', type_string.strip())
-        if match:
-            tag_num = int(match.group(1))
-            inner_type = match.group(2)
-            logger.debug(f"Extracted CBOR tag {tag_num} with inner type: {inner_type}")
-            return (tag_num, inner_type)
+        text = type_string.strip()
+        match = re.match(r'#6\.(\d+)\(', text)
+        if not match:
+            return None
+        # Find the matching ')' so nested tags work: '#6.1(#6.2(m))' -> (1, '#6.2(m)')
+        depth = 0
+        for pos in range(match.end() - 1, len(text)):
+            if text[pos] == '(':
+                depth += 1
+            elif text[pos] == ')':
+                depth -= 1
+                if depth == 0:
+                    inner_type = text[match.end():pos].strip()
+                    if not inner_type:
+                        return None
+                    tag_num = int(match.group(1))
+                    logger.debug(f"Extracted CBOR tag {tag_num} with inner type: {inner_type}")
+                    return (tag_num, inner_type)
         return None
     
     def resolve_type_choice_for_data(self, choice_name: str, cbor_data: Any, validator=None) -> Optional[str]:
@@ -1266,12 +1278,12 @@ class CDDLParser:
                 if alternatives:
                     return self.get_type(alternatives[0], cbor_data)
         
-        # Try extracting from CBOR tag notation
-        tag_info = self.extract_cbor_tag(type_name)
+        # Try extracting from CBOR tag notation (directly, or at the end of an alias chain)
+        tag_info = self.extract_cbor_tag(type_name) or self.extract_cbor_tag(resolved_name)
         if tag_info:
             tag_num, inner_type = tag_info
             logger.debug(f"  Extracted from tag notation: inner type = {inner_type}")
-            return self.get_type(inner_type, cbor_data)
+            return self._with_tag(self.get_type(inner_type, self._untag(cbor_data, tag_num)), tag_num)
         
         # Try extracting .cbor control operator
         cbor_control = self.extract_cbor_control(type_name)
@@ -1292,7 +1304,7 @@ class CDDLParser:
             if tag_info:
                 tag_num, inner_type = tag_info
                 logger.debug(f"  Type is alias to tag notation {tag_num}: inner type = {inner_type}")
-                return self.get_type(inner_type, cbor_data)
+                return self._with_tag(self.get_type(inner_type, self._untag(cbor_data, tag_num)), tag_num)
 
         # If the name (or its resolved alias) is a known CDDL primitive there is
         # no structured type definition — that is correct and expected, not an error.
@@ -1305,6 +1317,28 @@ class CDDLParser:
         logger.debug(f"  Type not found: {type_name}")
         return None
     
+    @staticmethod
+    def _with_tag(type_def: Optional[Dict], tag_num: int) -> Optional[Dict]:
+        """Return a copy of *type_def* that records the CBOR tag it must carry.
+
+        ``cbor_tags`` lists the expected tags outermost first, so
+        ``#6.1(#6.2(m))`` gives ``(1, 2)``. The stored definition is not
+        modified, because untagged references share it.
+        """
+        if type_def is None:
+            return None
+        tagged = dict(type_def)
+        tagged['cbor_tags'] = (tag_num,) + tuple(type_def.get('cbor_tags', ()))
+        return tagged
+
+    @staticmethod
+    def _untag(cbor_data: Any, tag_num: int) -> Any:
+        """Strip tag *tag_num* from decoded data if present (for choice resolution)."""
+        if (isinstance(cbor_data, tuple) and len(cbor_data) == 2
+                and cbor_data[0] == tag_num):
+            return cbor_data[1]
+        return cbor_data
+
     def get_field_name(self, type_name: str, key: Any) -> Optional[str]:
         """Get field name for a given key in a type."""
         type_def = self.get_type(type_name)
@@ -1705,6 +1739,12 @@ class CBORAnalyzer:
         logger.info("No type specified, skipping validation")
         return True
     
+    @staticmethod
+    def _is_tagged(data: Any) -> bool:
+        """True for a decoded CBOR tag, which is a ``(tag_number, value)`` tuple."""
+        return (isinstance(data, tuple) and len(data) == 2
+                and isinstance(data[0], int) and not isinstance(data[0], bool))
+
     def _validate_type(self, data: Any, type_def: Dict, type_name: str, cbor_offset: int = None) -> bool:
         """Validate data against a specific type definition.
         
@@ -1717,12 +1757,29 @@ class CBORAnalyzer:
         breadcrumb = self._get_breadcrumb()
         offset_str = f"{Colors.CBOR}[@{cbor_offset:04x}]{Colors.RESET} " if cbor_offset is not None else ""
         
-        # Unwrap CBOR tagged data (tag_num, value) tuples
-        cbor_tag = None
-        if isinstance(data, tuple) and len(data) == 2 and isinstance(data[0], int):
-            cbor_tag = data[0]
+        # Tags: the data must carry exactly the tags the rule declares
+        # (``r = #6.501(m)``), outermost first. Any other tag is rejected.
+        for expected_tag in type_def.get('cbor_tags', ()):
+            if not self._is_tagged(data):
+                error_msg = (f"Type '{type_name}' requires CBOR tag {expected_tag}, "
+                             f"but the data is not tagged")
+                logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
+                self.validation_errors.append(error_msg)
+                return False
+            if data[0] != expected_tag:
+                error_msg = (f"Type '{type_name}' requires CBOR tag {expected_tag}, "
+                             f"got tag {data[0]}")
+                logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
+                self.validation_errors.append(error_msg)
+                return False
             data = data[1]
-            logger.debug(f"{Colors.CBOR}[{breadcrumb}] Unwrapped CBOR tag {cbor_tag}{Colors.RESET}")
+            logger.debug(f"{Colors.CBOR}[{breadcrumb}] Unwrapped expected CBOR tag {expected_tag}{Colors.RESET}")
+        if self._is_tagged(data):
+            error_msg = (f"Type '{type_name}' expects an untagged {type_def.get('type', 'value')}, "
+                         f"but the data has CBOR tag {data[0]}")
+            logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
+            self.validation_errors.append(error_msg)
+            return False
         
         logger.debug(f"{offset_str}{Colors.CDDL}[{breadcrumb}]{Colors.RESET} Validating type '{type_name}'")
         logger.debug(f"  Expected: {type_def['type']}, Got: {type(data).__name__}")
@@ -1822,6 +1879,13 @@ class CBORAnalyzer:
                                 logger.error(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Failed to decode nested CBOR: {e}")
                                 self.validation_errors.append(f"Failed to decode nested CBOR in field '{field_name}': {e}")
                     
+                    # Tagged primitive (``x: #6.1(uint)``): check the tag, then the value inside
+                    field_type, value, tag_error = self._peel_tagged_primitive(field_type, value)
+                    if tag_error:
+                        self.validation_errors.append(f"Field '{field_name}' in '{type_name}' {tag_error}")
+                        self._pop_breadcrumb()
+                        continue
+
                     # field_type may contain user alias + annotation (e.g. 'my-text .size 16')
                     # Resolve alias first, then extract base type.
                     _resolved = self.cddl.resolve_type_alias(field_type) if field_type else field_type
@@ -1903,7 +1967,8 @@ class CBORAnalyzer:
                     elif field_type and not field_type.startswith('$'):
                         # It's a structured type - check basic structure
                         nested_type_def = self.cddl.get_type(field_type)
-                        if nested_type_def:
+                        # Tagged rules are checked (tag, then structure) by _validate_type below
+                        if nested_type_def and not nested_type_def.get('cbor_tags'):
                             if nested_type_def['type'] == 'map' and not isinstance(value, dict):
                                 type_mismatch = True
                                 logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected map, got {type(value).__name__}")
@@ -2053,6 +2118,11 @@ class CBORAnalyzer:
                 # Check element type: per-index pattern takes precedence over repeating
                 elem_type = element_types.get(i) if i in element_types else repeating_type
                 if elem_type:
+                    elem_type, item, tag_error = self._peel_tagged_primitive(elem_type, item)
+                    if tag_error:
+                        self.validation_errors.append(f"Array element [{i}] of '{type_name}' {tag_error}")
+                        self._pop_breadcrumb()
+                        continue
                     # Resolve user alias first
                     resolved_elem = self.cddl.resolve_type_alias(elem_type) if elem_type else elem_type
                     # Extract base type and any .size constraint
@@ -2077,7 +2147,10 @@ class CBORAnalyzer:
                             self.validation_errors.append(error_msg)
                     # elem_valid is None → structured type (map, array, choice)
                     elif elem_valid is None:
-                        nested_type_def = self.cddl.get_type(base_elem_type, item)
+                        # Look up the rule by name first: a tagged rule resolves
+                        # to '#6.n(...)', whose first token is not a type name.
+                        nested_type_def = (self.cddl.get_type(elem_type, item)
+                                           or self.cddl.get_type(base_elem_type, item))
                         if nested_type_def:
                             logger.debug(f"{Colors.CDDL}[{item_breadcrumb}]{Colors.RESET} Recursing into nested type: {base_elem_type}")
                             self._validate_type(item, nested_type_def, base_elem_type)
@@ -2088,6 +2161,29 @@ class CBORAnalyzer:
         
         return len(self.validation_errors) == 0
     
+    def _peel_tagged_primitive(self, type_str: str, value: Any) -> Tuple[str, Any, Optional[str]]:
+        """Strip the tags of a tagged primitive type such as ``#6.7(uint)``.
+
+        Tagged structured types are checked by :meth:`_validate_type`; this
+        covers tags around primitives, which have no type definition.
+
+        Returns ``(inner_type, inner_value, error)``. When *type_str* is not a
+        tagged primitive both are returned unchanged with ``error`` ``None``.
+        On a missing or wrong tag ``error`` describes it.
+        """
+        if not type_str or self.cddl.get_type(type_str) is not None:
+            return type_str, value, None
+        while True:
+            tag_info = self.cddl.extract_cbor_tag(self.cddl.resolve_type_alias(type_str))
+            if not tag_info:
+                return type_str, value, None
+            expected_tag, inner = tag_info
+            if not self._is_tagged(value):
+                return type_str, value, f"requires CBOR tag {expected_tag}, but the data is not tagged"
+            if value[0] != expected_tag:
+                return type_str, value, f"requires CBOR tag {expected_tag}, got tag {value[0]}"
+            type_str, value = inner.strip(), value[1]
+
     def _check_primitive_type(self, value, type_name):
         """Check whether value matches the named CDDL primitive type.
 

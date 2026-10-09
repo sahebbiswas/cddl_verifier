@@ -39,6 +39,17 @@ public release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)); 
   `TypeError`.
 
 ### Fixed
+- **Behaviour change:** an untagged rule no longer accepts data wrapped in
+  any CBOR tag. `validate("m = { a: uint }", 999({"a": 1}))` was valid and is now
+  rejected; validate tagged data against the tagged rule (for example
+  `tagged-unsigned-corim-map` or `corim` instead of `corim-map` for a
+  tag-501 CoRIM) ([#93](https://github.com/sahebbiswas/cddl_verifier/issues/93)).
+- Tagged rules are enforced everywhere they are used, not only at the root:
+  a missing or wrong tag is rejected in map fields, array elements and
+  `$socket` choices. A field typed with a tagged rule (`x: t`, `x: #6.7(m)`)
+  no longer rejects correctly tagged data. Array elements typed with a tagged
+  rule (`[* t]`) were never checked before. Tags around primitives
+  (`x: #6.7(uint)`) are checked, as are nested tags (`#6.1(#6.2(m))`).
 - `.size` follows RFC 8610 §3.8.1
   ([#67](https://github.com/sahebbiswas/cddl_verifier/issues/67)). On `tstr`
   it counts UTF-8 bytes instead of characters. On `uint` it is enforced
