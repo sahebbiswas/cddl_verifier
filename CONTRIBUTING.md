@@ -68,11 +68,14 @@ Publishing (no API tokens are stored).
 
 1. Pick a commit on `main` that is green and stable. Its `_version.py` is the
    version released, so no version change is needed.
-2. Optional dry run: start the workflow manually (Actions → *Publish to PyPI /
-   TestPyPI* → *Run workflow*); manual runs only upload to TestPyPI. A version
-   can be uploaded only once per index, so use a pre-release version, such as
-   `0.2.1rc1`, for trial uploads. A release fails if its version is already on
-   TestPyPI.
+2. Optional dry run: manual runs of the workflow (Actions → *Publish to PyPI /
+   TestPyPI* → *Run workflow*) upload only to TestPyPI, but a version can be
+   uploaded only once per index, and a release fails if its version is already
+   on TestPyPI. So never run it on `main` itself. Instead, push a temporary
+   branch from the chosen commit that changes `_version.py` to a pre-release of
+   the version (`0.2.1` → `0.2.1rc1`, then `rc2`, …), run the workflow on that
+   branch, and delete the branch afterwards without merging it. The version
+   check runs only on pull requests, so the branch needs no pull request.
 3. Publish a GitHub release with tag `vX.Y.Z` matching the version, on that
    commit. Use *Generate release notes* (since the previous `v` tag) and put
    the **Behaviour change:** items from the merged pull requests at the top.

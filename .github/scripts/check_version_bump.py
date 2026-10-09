@@ -20,17 +20,31 @@ _SEMVER = re.compile(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)')
 
 
 def read_version(path):
-    """The ``__version__`` string assigned in the Python file at *path*."""
+    """The ``__version__`` string assigned in the Python file at *path*.
+
+    The file must assign ``__version__`` exactly once, at top level, to a
+    string literal, so the value checked is the one the package exposes.
+    """
     with open(path, encoding='utf-8') as f:
         tree = ast.parse(f.read(), path)
-    for node in tree.body:
-        if (isinstance(node, ast.Assign) and len(node.targets) == 1
-                and isinstance(node.targets[0], ast.Name)
-                and node.targets[0].id == '__version__'
-                and isinstance(node.value, ast.Constant)
-                and isinstance(node.value.value, str)):
-            return node.value.value
-    raise SystemExit(f"error: no __version__ = '...' assignment in {path}")
+    assignments = [node for node in tree.body if _assigns_version(node)]
+    if len(assignments) != 1:
+        raise SystemExit(f"error: {path} must assign __version__ exactly once at top "
+                         f"level, found {len(assignments)}")
+    value = assignments[0].value
+    if not (isinstance(value, ast.Constant) and isinstance(value.value, str)):
+        raise SystemExit(f"error: __version__ in {path} must be a string literal")
+    return value.value
+
+
+def _assigns_version(node):
+    if isinstance(node, ast.Assign):
+        targets = node.targets
+    elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
+        targets = [node.target]
+    else:
+        return False
+    return any(isinstance(t, ast.Name) and t.id == '__version__' for t in targets)
 
 
 def parse(version, where):
