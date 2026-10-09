@@ -1104,7 +1104,7 @@ class CBORAnalyzer:
             # Primitives (with controls), literals and inline choices are
             # checked by the same code as map fields and array elements.
             first = query.head(stripped)
-            if (len(self._split_choice(stripped)) > 1
+            if (self._checked_as_whole(stripped)
                     or self.cddl.resolve_type_alias(first) in self._ROOT_PRIMITIVES
                     or self._literal_errors(value, stripped) is not None):
                 errors = self._check_value(value, stripped)
@@ -1414,7 +1414,8 @@ class CBORAnalyzer:
                     _resolved = self.cddl.resolve_type_alias(field_type) if field_type else field_type
 
                     # Inline type choice ('c = uint / tstr', 'x: m / n'): any alternative may match
-                    if _resolved and len(self._split_choice(_resolved)) > 1:
+                    # (or a parenthesized type, whose controls apply to each alternative)
+                    if self._checked_as_whole(_resolved):
                         for choice_error in self._check_value(value, _resolved):
                             self.validation_errors.append(
                                 f"Field '{field_name}' in '{type_name}' {choice_error}")
@@ -1566,7 +1567,7 @@ class CBORAnalyzer:
                                     else:
                                         # Regular element type: primitive (with .size) or named type
                                         resolved_elem = self.cddl.resolve_type_alias(element_type)
-                                        if len(self._split_choice(resolved_elem)) > 1:
+                                        if self._checked_as_whole(resolved_elem):
                                             for choice_error in self._check_value(item, resolved_elem):
                                                 self.validation_errors.append(
                                                     f"Element [{i}] of field '{field_name}' {choice_error}")
@@ -1691,7 +1692,7 @@ class CBORAnalyzer:
                         continue
                     # Resolve user alias first
                     resolved_elem = self.cddl.resolve_type_alias(elem_type) if elem_type else elem_type
-                    if resolved_elem and len(self._split_choice(resolved_elem)) > 1:
+                    if self._checked_as_whole(resolved_elem):
                         for choice_error in self._check_value(item, resolved_elem):
                             self.validation_errors.append(
                                 f"Array element [{i}] of '{type_name}' {choice_error}")
@@ -1815,7 +1816,7 @@ class CBORAnalyzer:
         errors = []
         size_error = self.cddl.size_violation(value, base, self.cddl.extract_size_constraint(expr))
         if size_error:
-            errors.append(f".size {size_error}")
+            errors.append(size_error if size_error.startswith('.size') else f".size {size_error}")
         if base in ('uint', 'int', 'nint', 'float', 'float16', 'float32', 'float64'):
             vrange = self.cddl.extract_value_range(expr)
             if vrange:
@@ -1870,6 +1871,10 @@ class CBORAnalyzer:
                 failures.append(f"{alt}: {alt_errors[0]}")
             return [f"matches none of {' / '.join(alternatives)} ({'; '.join(failures)})"]
 
+        paren = self._paren_parts(expr)
+        if paren is not None:
+            return self._paren_errors(value, expr, paren, _depth, strict)
+
         tag_info = self.cddl.extract_cbor_tag(expr)
         if tag_info:
             expected_tag, inner = tag_info
@@ -1914,6 +1919,58 @@ class CBORAnalyzer:
             return [f"cannot check '{expr}'"]
         logger.debug(f"Cannot check type expression '{expr}'; accepting value")
         return []
+
+    def _paren_errors(self, value: Any, expr: str, paren: 'query.ParenParts',
+                      _depth: int, strict: bool) -> List[str]:
+        """Check *value* against a parenthesized type (``(T)``, ``(a / b) .ctl x``).
+
+        The value must match one alternative inside the parentheses and,
+        for that alternative, satisfy every control outside them:
+        ``(uint / tstr) .size 1`` is ``uint .size 1 / tstr .size 1``. A
+        control cannot be applied to a range alternative (``(1..5) .size 1``),
+        so there only the range is checked.
+        """
+        failures = []
+        for alt in paren.inner:
+            errors = self._check_value(value, alt, _depth + 1, strict)
+            base = query.without_controls(alt)
+            if not errors and base is not None:
+                for control in paren.controls:
+                    errors = self._check_value(value, f"{base} .{control.op} {control.arg_text}",
+                                               _depth + 1, strict)
+                    if errors:
+                        break
+            if not errors:
+                return []
+            failures.append((alt, errors[0]))
+        if len(failures) == 1:
+            return [failures[0][1]]
+        return [f"matches none of {expr} ("
+                f"{'; '.join(f'{alt}: {error}' for alt, error in failures)})"]
+
+    def _paren_parts(self, expr: str) -> Optional['query.ParenParts']:
+        """*expr* as a parenthesized type, if it is one.
+
+        A named choice under a control counts too: with ``m = uint / nil``,
+        ``m .size 1`` is ``(uint / nil) .size 1``.
+        """
+        paren = query.paren(expr)
+        if paren is not None:
+            return paren
+        controls = query.controls(expr)
+        if not controls:
+            return None
+        resolved = self.cddl.resolve_type_alias(query.head(expr))
+        alternatives = self._split_choice(resolved)
+        if len(alternatives) < 2:
+            return None
+        return query.ParenParts(alternatives, controls)
+
+    def _checked_as_whole(self, expr: Optional[str]) -> bool:
+        """True for a type that only :meth:`_check_value` can check: an inline
+        choice (``uint / tstr``) or a parenthesized type (``(uint) .size 1``)."""
+        return bool(expr) and (len(self._split_choice(expr)) > 1
+                               or self._paren_parts(expr) is not None)
 
     def _check_primitive_type(self, value, type_name, _depth: int = 0):
         """Check whether value matches the named CDDL primitive type.

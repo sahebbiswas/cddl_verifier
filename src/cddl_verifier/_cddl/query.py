@@ -18,7 +18,7 @@ from functools import lru_cache
 from typing import List, NamedTuple, Optional, Set, Tuple
 
 from .ast import (Array, BytesLit, Control, FloatLit, GroupRef, IntLit, Member, Name,
-                  Tag, TextLit, Type, walk)
+                  Paren, Range, Tag, TextLit, Type, walk)
 from .errors import CDDLSyntaxError
 from .parser import parse_type_expr
 
@@ -114,6 +114,44 @@ def controls(text: str) -> List[ControlOp]:
     parsed, node = single
     _, ops = _unwrap_controls(node)
     return [ControlOp(op, arg, parsed.slice(arg), parsed) for op, arg in ops]
+
+
+class ParenParts(NamedTuple):
+    inner: List[str]           # the alternatives inside the parentheses
+    controls: List[ControlOp]  # controls applied to the parenthesized type
+
+
+def paren(text: str) -> Optional[ParenParts]:
+    """The parts of a parenthesized type (``(T)``, ``(a / b) .size 1``), else ``None``.
+
+    ``'(uint / nil) .size 1'`` gives ``inner=['uint', 'nil']`` and the
+    ``.size`` control. Controls inside the parentheses stay with their
+    alternative: ``'(tstr .size 3) .regexp "a+"'`` gives ``['tstr .size 3']``.
+    """
+    single = _single(text)
+    if single is None:
+        return None
+    parsed, node = single
+    base, ops = _unwrap_controls(node)
+    if not isinstance(base, Paren):
+        return None
+    inner = [parsed.slice(alt) for alt in base.type.alternatives]
+    return ParenParts(inner, [ControlOp(op, arg, parsed.slice(arg), parsed) for op, arg in ops])
+
+
+def without_controls(text: str) -> Optional[str]:
+    """A single-alternative expression with its own controls removed.
+
+    ``'tstr .size 3'`` gives ``'tstr'``, ``'foo<uint>'`` gives itself. A
+    range (``1..5``), which cannot take a control, or text that is not one
+    alternative, gives ``None``.
+    """
+    single = _single(text)
+    if single is None:
+        return None
+    parsed, node = single
+    base, _ = _unwrap_controls(node)
+    return None if isinstance(base, Range) else parsed.slice(base)
 
 
 def tag(text: str) -> Optional[Tuple[int, str]]:
