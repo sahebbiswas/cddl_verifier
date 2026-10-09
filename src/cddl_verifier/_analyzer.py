@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from ._cddl import parse_cddl, query
 from ._cddl.ast import BytesLit, FloatLit, IntLit, Name, Paren, Range, TextLit
 from ._cddl.legacy import LegacyTables
+from ._cddl.resolve import resolve
 from ._version import __version__
 
 # Import CBOR encoder/decoder from separate module
@@ -358,6 +359,7 @@ class CDDLParser:
         self.first_definition: Optional[str] = None  # First name defined in source order
         self.synthetic_types: set = set()  # names given to inline maps (r@a)
         self.ast = None
+        self.resolved = None  # ResolvedSchema (#70)
         self.parse()
 
         # Add built-in CDDL primitive types
@@ -399,9 +401,12 @@ class CDDLParser:
         Raises:
             CDDLSyntaxError: (a ``SchemaError``) when the text is not valid
                 CDDL, with the line and column of the problem.
+            CDDLSemanticError: (a ``SchemaError``) when it parses but does
+                not make sense, such as an undefined name (#70).
         """
         self.ast = parse_cddl(self.content, source_name=self.source_name)
-        tables = LegacyTables(self.ast)
+        self.resolved = resolve(self.ast)
+        tables = LegacyTables(self.ast, self.resolved)
         self.types = tables.types
         self.groups = tables.groups
         self.type_choices = tables.type_choices
@@ -2405,8 +2410,8 @@ class EDNGenerator:
                     if resolved_alias != resolved_element_type:
                         logger.debug(f"EDN: Resolved array element [{i}] type alias {resolved_element_type} -> {resolved_alias}")
                         resolved_element_type = resolved_alias
-                        # A generic instance ('entity-map<$role, $$ext>') is
-                        # annotated as its generic rule until #70 instantiates it.
+                        # A generic instance the tables kept as text (one that is
+                        # not a map or array, #70) is annotated as its generic rule.
                         generic = query.head(resolved_alias)
                         if generic != resolved_alias and self.cddl.get_type(generic):
                             resolved_element_type = generic

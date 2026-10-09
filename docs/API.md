@@ -44,14 +44,19 @@ Parses a schema once so it can check many items.
 
 - `schema`: CDDL text as a `str`, or a path as a `pathlib.Path` (any
   `os.PathLike`). A plain `str` is always schema text, never a file name.
-- Raises `SchemaError` (a `ValueError`) when a schema file cannot be read or is
-  not valid CDDL, and `TypeError` for any other argument type. For a syntax
-  error the message is `file:line:column: problem` (`<schema>` for text) and
-  the exception has `line` and `column` attributes:
+- Raises `SchemaError` (a `ValueError`) when a schema file cannot be read, is
+  not valid CDDL, or does not make sense (an undefined name, a generic given
+  the wrong number of arguments, an unknown control operator; see
+  [CDDL_SUPPORT.md](CDDL_SUPPORT.md#schema-semantics)), and `TypeError` for any
+  other argument type. For a problem in the schema text the message is
+  `file:line:column: problem` (`<schema>` for text) and the exception has
+  `line` and `column` attributes:
 
   ```python
   >>> Validator("r = { a: uint ?, }")
   SchemaError: <schema>:1:16: expected a type, found ','
+  >>> Validator("r = { a: unit }")
+  SchemaError: <schema>:1:10: undefined name 'unit'; did you mean 'uint'?
   ```
 
 Members:

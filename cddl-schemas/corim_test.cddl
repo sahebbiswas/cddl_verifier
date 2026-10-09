@@ -99,7 +99,7 @@ endorsed-triple-record = [
 ; Identity triple
 identity-triple-record = [
   environment-map,
-  crypto-key-type-choice,
+  $crypto-key-type-choice,
 ]
 
 ; Attestion key triple
@@ -118,7 +118,7 @@ domain-dependency-triple-record = [
 ; Domain membership triple
 domain-membership-triple-record = [
   environment-map,
-  [ + domain-type-choice ],
+  [ + $domain-type-choice ],
 ]
 
 ; CoSWID triple
@@ -130,12 +130,12 @@ coswid-triple-record = [
 ; Environment
 environment-map = {
   ? & ( class : 0 ) => class-map,
-  ? & ( instance : 1 ) => instance-id-type-choice,
-  ? & ( group : 2 ) => group-id-type-choice,
+  ? & ( instance : 1 ) => $instance-id-type-choice,
+  ? & ( group : 2 ) => $group-id-type-choice,
 }
 
 class-map = {
-  ? & ( class-id : 0 ) => class-id-type-choice,
+  ? & ( class-id : 0 ) => $class-id-type-choice,
   ? & ( vendor : 1 ) => tstr,
   ? & ( model : 2 ) => tstr,
   ? & ( layer : 3 ) => uint,
@@ -187,13 +187,13 @@ $version-scheme /= & ( decimal : 4 )
 $version-scheme /= & ( semver : 16384 )
 
 measurement-values-map = {
-  ? & ( svn : 0 ) => svn-type-choice,
+  ? & ( svn : 0 ) => $svn-type-choice,
   ? & ( digests : 2 ) => digests-type,
   ? & ( flags : 3 ) => flags-map,
-  ? & ( raw-value : 4 ) => raw-value-type-choice,
-  ? & ( raw-value-mask : 5 ) => raw-value-type-choice,
-  ? & ( mac-addr : 6 ) => mac-addr-type-choice,
-  ? & ( ip-addr : 7 ) => ip-addr-type-choice,
+  ? & ( raw-value : 4 ) => $raw-value-type-choice,
+  ? & ( raw-value-mask : 5 ) => $raw-value-type-choice,
+  ? & ( mac-addr : 6 ) => $mac-addr-type-choice,
+  ? & ( ip-addr : 7 ) => $ip-addr-type-choice,
   ? & ( serial-number : 8 ) => tstr,
   ? & ( ueid : 9 ) => ueid-type,
   ? & ( uuid : 10 ) => uuid-type,
