@@ -39,6 +39,16 @@ public release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)); 
   `TypeError`.
 
 ### Fixed
+- `.size` follows RFC 8610 §3.8.1
+  ([#67](https://github.com/sahebbiswas/cddl_verifier/issues/67)). On `tstr`
+  it counts UTF-8 bytes instead of characters. On `uint` it is enforced
+  (`uint .size N` means `value < 256**N`). Exclusive ranges `(M...N)`, hex
+  literals and named constants are accepted as arguments. Invalid arguments,
+  empty ranges and `.size` on other types are reported instead of ignored.
+  A root rule such as `id = tstr .size 2` can now be validated.
+- Inline array field types (`a: [* tstr]`) lost their closing `]` during
+  parsing, so their elements were never checked. Primitive elements of inline
+  arrays are now type- and `.size`-checked.
 - `canonical=True` now follows RFC 8949 §4.2.1 deterministic encoding: floats
   use the shortest exact width (float16/32/64) instead of always float64, NaN is
   always `f97e00`, and map keys that encode identically (e.g. two NaNs) raise
@@ -64,7 +74,7 @@ public release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)); 
   against the installed wheel on Python 3.9–3.13 and the sdist on 3.11.
 - `MANIFEST.in`, so the sdist includes the tests, test data and docs.
 - README: installation from PyPI, quick start, supported features, known
-  limitations (`.size` [#67](https://github.com/sahebbiswas/cddl_verifier/issues/67)) and release steps.
+  limitations and release steps.
 - Versioning scheme: `_version.py` as the single version source, this
   changelog, `[project]` metadata in `pyproject.toml`, and a `--version` flag.
 - `.github/workflows/publish_pypi.yml`: builds the sdist and wheel, runs

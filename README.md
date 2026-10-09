@@ -107,8 +107,6 @@ of the problem. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/b
   are often accepted without an error. A standards-oriented parser is planned
   ([#69](https://github.com/sahebbiswas/cddl_verifier/issues/69),
   [#70](https://github.com/sahebbiswas/cddl_verifier/issues/70)).
-- **`.size`**: counts characters instead of UTF-8 bytes on `tstr`, and is not
-  enforced on `uint` ([#67](https://github.com/sahebbiswas/cddl_verifier/issues/67)).
 - **Canonical encoding**: implements the RFC 8949 §4.2.1 core deterministic
   profile (see [CANONICAL_AND_JSON.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CANONICAL_AND_JSON.md)).
   The optional §4.2.2 reduction of integral floats to integers is not applied,
