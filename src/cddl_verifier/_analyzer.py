@@ -1574,26 +1574,16 @@ class CBORAnalyzer:
                 value = value[1]
                 continue
             stripped = name.strip()
-            size_root = re.match(r'^(\w+)\s+\.size\s+(\([^)]*\)|\S+)$', stripped)
-            base = self.cddl.resolve_type_alias(size_root.group(1)) if size_root else None
-            if base in self._ROOT_PRIMITIVES:
-                if not self._check_primitive_type(value, base):
-                    self.validation_errors.append(
-                        f"Value does not match type '{type_name}' (expected {base})")
-                    return False
-                size_error = self.cddl.size_violation(
-                    value, base, self.cddl.extract_size_constraint(stripped))
-                if size_error:
-                    self.validation_errors.append(
-                        f"Value does not match type '{type_name}': .size {size_error}")
-                    return False
-                return True
-            if stripped in self._ROOT_PRIMITIVES:
-                if self._check_primitive_type(value, stripped):
-                    return True
-                self.validation_errors.append(
-                    f"Value does not match type '{type_name}' (expected {stripped})")
-                return False
+            # Primitives (with controls), literals and inline choices are
+            # checked by the same code as map fields and array elements.
+            first = re.split(r'\s', stripped, maxsplit=1)[0]
+            if (len(self._split_choice(stripped)) > 1
+                    or self.cddl.resolve_type_alias(first) in self._ROOT_PRIMITIVES
+                    or self._literal_errors(value, stripped) is not None):
+                errors = self._check_value(value, stripped)
+                for error in errors:
+                    self.validation_errors.append(f"Value does not match type '{type_name}': {error}")
+                return not errors
             next_name = self.cddl.type_aliases.get(name)
             if next_name is None or next_name == name:
                 return None
@@ -1889,6 +1879,14 @@ class CBORAnalyzer:
                     # field_type may contain user alias + annotation (e.g. 'my-text .size 16')
                     # Resolve alias first, then extract base type.
                     _resolved = self.cddl.resolve_type_alias(field_type) if field_type else field_type
+
+                    # Inline type choice ('c = uint / tstr', 'x: m / n'): any alternative may match
+                    if _resolved and len(self._split_choice(_resolved)) > 1:
+                        for choice_error in self._check_value(value, _resolved):
+                            self.validation_errors.append(
+                                f"Field '{field_name}' in '{type_name}' {choice_error}")
+                        self._pop_breadcrumb()
+                        continue
                     _base_type = re.split(r'[\s.]', _resolved)[0] if _resolved else ''
                     # Normalize CDDL built-in aliases to their canonical base types
                     _alias_map = {
@@ -2028,6 +2026,12 @@ class CBORAnalyzer:
                                     else:
                                         # Regular element type: primitive (with .size) or named type
                                         resolved_elem = self.cddl.resolve_type_alias(element_type)
+                                        if len(self._split_choice(resolved_elem)) > 1:
+                                            for choice_error in self._check_value(item, resolved_elem):
+                                                self.validation_errors.append(
+                                                    f"Element [{i}] of field '{field_name}' {choice_error}")
+                                            self._pop_breadcrumb()
+                                            continue
                                         base_elem = re.split(r'[\s.]', resolved_elem)[0] if resolved_elem else ''
                                         elem_valid = self._check_primitive_type(item, base_elem)
                                         if elem_valid is False:
@@ -2125,6 +2129,12 @@ class CBORAnalyzer:
                         continue
                     # Resolve user alias first
                     resolved_elem = self.cddl.resolve_type_alias(elem_type) if elem_type else elem_type
+                    if resolved_elem and len(self._split_choice(resolved_elem)) > 1:
+                        for choice_error in self._check_value(item, resolved_elem):
+                            self.validation_errors.append(
+                                f"Array element [{i}] of '{type_name}' {choice_error}")
+                        self._pop_breadcrumb()
+                        continue
                     # Extract base type and any .size constraint
                     base_elem_type = re.split(r'[\s.]', resolved_elem)[0] if resolved_elem else ''
                     size_constraint = self.cddl.extract_size_constraint(resolved_elem)
@@ -2186,6 +2196,158 @@ class CBORAnalyzer:
             if value[0] != expected_tag:
                 return type_str, value, f"requires CBOR tag {expected_tag}, got tag {value[0]}"
             type_str, value = inner.strip(), value[1]
+
+    @staticmethod
+    def _split_choice(expr: str) -> List[str]:
+        """Split a type expression on top-level ``/`` (type choice).
+
+        Ignores ``/`` inside brackets, parentheses, braces and quoted strings,
+        and the group-choice operator ``//``. Returns ``[expr]`` when there is
+        no top-level choice.
+        """
+        parts, depth, quote, start, i = [], 0, None, 0, 0
+        while i < len(expr):
+            ch = expr[i]
+            if quote:
+                if ch == '\\':
+                    i += 1
+                elif ch == quote:
+                    quote = None
+            elif ch in '"\'':
+                quote = ch
+            elif ch in '([{':
+                depth += 1
+            elif ch in ')]}':
+                depth -= 1
+            elif ch == '/' and depth == 0:
+                if expr[i + 1:i + 2] == '/' or expr[i - 1:i] == '/':
+                    return [expr.strip()]  # group choice '//': not handled here
+                if expr[i + 1:i + 2] != '=':
+                    parts.append(expr[start:i].strip())
+                    start = i + 1
+            i += 1
+        parts.append(expr[start:].strip())
+        return [p for p in parts if p] if len(parts) > 1 else [expr.strip()]
+
+    _LITERAL_INT = re.compile(r'^-?(?:0x[0-9a-fA-F]+|0b[01]+|\d+)$')
+    _LITERAL_FLOAT = re.compile(r'^-?\d+\.\d+(?:[eE][-+]?\d+)?$')
+
+    def _literal_errors(self, value: Any, expr: str) -> Optional[List[str]]:
+        """Check *value* against a literal type (``1``, ``1.5``, ``"x"``, ``true``).
+
+        Returns ``None`` when *expr* is not a literal.
+        """
+        if self._LITERAL_INT.match(expr):
+            expected = int(expr, 0)
+            ok = isinstance(value, int) and not isinstance(value, bool) and value == expected
+        elif self._LITERAL_FLOAT.match(expr):
+            expected = float(expr)
+            ok = isinstance(value, float) and value == expected
+        elif len(expr) >= 2 and expr[0] == expr[-1] == '"':
+            expected = expr[1:-1]
+            ok = isinstance(value, str) and value == expected
+        elif expr in ('true', 'false') and self.cddl.type_aliases.get(expr) in (None, 'bool'):
+            # The prelude aliases true/false to bool; as a choice alternative
+            # they are the literal values.
+            expected = expr == 'true'
+            ok = value is expected
+        else:
+            return None
+        return [] if ok else [f"expected {expr}, got {self._format_value_for_log(value)}"]
+
+    def _primitive_errors(self, value: Any, base: str, expr: str) -> List[str]:
+        """Check *value* against primitive *base* and the controls in *expr*."""
+        if base == 'any':
+            return []
+        if not self._check_primitive_type(value, base):
+            got = value if isinstance(value, (int, float)) and not isinstance(value, bool) \
+                else type(value).__name__
+            return [f"expected {base}, got {got}"]
+        errors = []
+        if '.size' in expr:
+            size_error = self.cddl.size_violation(value, base, self.cddl.extract_size_constraint(expr))
+            if size_error:
+                errors.append(f".size {size_error}")
+        if base in ('uint', 'int', 'nint', 'float', 'float16', 'float32', 'float64'):
+            vrange = self.cddl.extract_value_range(expr)
+            if vrange:
+                for op, test in (('ge', lambda v, b: v >= b), ('gt', lambda v, b: v > b),
+                                 ('le', lambda v, b: v <= b), ('lt', lambda v, b: v < b)):
+                    if vrange[op] is not None and not test(value, vrange[op]):
+                        errors.append(f"{value} violates .{op} {vrange[op]}")
+        pattern = self.cddl.extract_regexp(expr)
+        if pattern is not None and isinstance(value, str):
+            try:
+                if not re.fullmatch(pattern, value):
+                    errors.append(f"{value!r} does not match .regexp /{pattern}/")
+            except re.error as exc:
+                errors.append(f"invalid .regexp pattern /{pattern}/: {exc}")
+        return errors
+
+    def _sandboxed_validate(self, value: Any, type_def: Dict, type_name: str) -> List[str]:
+        """Run :meth:`_validate_type` and return its errors without keeping them."""
+        saved_errors, saved_breadcrumb = self.validation_errors, list(self.breadcrumb)
+        self.validation_errors = []
+        try:
+            self._validate_type(value, type_def, type_name)
+            return self.validation_errors
+        finally:
+            self.validation_errors, self.breadcrumb = saved_errors, saved_breadcrumb
+
+    def _check_value(self, value: Any, expr: str, _depth: int = 0) -> List[str]:
+        """Validate *value* against a CDDL type expression; return the errors.
+
+        Handles type choices (inline ``a / b`` and ``$socket`` choices), tags,
+        literals, primitives with ``.size``/``.regexp``/``.ge``-style controls
+        and named rules. Recorded validation state is not changed, so the
+        caller decides how to report the result. Constructs this cannot check
+        (inline arrays and maps, ranges, generics) are accepted, as elsewhere.
+        """
+        expr = expr.strip()
+        if _depth > 32:
+            return []  # alias cycle
+        alternatives = self._split_choice(expr)
+        if len(alternatives) == 1 and expr in self.cddl.type_choices:
+            alternatives = self.cddl.type_choices[expr]
+        if len(alternatives) > 1:
+            failures = []
+            for alt in alternatives:
+                alt_errors = self._check_value(value, alt, _depth + 1)
+                if not alt_errors:
+                    return []
+                failures.append(f"{alt}: {alt_errors[0]}")
+            return [f"matches none of {' / '.join(alternatives)} ({'; '.join(failures)})"]
+
+        tag_info = self.cddl.extract_cbor_tag(expr) if expr.startswith('#6.') else None
+        if tag_info:
+            expected_tag, inner = tag_info
+            if not self._is_tagged(value):
+                return [f"requires CBOR tag {expected_tag}, but the data is not tagged"]
+            if value[0] != expected_tag:
+                return [f"requires CBOR tag {expected_tag}, got tag {value[0]}"]
+            return self._check_value(value[1], inner, _depth + 1)
+
+        literal = self._literal_errors(value, expr)
+        if literal is not None:
+            return literal
+
+        if expr in self.cddl.types:
+            return self._sandboxed_validate(value, self.cddl.types[expr], expr)
+
+        name = re.split(r'\s', expr, maxsplit=1)[0]
+        alias = self.cddl.type_aliases.get(name)
+        if alias is not None and alias != name and name == expr:
+            return self._check_value(value, alias, _depth + 1)  # follow one alias step
+
+        base = self.cddl.resolve_type_alias(name)
+        if base in self._ROOT_PRIMITIVES:
+            return self._primitive_errors(value, base, expr)
+
+        type_def = self.cddl.get_type(expr, value)
+        if type_def:
+            return self._sandboxed_validate(value, type_def, expr)
+        logger.debug(f"Cannot check type expression '{expr}'; accepting value")
+        return []
 
     def _check_primitive_type(self, value, type_name):
         """Check whether value matches the named CDDL primitive type.

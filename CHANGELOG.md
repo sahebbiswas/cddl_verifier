@@ -39,6 +39,19 @@ public release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)); 
   `TypeError`.
 
 ### Fixed
+- Inline type choices (`c = a / b`) are validated
+  ([#102](https://github.com/sahebbiswas/cddl_verifier/issues/102)). Before,
+  a field or array element typed with one was checked against only the first
+  alternative (rejecting valid data), or, for choices of named rules, not
+  checked at all (accepting anything). Real CoRIM rules such as
+  `svn-type-choice` and `protected-corim-header-map` are affected.
+  Alternatives can be primitives with controls, named or tagged rules, and
+  literal values (`1 / 2 / "draft"`); the error lists why each alternative
+  failed.
+- A root rule can be a primitive with any control (`n = uint .le 5`,
+  `n = tstr .regexp "..."`) or an inline choice (`n = uint / tstr`), using the
+  same checks as map fields
+  ([#94](https://github.com/sahebbiswas/cddl_verifier/issues/94)).
 - **Behaviour change:** an untagged rule no longer accepts data wrapped in
   any CBOR tag. `validate("m = { a: uint }", 999({"a": 1}))` was valid and is now
   rejected; validate tagged data against the tagged rule (for example
