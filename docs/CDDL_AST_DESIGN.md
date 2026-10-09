@@ -86,7 +86,7 @@ src/cddl_verifier/_cddl/
     parser.py       # recursive-descent parser
     printer.py      # format_node(node) -> canonical CDDL text
     errors.py       # CDDLSyntaxError
-    prelude.cddl    # RFC 8610 Appendix D prelude, parsed like any schema
+    prelude.py      # RFC 8610 Appendix D prelude as CDDL text, parsed like any schema
 ```
 
 A subpackage keeps the new code out of the 2,900-line `_analyzer.py` and is
@@ -121,7 +121,7 @@ class Source:
   structure compare equal whatever their positions. Tests can then write the
   expected trees without spans. The `comment` field on group entries (§6) is
   declared the same way, so node equality covers syntax only.
-- Prelude nodes have spans into `prelude.cddl` and `Source.name == "<prelude>"`.
+- Prelude nodes have spans into the prelude text and `Source.name == "<prelude>"`.
 
 An empty schema, or one that holds only comments and whitespace, is valid
 (RFC 9682) and parses to `Schema(rules=())`. The parser does not reject it.
@@ -142,7 +142,10 @@ no meaning beyond separating tokens, which removes every line-based heuristic.
 | `TEXT` | `"..."` with the RFC 9682 escapes |
 | `BYTES` | `h'..'` (whitespace and comments allowed inside), `b64'..'`, `'..'` |
 | punctuation | `= /= //= / // , : => ^ ? * + ( ) { } [ ] < > ~ & # . .. ...` |
-| comment | `;` to end of line, kept as trivia on the next token and on the previous token when it is on the same line |
+| comment | `;` to end of line. Not a token: the lexer collects comments, and the parser attaches one to a group entry when it follows the entry (and its comma) on the same line |
+
+Tabs are accepted as whitespace, although the ABNF allows only spaces and
+line breaks. Rejecting them would break schemas for no benefit.
 
 Comments are kept because the current parser uses a trailing comment as a
 field name (`0: tstr ; name`), and EDN output depends on that (see §9).
@@ -269,6 +272,12 @@ key names are built from that helper. The same helper also covers
 `walk(node)` yields a node and all its descendants depth first, in source
 order. There is no visitor class until a consumer needs one.
 
+`entry_type(entry)` returns the `Type` that a keyless group entry with no
+occurrence stands for: `GroupRef("x")` gives `Type[Name x]`, and an
+`InlineGroup` with a single such entry gives a `Paren`. It returns `None` for
+any other entry. The parser uses it to classify rules, and consumers use it for
+array elements such as `[ + T ]`, which parse as `GroupRef`.
+
 ## 7. Parser
 
 - Recursive descent over the token stream, one function per ABNF rule. The
@@ -280,8 +289,13 @@ order. There is no visitor class until a consumer needs one.
   `schema.cddl:12:7: expected ':' or '=>' after member key, found '}'`.
   Parsing stops at the first error. Recovery and reporting several errors are
   left for #75.
-- Nesting depth is limited to 256 and the parser raises `CDDLSyntaxError` past
-  that, so hostile input can't cause a `RecursionError`. The fuzzing work in
+- Nesting depth (brackets, parentheses, tags and generic arguments) is
+  limited to 32 and the parser raises `CDDLSyntaxError` past that, so hostile
+  input can't cause a `RecursionError`, in the parser or in anything that
+  later recurses over the tree. The printer and the dataclass `==`, `hash()`
+  and `repr()` use several Python frames per level, and on Python 3.9–3.11 C
+  calls count toward the recursion limit too: `==` and `repr()` fail at about
+  54 levels there. Real schemas nest far less (CoRIM about 8 levels). The fuzzing work in
   [#82](https://github.com/sahebbiswas/cddl_verifier/issues/82) relies on this.
 - `printer.format_node(node)` writes canonical CDDL: single spaces, no
   comments. For every schema `s`, `parse(format(parse(s))) == parse(s)`.
@@ -296,7 +310,7 @@ implemented in #70, not #69.
 - **Symbol table.** Names map to rules in source order. RFC 8610 has a single
   namespace for types and groups. `/=` and `//=` add alternatives to a rule
   that is defined elsewhere (or nowhere, for sockets).
-- **Prelude.** `prelude.cddl` is parsed with the same parser and placed below
+- **Prelude.** The prelude text (`prelude.py`) is parsed with the same parser and placed below
   user rules. `uint = #0`, `nint = #1`, `int = uint / nint`, `bigint = biguint
   / bignint` and the rest come from there. This replaces `_add_builtin_types`
   and the hand-written alias tables, and fixes
@@ -418,8 +432,8 @@ if array_match:
 # After: the field's type is an Array node, and the element type is a node too
 for alt in field['node'].alternatives:
     if isinstance(alt, Array):
-        entry = alt.group.choices[0].entries[0]               # Member(occ=+, value=Type[Name ...])
-        element_node = entry.value                            # annotate with format_node(element_node)
+        entry = alt.group.choices[0].entries[0]               # GroupRef(occ=+, name='corim-locator-map')
+        element_node = entry_type(replace(entry, occurrence=None))  # Type[Name corim-locator-map]
 ```
 
 The same change applies to tags. `_generate_value` currently looks up the
@@ -445,7 +459,7 @@ TypeRule corim-map =
   Type[ Map(Group[ GroupChoice[
     Member  key=type:ChoiceFrom((id: 0))              value=Type[ Name $corim-id-type-choice ]
     Member  occ=?  key=type:ChoiceFrom((dependent-rims: 2))
-            value=Type[ Array(Group[ GroupChoice[ Member occ=+ value=Type[ Name corim-locator-map ] ] ]) ]
+            value=Type[ Array(Group[ GroupChoice[ GroupRef occ=+ corim-locator-map ] ]) ]
     GroupRef occ=* $$corim-map-extension
   ]]) ]
 ```

@@ -12,6 +12,7 @@ from typing import Any, Optional, Tuple, Union
 
 from . import _analyzer
 from ._cbor import CBOR, CBORDecodeError
+from ._errors import SchemaError
 
 __all__ = ["Diagnostic", "SchemaError", "ValidationResult", "Validator", "validate"]
 
@@ -20,10 +21,6 @@ SchemaSource = Union[str, "os.PathLike[str]"]
 
 _BYTES_TYPES = (bytes, bytearray, memoryview)
 _EDN_FORMATS = ("keyindex", "keyname", "both")
-
-
-class SchemaError(ValueError):
-    """Raised when a CDDL schema cannot be read or parsed."""
 
 
 @dataclass(frozen=True)

@@ -265,4 +265,3 @@ coswid-tag-id = tstr / uuid-type
 ; Common types
 uri = tstr
 time = #6.1(uint)
-any = *
