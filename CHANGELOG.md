@@ -3,10 +3,10 @@
 All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
 project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-The version is defined once in `src/cddl_verifier/_version.py`. 0.1.0 is the first
-public release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)); the section below gets its date when the release is published.
+The version is defined once in `src/cddl_verifier/_version.py`. 0.1.0 was the first
+public release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)). A section gets its date when that version is published.
 
-## [Unreleased] - 0.1.0
+## [Unreleased] - 0.2.0
 
 ### Changed
 - **Behaviour change:** schemas are parsed by the new CDDL parser
@@ -26,34 +26,6 @@ public release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)); 
   non-standard extension, so their bounds stay enforced until the standard
   forms are ([#71](https://github.com/sahebbiswas/cddl_verifier/issues/71),
   [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76)).
-- **Breaking:** the code is now the `cddl_verifier` package (source under
-  `src/cddl_verifier/`). The top-level modules `simple_cbor`, `cbor_json`,
-  `cbor_cddl_analyzer` and `_version` are no longer installed; their code lives
-  in the internal modules `cddl_verifier._cbor`, `._json_codec`, `._analyzer`
-  and `._version`. Use the public API below instead.
-- `cddl-verify` now points at `cddl_verifier.cli:main`; `python -m cddl_verifier`
-  runs the same CLI. The CBOR/JSON converter runs as
-  `python -m cddl_verifier.json_codec`.
-- Using the library no longer prints log messages: the package logger
-  (`cddl_verifier`) has only a `NullHandler`, and the CLI attaches its coloured
-  stderr handler while it runs.
-- Package metadata: `requires-python = ">=3.9"`, classifiers, SPDX `MIT`
-  license, project URLs, `test` and `dev` extras. The unused `cbor2` extra was
-  removed; there are no runtime dependencies.
-- **Behaviour change** from earlier unversioned code: `CBOR.load()`, `CBOR.loads()`, `cbor_decode()` and
-  `load_cbor_bytes()` now decode exactly one complete CBOR data item. Trailing
-  bytes after the item (including concatenated CBOR sequences), which were
-  previously ignored silently, are rejected with `CBORTrailingDataError`
-  ([#64](https://github.com/sahebbiswas/cddl_verifier/issues/64)). The analyzer CLI and nested `.cbor` validation inherit this behaviour.
-- Decoder errors are now `CBORDecodeError` (a `ValueError` subclass) carrying the
-  byte `offset` of the problem: `CBORTruncatedError` for empty or truncated
-  input, `CBORTrailingDataError` for trailing bytes, `CBORUnsupportedError`
-  (also a `NotImplementedError`) for indefinite-length items and `undefined`.
-  Invalid UTF-8, reserved additional-info values, duplicate map keys and
-  excessive nesting also raise `CBORDecodeError` instead of leaking
-  `UnicodeDecodeError` / `RecursionError`.
-- Decoding accepts `bytearray` and `memoryview`; non-bytes input raises
-  `TypeError`.
 
 ### Fixed
 - The validator and EDN generator no longer pick type text apart with regular
@@ -144,6 +116,52 @@ public release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)); 
   raising `struct.error`, and such bignums decode back to `int`. Bignums whose
   value fits in 64 bits still decode to `(tag, bytes)`. CDDL `uint` and `int`
   reject values outside the 64-bit range.
+
+### Added
+- Internal CDDL parser (`cddl_verifier._cddl`, Phase A of
+  [#69](https://github.com/sahebbiswas/cddl_verifier/issues/69), [#109](https://github.com/sahebbiswas/cddl_verifier/issues/109)):
+  a lexer, a typed immutable syntax tree with source spans, a recursive-descent
+  parser for the RFC 8610 grammar as updated by RFC 9682, a canonical printer,
+  and the RFC 8610 prelude. `CDDLSyntaxError` (a `SchemaError`) reports line and
+  column. It replaces the line-based parser (#110): `CDDLParser.ast` holds the
+  tree and its lookup tables are built from it. See
+  [docs/CDDL_AST_DESIGN.md](docs/CDDL_AST_DESIGN.md).
+- `tests/test_cddl_parser.py` for the new parser.
+
+## [0.1.0] - 2026-10-08
+
+
+### Changed
+- **Breaking:** the code is now the `cddl_verifier` package (source under
+  `src/cddl_verifier/`). The top-level modules `simple_cbor`, `cbor_json`,
+  `cbor_cddl_analyzer` and `_version` are no longer installed; their code lives
+  in the internal modules `cddl_verifier._cbor`, `._json_codec`, `._analyzer`
+  and `._version`. Use the public API below instead.
+- `cddl-verify` now points at `cddl_verifier.cli:main`; `python -m cddl_verifier`
+  runs the same CLI. The CBOR/JSON converter runs as
+  `python -m cddl_verifier.json_codec`.
+- Using the library no longer prints log messages: the package logger
+  (`cddl_verifier`) has only a `NullHandler`, and the CLI attaches its coloured
+  stderr handler while it runs.
+- Package metadata: `requires-python = ">=3.9"`, classifiers, SPDX `MIT`
+  license, project URLs, `test` and `dev` extras. The unused `cbor2` extra was
+  removed; there are no runtime dependencies.
+- **Behaviour change** from earlier unversioned code: `CBOR.load()`, `CBOR.loads()`, `cbor_decode()` and
+  `load_cbor_bytes()` now decode exactly one complete CBOR data item. Trailing
+  bytes after the item (including concatenated CBOR sequences), which were
+  previously ignored silently, are rejected with `CBORTrailingDataError`
+  ([#64](https://github.com/sahebbiswas/cddl_verifier/issues/64)). The analyzer CLI and nested `.cbor` validation inherit this behaviour.
+- Decoder errors are now `CBORDecodeError` (a `ValueError` subclass) carrying the
+  byte `offset` of the problem: `CBORTruncatedError` for empty or truncated
+  input, `CBORTrailingDataError` for trailing bytes, `CBORUnsupportedError`
+  (also a `NotImplementedError`) for indefinite-length items and `undefined`.
+  Invalid UTF-8, reserved additional-info values, duplicate map keys and
+  excessive nesting also raise `CBORDecodeError` instead of leaking
+  `UnicodeDecodeError` / `RecursionError`.
+- Decoding accepts `bytearray` and `memoryview`; non-bytes input raises
+  `TypeError`.
+
+### Fixed
 - Validating against a root rule that is a plain primitive (`n = uint`) now
   checks the value instead of always failing with "not a concrete type".
 - A tagged root rule (`root = #6.501(inner)`) now requires the data to carry
@@ -161,7 +179,8 @@ public release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)); 
   against the installed wheel on Python 3.9–3.13 and the sdist on 3.11.
 - `MANIFEST.in`, so the sdist includes the tests, test data and docs.
 - README: installation from PyPI, quick start, supported features, known
-  limitations and release steps.
+  limitations (`.size` [#67](https://github.com/sahebbiswas/cddl_verifier/issues/67),
+  canonical floats [#66](https://github.com/sahebbiswas/cddl_verifier/issues/66)) and release steps.
 - Versioning scheme: `_version.py` as the single version source, this
   changelog, `[project]` metadata in `pyproject.toml`, and a `--version` flag.
 - `.github/workflows/publish_pypi.yml`: builds the sdist and wheel, runs
@@ -176,15 +195,6 @@ public release ([#84](https://github.com/sahebbiswas/cddl_verifier/issues/84)); 
 - `tests/test_strict_decoding.py`: regression tests for scalars, maps, arrays,
   tags and nested data with trailing bytes, truncation at every prefix, and
   error offsets.
-- Internal CDDL parser (`cddl_verifier._cddl`, Phase A of
-  [#69](https://github.com/sahebbiswas/cddl_verifier/issues/69), [#109](https://github.com/sahebbiswas/cddl_verifier/issues/109)):
-  a lexer, a typed immutable syntax tree with source spans, a recursive-descent
-  parser for the RFC 8610 grammar as updated by RFC 9682, a canonical printer,
-  and the RFC 8610 prelude. `CDDLSyntaxError` (a `SchemaError`) reports line and
-  column. It replaces the line-based parser (#110): `CDDLParser.ast` holds the
-  tree and its lookup tables are built from it. See
-  [docs/CDDL_AST_DESIGN.md](docs/CDDL_AST_DESIGN.md).
-- `tests/test_cddl_parser.py` for the new parser.
 
 ### Removed
 - `fix_indent_proper.py`, a one-off script that edited `cbor_cddl_analyzer.py`
