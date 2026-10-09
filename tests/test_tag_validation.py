@@ -146,6 +146,9 @@ class TestExtractCborTag(unittest.TestCase):
         self.assertIsNone(cddl.extract_cbor_tag("#6.1(m"))
         self.assertIsNone(cddl.extract_cbor_tag("m"))
         self.assertIsNone(cddl.extract_cbor_tag("#6.7(m) / tstr"))  # a choice, not a tag
+        self.assertEqual(cddl.extract_cbor_tag('#6.7(")")'), (7, '")"'))
+        self.assertEqual(cddl.extract_cbor_tag('#6.7("a\\"(")'), (7, '"a\\"("'))
+        self.assertIsNone(cddl.extract_cbor_tag('#6.7(")") / uint'))
 
 
 if __name__ == "__main__":

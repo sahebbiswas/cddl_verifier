@@ -1085,11 +1085,20 @@ class CDDLParser:
         if not match:
             return None
         # Find the matching ')' so nested tags work: '#6.1(#6.2(m))' -> (1, '#6.2(m)')
-        depth = 0
-        for pos in range(match.end() - 1, len(text)):
-            if text[pos] == '(':
+        depth, quote = 0, None
+        pos = match.end() - 1
+        while pos < len(text):
+            ch = text[pos]
+            if quote:  # skip text literals: '#6.7(")")'
+                if ch == '\\':
+                    pos += 1
+                elif ch == quote:
+                    quote = None
+            elif ch in '"\'':
+                quote = ch
+            elif ch == '(':
                 depth += 1
-            elif text[pos] == ')':
+            elif ch == ')':
                 depth -= 1
                 if depth == 0:
                     inner_type = text[match.end():pos].strip()
@@ -1099,6 +1108,7 @@ class CDDLParser:
                     tag_num = int(match.group(1))
                     logger.debug(f"Extracted CBOR tag {tag_num} with inner type: {inner_type}")
                     return (tag_num, inner_type)
+            pos += 1
         return None
     
     def resolve_type_choice_for_data(self, choice_name: str, cbor_data: Any, validator=None) -> Optional[str]:

@@ -91,6 +91,16 @@ class TestFieldChoices(ChoiceTestCase):
             ("n = #6.7(uint) / tstr", (8, 1), False),
         ])
 
+    def test_tagged_text_literal_with_parenthesis(self):
+        schema = 'n = #6.7(")") / uint'
+        self.check([
+            (schema, (7, ")"), True),
+            (schema, 5, True),
+            (schema, (7, "x"), False),
+            (schema, (8, ")"), False),
+            (schema, "zz", False),
+        ])
+
     def test_literal_alternatives(self):
         schema = 'r = {x: c}\nc = 1 / 2 / "three" / 1.5'
         self.check([
