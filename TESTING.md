@@ -28,6 +28,7 @@ and the standard-library **unittest** runner with no code changes required.
 | `tests/test_array_length.py` | Array length from entry occurrences: missing and extra elements in rules, inline arrays, group references, choices and tags (#133) |
 | `tests/test_array_matching.py` | Array elements assigned to entries in order: optional and repeated entries before others, group names, inline groups, group choices, error messages, linear time (#135) |
 | `tests/test_json_map_keys.py` | CBOR map keys in JSON conversion: typed `$cbor` map pairs for non-string keys, untyped key collisions, repeated JSON object keys, bundled samples round trip (#91) |
+| `tests/test_ranges.py` | Numeric ranges (`0..10`, `0.0...1.0`, named bounds) at the root, in fields, array elements, choices, sockets, computed keys and generic arguments; integer vs float matching; malformed ranges; `.ge`/`.le` on floats in fields and arrays (#71) |
 | `tests/test_check_version_bump.py` | `.github/scripts/check_version_bump.py`: one-step bumps pass, missing or larger bumps and malformed `_version.py` fail (#125) |
 
 ---

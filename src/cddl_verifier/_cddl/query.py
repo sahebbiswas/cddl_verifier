@@ -204,6 +204,17 @@ def literal(text: str):
     return node if isinstance(node, (IntLit, FloatLit, TextLit, BytesLit)) else None
 
 
+def range_of(text: str) -> Optional[Range]:
+    """The ``Range`` node when *text* is exactly a range (``0..10``, ``lo ... hi``)."""
+    single = _single(text)
+    if single is None:
+        return None
+    node = single[1]
+    while isinstance(node, Paren) and len(node.type.alternatives) == 1:
+        node = node.type.alternatives[0]
+    return node if isinstance(node, Range) else None
+
+
 def inline_array(text: str) -> Optional[Tuple[str, str]]:
     """``(occurrence, element text)`` for ``[ + T ]`` / ``[ * T ]`` / ``[ T ]``.
 
