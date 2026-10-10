@@ -2066,6 +2066,8 @@ class CBORAnalyzer:
         without controls (``"t" .regexp "t+"``)."""
         return (query.literal(expr) is not None
                 or (expr in ('true', 'false')
+                    and expr not in self.cddl.types
+                    and expr not in self.cddl.type_choices
                     and self.cddl.type_aliases.get(expr, expr) == expr))
 
     def _checked_as_whole(self, expr: Optional[str]) -> bool:

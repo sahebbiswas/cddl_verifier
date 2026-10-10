@@ -148,6 +148,16 @@ class TestRedefinedTrue(LiteralTestCase):
             ("r = {x: true}\ntrue = uint", {"x": "a"}, False),
         ])
 
+    def test_structured_rule_named_true_is_used(self):
+        self.check([
+            ("r = {x: true}\ntrue = {a: 1}", {"x": {"a": 1}}, True),
+            ("r = {x: true}\ntrue = {a: 1}", {"x": True}, False),
+            ("r = {x: false}\nfalse = [uint]", {"x": [1]}, True),
+            ("r = {x: false}\nfalse = [uint]", {"x": False}, False),
+            ("r = {x: true}\ntrue /= uint\ntrue /= tstr", {"x": 5}, True),
+            ("r = {x: true}\ntrue /= uint\ntrue /= tstr", {"x": True}, False),
+        ])
+
 
 if __name__ == "__main__":
     unittest.main()
