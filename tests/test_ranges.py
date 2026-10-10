@@ -122,7 +122,8 @@ class TestUnresolvedBounds(Checks):
         self.check('r = $low .. 10\n$low /= 1\n$low /= 2', [-3, 10], [11, 99])
         self.check('r = $low ... 10\n$low /= 1\n$low /= 2', [9], [10])
         self.check('r = 1 .. $high\n$high /= 5\n$high /= 6', [1, 99], [0])
-        self.check('r = 0.5 .. $high\n$high /= 1.0\n$high /= 2.0', [0.5], [0.4])
+        self.check('r = 0.5 .. $high\n$high /= 1.0\n$high /= 2.0', [0.5], [0.4, float('nan')])
+        self.check('r = $low .. 1.0\n$low /= 0.0\n$low /= 0.5', [1.0], [1.5, float('nan')])
 
 
 class TestIntegerComparisonControls(Checks):

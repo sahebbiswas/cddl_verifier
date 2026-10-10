@@ -1905,7 +1905,7 @@ class CBORAnalyzer:
                 return [f"cannot check range '{expr}'"]
             # '$low .. 10' with an unknown '$low': the known bound still applies
             low, high = self._bound_literal(node.low), self._bound_literal(node.high)
-            if low is not None and value < low.value:
+            if low is not None and not value >= low.value:  # 'not >=' also rejects NaN
                 return [f"{shown} is outside {expr}"]
             if high is not None and not (value <= high.value if node.inclusive
                                          else value < high.value):
