@@ -8,6 +8,8 @@ public ``cddl_verifier`` API (``validate``, ``Validator``) instead.
 """
 
 import argparse
+import copy
+import functools
 import logging
 import math
 import re
@@ -16,9 +18,9 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from ._cddl import parse_cddl, query
+from ._cddl import parse_cddl, parse_prelude, query
 from ._cddl.ast import (BytesLit, FloatLit, GroupRef, InlineGroup, IntLit, Member, Name, Paren,
-                        Range, TextLit)
+                        Range, TextLit, walk)
 from ._cddl.printer import format_node
 from ._cddl.legacy import LegacyTables
 from ._cddl.resolve import resolve
@@ -290,6 +292,13 @@ if not HAS_SIMPLE_CBOR:
             return value
 
 
+@functools.lru_cache(maxsize=1)
+def _prelude_tables() -> LegacyTables:
+    """The tables built from the RFC 8610 prelude (shared: copy before changing)."""
+    prelude = parse_prelude()
+    return LegacyTables(prelude, resolve(prelude))
+
+
 class CDDLParser:
     """Parse a CDDL schema and expose its type structure for validation and EDN generation.
 
@@ -379,7 +388,7 @@ class CDDLParser:
             'bytes': 'bstr',
             'int': 'int',
             'uint': 'uint',
-            'nint': 'int',  # negative int
+            'nint': 'nint',  # major type 1 only (#99)
             'bool': 'bool',
             # Literal values (prelude 'true = #7.21'), not 'bool' (#73)
             'true': 'true',
@@ -392,12 +401,48 @@ class CDDLParser:
             'float32': 'float',
             'float64': 'float',
             'any': 'any',
+            # Bignums decode to an int outside the 64-bit range, or to
+            # (tag, bytes) inside it; 'biguint' / 'bignint' check both (#99).
+            'biguint': 'biguint',
+            'bignint': 'bignint',
         }
         
+        def defined(name):
+            return (name in self.types or name in self.type_choices
+                    or name in self.type_aliases)
+
         for builtin_name, internal_type in builtin_primitives.items():
-            if builtin_name not in self.type_aliases:
+            if not defined(builtin_name):  # the schema's own rule wins
                 self.type_aliases[builtin_name] = internal_type
                 logger.debug(f"Added built-in type: {builtin_name} -> {internal_type}")
+
+        # The other prelude rules (RFC 8610 Appendix D) as the tables build
+        # them from the prelude text (#130): 'uri' is '#6.32(tstr)', 'number'
+        # is 'int / float', 'decfrac' is a tag around an array type.
+        prelude = _prelude_tables()
+        for name, text in prelude.type_aliases.items():
+            # 'tstr = #3', 'float16 = #7.25': primitives the validator knows by name
+            bare_major_type = text.startswith('#') and not text.startswith('#6.')
+            if name not in builtin_primitives and not bare_major_type and not defined(name):
+                self.type_aliases[name] = text
+        # The array inside 'decfrac' / 'bigfloat' gets a table entry
+        # ('decfrac@tag'), added only when the schema uses the rule.
+        # A bare name in an array ('[* decfrac]') parses as a GroupRef.
+        used = {node.name for node in walk(self.ast) if isinstance(node, (Name, GroupRef))}
+        for name, type_def in prelude.types.items():
+            owner = name.split('@', 1)[0]
+            prelude_text = prelude.type_aliases.get(owner)
+            if owner not in used or self.type_aliases.get(owner) != prelude_text:
+                continue
+            # A schema may have its own rule with that name ('@' is allowed
+            # in CDDL names): pick another one rather than replace it.
+            table_name = name
+            while defined(table_name):
+                table_name += '@prelude'
+            if table_name != name:
+                self.type_aliases[owner] = prelude_text.replace(name, table_name)
+            self.types[table_name] = copy.deepcopy(type_def)
+            self.synthetic_types.add(table_name)
     
     def parse(self):
         """Parse the schema into :attr:`ast` and build the lookup tables from it.
@@ -1066,7 +1111,11 @@ class CBORAnalyzer:
         return offset
     
     _ROOT_PRIMITIVES = frozenset(
-        {'uint', 'int', 'bool', 'nil', 'null', 'float', 'tstr', 'bstr', 'any'})
+        {'uint', 'int', 'nint', 'biguint', 'bignint', 'bool', 'nil', 'null', 'float',
+         'tstr', 'bstr', 'any'})
+    #: Primitives the map-field and array-element code has no branch for, so
+    #: they are checked by :meth:`_check_value` (#99).
+    _WHOLE_PRIMITIVES = frozenset({'nint', 'biguint', 'bignint'})
 
     def _validate_root_expression(self, data: Any, type_name: str) -> Optional[bool]:
         """Check what the structured-type path cannot: root tags and primitives.
@@ -1435,7 +1484,7 @@ class CBORAnalyzer:
                     # Normalize CDDL built-in aliases to their canonical base types
                     _alias_map = {
                         'text': 'tstr', 'bytes': 'bstr',
-                        'nint': 'int', 'float16': 'float', 'float32': 'float', 'float64': 'float',
+                        'float16': 'float', 'float32': 'float', 'float64': 'float',
                         'nil': 'null', 'undefined': 'null'
                     }
                     _base_type = _alias_map.get(_base_type, _base_type)
@@ -2077,6 +2126,8 @@ class CBORAnalyzer:
         or a literal (``1``, ``"x"``, #73)."""
         return bool(expr) and (len(self._split_choice(expr)) > 1
                                or self._is_literal(expr)
+                               or self.cddl.resolve_type_alias(query.head(expr))
+                               in self._WHOLE_PRIMITIVES
                                or expr in self.cddl.type_choices
                                or self._is_socket(expr)
                                or query.choice_from(expr) is not None
@@ -2113,6 +2164,19 @@ class CBORAnalyzer:
                 return False
             # Values beyond 64 bits can only come from bignum tags 2/3
             return -2**64 <= value < 2**64
+        if t == 'nint':
+            if not isinstance(value, int) or isinstance(value, bool):
+                return False
+            return -2**64 <= value < 0
+        if t in ('biguint', 'bignint'):
+            # '#6.2(bstr)' / '#6.3(bstr)': in-range bignums stay (tag, bytes);
+            # the decoder turns out-of-range ones into ints
+            tag_num = 2 if t == 'biguint' else 3
+            if self._is_tagged(value):
+                return value[0] == tag_num and isinstance(value[1], bytes)
+            if not isinstance(value, int) or isinstance(value, bool):
+                return False
+            return value >= 2**64 if t == 'biguint' else value < -2**64
         if t == 'bool':
             return isinstance(value, bool)
         if t in ('nil', 'null'):
