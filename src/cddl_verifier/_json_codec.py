@@ -100,9 +100,14 @@ def cbor_to_json(cbor_bytes: bytes, typed: bool = False, pretty: bool = False,
         pretty: If True, pretty-print with indentation
         indent: Number of spaces for indentation (if pretty=True)
         sort_keys: Sort JSON object keys alphabetically (default: False).
-            Note: CBOR integer keys become strings in JSON, so sorting is
-            lexicographic ("1","10","2") rather than numeric (1,2,10).
-            Leave False to preserve insertion order.
+            Note: untyped, CBOR integer keys become strings in JSON, so
+            sorting is lexicographic ("1","10","2") rather than numeric
+            (1,2,10). Leave False to preserve insertion order.
+
+    Raises:
+        ValueError: untyped, when two map keys become the same JSON key
+            (``0`` and ``"0"``). With ``typed=True`` a map with non-string
+            keys is written as ``{"$cbor": "map", "$value": [[k, v], ...]}``.
     
     Returns:
         JSON string
@@ -112,11 +117,20 @@ def cbor_to_json(cbor_bytes: bytes, typed: bool = False, pretty: bool = False,
         >>> json_str = cbor_to_json(cbor_bytes, typed=True, pretty=True)
         >>> print(json_str)
         {
-          "0": "test",
-          "1": {
-            "$cbor": "bytes",
-            "$value": "ZGF0YQ=="
-          }
+          "$cbor": "map",
+          "$value": [
+            [
+              0,
+              "test"
+            ],
+            [
+              1,
+              {
+                "$cbor": "bytes",
+                "$value": "ZGF0YQ=="
+              }
+            ]
+          ]
         }
     """
     # Decode CBOR
@@ -178,7 +192,23 @@ def _preprocess_for_json(obj: Any, typed: bool) -> Any:
     
     # Handle dicts recursively
     if isinstance(obj, dict):
-        return {k: _preprocess_for_json(v, typed) for k, v in obj.items()}
+        if typed and any(not isinstance(k, str) or k == "$cbor" for k in obj):
+            # JSON object keys are strings: keep other keys as [key, value]
+            # pairs (#91). A "$cbor" key would read back as an annotation.
+            return {
+                "$cbor": "map",
+                "$value": [[_preprocess_for_json(k, typed), _preprocess_for_json(v, typed)]
+                           for k, v in obj.items()],
+            }
+        result = {}
+        for k, v in obj.items():
+            key = _json_key(k)
+            if key in result:
+                raise ValueError(
+                    f"CBOR map keys {_original_key(obj, key)!r} and {k!r} both become the "
+                    f"JSON key {key!r}; use typed=True to keep both")
+            result[key] = _preprocess_for_json(v, typed)
+        return result
     
     # Handle lists recursively
     if isinstance(obj, list):
@@ -186,6 +216,42 @@ def _preprocess_for_json(obj: Any, typed: bool) -> Any:
     
     # Return as-is for basic types
     return obj
+
+
+def _json_key(key: Any) -> str:
+    """The JSON object key untyped conversion writes for a CBOR map key."""
+    if isinstance(key, str):
+        return key
+    if isinstance(key, bytes):
+        return base64.b64encode(key).decode('ascii')
+    if isinstance(key, (bool, int, float)) or key is None:
+        return json.dumps(key)  # 0 → "0", True → "true", None → "null", 1.5 → "1.5"
+    return json.dumps(_preprocess_for_json(key, False), ensure_ascii=False)
+
+
+def _original_key(obj: dict, json_key: str) -> Any:
+    """The first key of *obj* that becomes *json_key*."""
+    return next(k for k in obj if _json_key(k) == json_key)
+
+
+def _reject_duplicate_keys(pairs: List) -> Dict:
+    """``object_pairs_hook`` that rejects a JSON object key given twice."""
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"Duplicate JSON object key: {key!r}")
+        result[key] = value
+    return result
+
+
+def _hashable_key(key: Any) -> Any:
+    """A map key read from JSON, in the form the CBOR decoder gives it."""
+    if isinstance(key, list):
+        return tuple(_hashable_key(item) for item in key)
+    if isinstance(key, dict):
+        return tuple(sorted(((_hashable_key(k), _hashable_key(v)) for k, v in key.items()),
+                            key=lambda pair: (type(pair[0]).__name__, repr(pair[0]))))
+    return key
 
 
 def json_to_cbor(json_str: str, canonical: bool = False) -> bytes:
@@ -218,8 +284,8 @@ def json_to_cbor(json_str: str, canonical: bool = False) -> bytes:
         >>> print(data)
         {'name': 'test', 'id': 42}
     """
-    # Parse JSON
-    data = json.loads(json_str)
+    # Parse JSON; a key given twice would otherwise silently keep the last value
+    data = json.loads(json_str, object_pairs_hook=_reject_duplicate_keys)
     
     # Process typed annotations
     processed = _process_cbor_annotations(data)
@@ -235,6 +301,7 @@ def _process_cbor_annotations(obj: Any) -> Any:
     Converts:
         {"$cbor": "bytes", "$value": "base64"} → bytes
         {"$cbor": "tag", "$tag": N, "$value": V} → (N, V)
+        {"$cbor": "map", "$value": [[K, V], ...]} → {K: V, ...}
         {"$cbor": "NaN"} → float('nan')
         {"$cbor": "Infinity"} → float('inf')
         {"$cbor": "-Infinity"} → float('-inf')
@@ -255,6 +322,25 @@ def _process_cbor_annotations(obj: Any) -> Any:
                 value = _process_cbor_annotations(obj["$value"])
                 return (tag_num, value)
             
+            elif cbor_type == "map":
+                # [[key, value], ...]: a map whose keys are not all strings (#91)
+                if not isinstance(obj.get("$value"), list):
+                    raise ValueError(f"A $cbor map needs a list of [key, value] pairs "
+                                     f"as $value, got {obj.get('$value')!r}")
+                result = {}
+                for pair in obj["$value"]:
+                    if not isinstance(pair, list) or len(pair) != 2:
+                        raise ValueError(f"A $cbor map entry must be a [key, value] pair, "
+                                         f"got {pair!r}")
+                    key = _hashable_key(_process_cbor_annotations(pair[0]))
+                    # NaN never equals itself, so 'in' misses a repeated NaN key
+                    if key in result or (isinstance(key, float) and math.isnan(key)
+                                         and any(isinstance(k, float) and math.isnan(k)
+                                                 for k in result)):
+                        raise ValueError(f"Duplicate map key in $cbor map: {key!r}")
+                    result[key] = _process_cbor_annotations(pair[1])
+                return result
+
             elif cbor_type == "NaN":
                 return float('nan')
             

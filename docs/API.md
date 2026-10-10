@@ -289,11 +289,11 @@ raw = json_to_cbor(json_str, canonical=True)
 ```python
 cbor_to_json(
     cbor_bytes: bytes,
-    typed: bool = False,    # preserve bytes/tag types as JSON annotations
+    typed: bool = False,    # preserve bytes, tags and map keys as JSON annotations
     pretty: bool = False,   # pretty-print with indentation
     indent: int = 2,
-    sort_keys: bool = False # sort JSON keys (int keys become strings,
-                            # so sorting is lexicographic, not numeric)
+    sort_keys: bool = False # sort JSON object keys (untyped int keys become
+                            # strings, so sorting is lexicographic)
 ) -> str
 ```
 
@@ -301,9 +301,14 @@ cbor_to_json(
 one CBOR item.
 
 > **Round-trips need `typed=True`.** Without it, `bytes` values are reduced to
-> Base64 strings and CBOR tag numbers are discarded. Even with it, non-string map
-> keys become JSON strings (`{0: "a"}` comes back as `{"0": "a"}`), so maps with
-> integer keys do not round-trip exactly.
+> Base64 strings, CBOR tag numbers are discarded and map keys become JSON strings
+> (`{0: "a"}` comes back as `{"0": "a"}`). Two keys that would become the same
+> string (`0` and `"0"`, `true` and `"true"`) raise `ValueError` instead of one
+> value being dropped. With `typed=True`, a map with any non-string key is written
+> as a list of `[key, value]` pairs (below), so it converts back exactly.
+>
+> `json_to_cbor` raises `ValueError` for a JSON object that gives the same key
+> twice, instead of keeping the last value.
 
 ### Type annotations in JSON
 
@@ -315,6 +320,12 @@ With `typed=True`, CBOR values that have no JSON equivalent are kept as objects:
 | `(32, "https://…")` | `{"$cbor": "tag", "$tag": 32, "$value": "https://…"}` |
 | `float('nan')` | `{"$cbor": "NaN"}` |
 | `float('inf')` | `{"$cbor": "Infinity"}` |
+| `{0: "a", "0": "b"}` (a map with any non-string key, or a `"$cbor"` key) | `{"$cbor": "map", "$value": [[0, "a"], ["0", "b"]]}` |
+
+Maps whose keys are all strings stay JSON objects. In the pairs form, each key
+and value is written with the same annotations, so byte-string, float, `true`,
+`null` and nested keys are kept. A key given twice in the pairs raises
+`ValueError`.
 
 ### File conversion
 

@@ -97,9 +97,10 @@ of the problem. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/b
 - CBOR encoding and strict decoding with byte offsets in errors; duplicate map
   keys, invalid UTF-8 and excessive nesting are rejected.
 - Annotated EDN output with field names from the schema.
-- CBOR ↔ JSON conversion. `typed=True` keeps byte strings and tags, but
-  non-string map keys (such as the integer keys in CoRIM maps) still become JSON
-  strings, so maps with such keys do not round-trip exactly.
+- CBOR ↔ JSON conversion. `typed=True` keeps byte strings, tags and
+  non-string map keys (such as the integer keys in CoRIM maps), so typed JSON
+  converts back to the same CBOR data. Without it, map keys become JSON strings,
+  and keys that would collide (`0` and `"0"`) raise an error.
 
 ## Limitations
 
