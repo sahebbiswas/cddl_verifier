@@ -1860,16 +1860,18 @@ class CBORAnalyzer:
         """
         return query.alternatives(expr)
 
+    def _bound_literal(self, bound) -> Optional[Any]:
+        """The ``IntLit``/``FloatLit`` a range bound stands for, following names."""
+        lit = bound if isinstance(bound, (IntLit, FloatLit)) else (
+            self.cddl.resolved.literal(bound) if self.cddl.resolved is not None else None)
+        return lit if isinstance(lit, (IntLit, FloatLit)) else None
+
     def _range_bounds(self, node: Range) -> Optional[Tuple[Any, Any]]:
         """The numeric bounds of a range node, following names to their literals."""
-        bounds = []
-        for bound in (node.low, node.high):
-            lit = bound if isinstance(bound, (IntLit, FloatLit)) else (
-                self.cddl.resolved.literal(bound) if self.cddl.resolved is not None else None)
-            if not isinstance(lit, (IntLit, FloatLit)):
-                return None
-            bounds.append(lit.value)
-        return bounds[0], bounds[1]
+        low, high = self._bound_literal(node.low), self._bound_literal(node.high)
+        if low is None or high is None:
+            return None
+        return low.value, high.value
 
     def _range_errors(self, value: Any, expr: str, strict: bool = False) -> Optional[List[str]]:
         """Check *value* against a range type (``0..10``, ``0.0...1.0``, ``lo .. hi``, #71).
@@ -1883,11 +1885,12 @@ class CBORAnalyzer:
         if node is None:
             return None
         bounds = self._range_bounds(node)
-        if bounds is None:
-            # a bound that is a generic parameter or a socket: nothing to compare with
+        # with one bound known ('$low .. 10'), the kind of number still is
+        known = self._bound_literal(node.low) or self._bound_literal(node.high)
+        if known is None:
+            # bounds that are sockets or generic parameters: nothing to compare with
             return [f"cannot check range '{expr}'"] if strict else []
-        low, high = bounds
-        if isinstance(low, int):
+        if isinstance(known, IntLit):
             ok_type = (isinstance(value, int) and not isinstance(value, bool)
                        and -(1 << 64) <= value < (1 << 64))
             kind = 'an integer'
@@ -1897,6 +1900,9 @@ class CBORAnalyzer:
         shown = self._format_value_for_log(value)
         if not ok_type:
             return [f"expected {kind} in {expr}, got {shown}"]
+        if bounds is None:
+            return [f"cannot check range '{expr}'"] if strict else []
+        low, high = bounds
         if not (low <= value and (value <= high if node.inclusive else value < high)):
             return [f"{shown} is outside {expr}"]
         return []
@@ -2278,20 +2284,20 @@ class CBORAnalyzer:
                                or self._is_socket(expr)
                                or query.choice_from(expr) is not None
                                or query.range_of(expr) is not None
-                               or self._is_compared_float(expr)
+                               or self._is_compared_number(expr)
                                or self._paren_parts(expr) is not None)
 
-    _FLOAT_TYPES = frozenset({'float', 'float16', 'float32', 'float64',
-                              'float16-32', 'float32-64'})
+    _NUMBER_TYPES = frozenset({'uint', 'int', 'float', 'float16', 'float32', 'float64',
+                               'float16-32', 'float32-64'})
 
-    def _is_compared_float(self, expr: str) -> bool:
-        """True for a float type with ``.ge``/``.gt``/``.le``/``.lt`` (``float .le 1.0``).
+    def _is_compared_number(self, expr: str) -> bool:
+        """True for a number type with ``.ge``/``.gt``/``.le``/``.lt`` (``float .le 1.0``).
 
-        Map fields and array elements check those controls on integers
-        themselves; for floats only :meth:`_check_value` does (#71).
+        :meth:`_check_value` checks those controls; the map-field and
+        array-element paths would check only the type (#71).
         """
         base = self.cddl.resolve_type_alias(query.head(expr))
-        return base in self._FLOAT_TYPES and self.cddl.extract_value_range(expr) is not None
+        return base in self._NUMBER_TYPES and self.cddl.extract_value_range(expr) is not None
 
     def _check_primitive_type(self, value, type_name, _depth: int = 0):
         """Check whether value matches the named CDDL primitive type.

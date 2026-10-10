@@ -110,6 +110,27 @@ class TestMalformedRanges(unittest.TestCase):
                 validate(schema, 1)
 
 
+class TestUnresolvedBounds(Checks):
+
+    def test_known_bound_still_sets_the_kind(self):
+        # review of #141: a socket bound with several values cannot be compared
+        # with, but the other bound still says the value is an integer
+        self.check('r = $low .. 10\n$low /= 1\n$low /= 2', [5], ['x', 5.0])
+
+
+class TestIntegerComparisonControls(Checks):
+
+    def test_array_elements(self):
+        # review of #141: these were checked in map fields but not array elements
+        self.check('r = [* uint .ge 5]', [[5, 9]], [[0]])
+        self.check('r = [uint .ge 5, tstr]', [[5, 'x']], [[0, 'x']])
+        self.check('r = {a: [* int .le 3]}', [{'a': [3]}], [{'a': [9]}])
+
+    def test_map_fields(self):
+        self.check('r = {a: uint .ge 0}', [{'a': 0}], [{'a': -1}, {'a': True}])
+        self.assertIn("0 violates .ge 5", validate('r = {a: uint .ge 5}', {'a': 0}).errors[0])
+
+
 class TestFloatComparisonControls(Checks):
 
     def test_fields_and_elements(self):
