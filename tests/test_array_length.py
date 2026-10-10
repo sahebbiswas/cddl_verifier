@@ -98,6 +98,26 @@ class TestValidation(unittest.TestCase):
         self.assertTrue(validate('r = {o: [* int]}', {'o': []}).valid)
         self.assertFalse(validate('r = {o: [+ int]}', {'o': []}).valid)
 
+    def test_repeated_group(self):
+        # '[ + g ]' with a group of two entries takes two elements per repeat
+        schema = 'r = {o: [+ g]}\ng = (a: int, b: tstr)'
+        self.assert_rejects(schema, {'o': [1]}, "missing element [1]")
+        self.assertTrue(validate(schema, {'o': [1, 'a']}).valid)
+        # a type name repeated stays a uniform array
+        self.assertTrue(validate('r = {o: [+ t]}\nt = tstr', {'o': ['a']}).valid)
+        self.assertFalse(validate('r = {o: [+ t]}\nt = tstr', {'o': []}).valid)
+
+    def test_group_choices(self):
+        # an index does not name one entry across choices: only the number
+        # of elements is checked, not each element against index i (#135)
+        for schema in ('r = [int // tstr]', 'r = {o: [int // tstr]}'):
+            wrap = (lambda v: v) if schema.startswith('r = [') else (lambda v: {'o': v})
+            self.assertTrue(validate(schema, wrap(['x'])).valid, schema)
+            self.assertTrue(validate(schema, wrap([1])).valid, schema)
+            self.assertFalse(validate(schema, wrap([])).valid, schema)
+            self.assertFalse(validate(schema, wrap([1, 2])).valid, schema)
+        self.assertEqual(CDDLParser('r = [int // tstr]').types['r']['element_types'], {})
+
     def test_tagged_arrays(self):
         self.assertTrue(validate('r = decfrac', (4, [1, 2])).valid)
         self.assert_rejects('r = decfrac', (4, [1]), "missing element [1]")

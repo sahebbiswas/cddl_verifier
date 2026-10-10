@@ -165,8 +165,11 @@ and `n*m` between `n` and `m`. A type name counts as one element and a group
 name as its entries (`[ int, pair ]` with `pair = (a: int, b: tstr)` takes
 three). A missing or extra element fails with its index:
 `[ int, tstr ]` rejects `[1]` ("is missing element [1]") and `[1, "a", 2]`
-("has unexpected element [2]"). With group choices, the shortest and the
-longest choice set the bounds. Elements are matched to entries by position;
+("has unexpected element [2]"). `[ + g ]` repeats all of a group's entries,
+so with `g = (a: int, b: tstr)` it takes at least two elements. With group
+choices (`[ int // tstr, bool ]`), the shortest and the longest choice set
+the bounds, and the elements are not checked against the entries yet.
+Elements are matched to entries by position;
 when an optional entry comes before others, which entry an element belongs
 to is not worked out yet
 ([#72](https://github.com/sahebbiswas/cddl_verifier/issues/72)).

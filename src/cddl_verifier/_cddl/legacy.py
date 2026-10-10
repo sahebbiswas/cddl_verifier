@@ -228,6 +228,11 @@ class LegacyTables:
         if last > 0 and last in element_types and entries[last].occurrence is not None \
                 and entries[last].occurrence.max is None:
             type_def['repeat'] = last
+        if len(group.choices) > 1:
+            # '[ int // tstr ]': an index does not name one entry across the
+            # choices, so only the number of elements is checked (#135)
+            type_def['element_types'] = {}
+            type_def.pop('repeat', None)
         length = self._group_length(group, ())
         if length is not None:
             type_def['length'] = length
@@ -357,12 +362,27 @@ class LegacyTables:
             # 'opt<uint> .size 1' gives '(uint / nil) .size 1'
             return Control(self._lift(node.target, path), node.op, node.arg)
         if isinstance(node, Array):
-            if not _uniform(node):
+            if not self._uniform(node):
                 # '[ int, tstr ]': a structure of its own, so its elements are
                 # counted and checked by position (#133)
                 return Name(self._synthetic(node, path))
             return Array(_map_group(node.group, lambda v, i: self._lift(v, f'{path}@{i}')))
         return node
+
+    def _uniform(self, array: Array) -> bool:
+        """Whether *array* is ``[ + T ]`` or ``[ * T ]``, which stays as text.
+
+        ``T`` must stand for one element: ``[ + g ]`` with a group ``g`` of
+        several entries is a structure of its own, so its length is checked.
+        """
+        entries = _entries(array.group)
+        if len(entries) != 1 or entries[0].occurrence is None \
+                or entries[0].occurrence.text not in ('+', '*'):
+            return False
+        entry = entries[0]
+        if isinstance(entry, GroupRef):
+            return self._ref_length(GroupRef(None, entry.name, entry.args), ()) == (1, 1)
+        return isinstance(entry, Member)
 
     def _synthetic(self, structure, path: str, instance: Optional[tuple] = None) -> str:
         # The validator splits type text on '.' and whitespace: keep them out.
@@ -382,13 +402,6 @@ class LegacyTables:
 
 
 # ------------------------------------------------------------------ helpers
-
-def _uniform(array: Array) -> bool:
-    """Whether *array* is ``[ + T ]`` or ``[ * T ]``, which stays as text."""
-    entries = _entries(array.group)
-    return len(entries) == 1 and entries[0].occurrence is not None \
-        and entries[0].occurrence.text in ('+', '*')
-
 
 def _deeper_than(node, limit: int) -> bool:
     """Whether *node* nests more than *limit* levels, checked without recursion."""
