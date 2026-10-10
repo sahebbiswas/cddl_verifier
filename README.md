@@ -91,8 +91,9 @@ of the problem. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/b
 
 - CDDL maps, arrays, type aliases, groups, type choices (`a / b` and `/=`), sockets (`//=`),
   optional fields, occurrence indicators, IANA-registered parameters
-  (`&(name: n)`), CBOR tags (`#6.n(...)`), `.cbor`, `.size`, `.regexp` and
-  value-range controls on integers. Details: [docs/CDDL_SUPPORT.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CDDL_SUPPORT.md).
+  (`&(name: n)`), CBOR tags (`#6.n(...)`), numeric ranges (`0..255`,
+  `0.0...1.0`), `.cbor`, `.size`, `.regexp` and the comparison controls
+  (`.ge`, `.gt`, `.le`, `.lt`) on integers and floats. Details: [docs/CDDL_SUPPORT.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CDDL_SUPPORT.md).
 - Real CoRIM and CoSWID schemas: [docs/CORIM_SUPPORT.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CORIM_SUPPORT.md).
 - CBOR encoding and strict decoding with byte offsets in errors; duplicate map
   keys, invalid UTF-8 and excessive nesting are rejected.
@@ -109,9 +110,9 @@ of the problem. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/b
   So do schemas that parse but do not make sense, such as an undefined name, a
   misused generic or an unknown control operator
   ([#70](https://github.com/sahebbiswas/cddl_verifier/issues/70)).
-  Validation covers a practical subset of what the grammar can express: groups,
-  ranges and most controls are still to come
-  ([#71](https://github.com/sahebbiswas/cddl_verifier/issues/71)–[#76](https://github.com/sahebbiswas/cddl_verifier/issues/76)).
+  Validation covers a practical subset of what the grammar can express: parts
+  of group semantics and most controls are still to come
+  ([#72](https://github.com/sahebbiswas/cddl_verifier/issues/72)–[#76](https://github.com/sahebbiswas/cddl_verifier/issues/76)).
 - **Canonical encoding**: implements the RFC 8949 §4.2.1 core deterministic
   profile (see [CANONICAL_AND_JSON.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CANONICAL_AND_JSON.md)).
   The optional §4.2.2 reduction of integral floats to integers is not applied,

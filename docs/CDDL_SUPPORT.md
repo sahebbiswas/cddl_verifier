@@ -28,9 +28,8 @@ as in RFC 8610's examples: `"a\\.b"` is the regular expression `a\.b`.
 One non-standard form is accepted: chained controls such as
 `uint .ge 0 .le 150`, read as `(uint .ge 0) .le 150`. RFC 8610 allows one
 control per type, but this form is common and its bounds are enforced. The
-standard spelling `(uint .ge 0) .le 150` is enforced too; the range `0..150`
-parses but is not yet enforced
-([#71](https://github.com/sahebbiswas/cddl_verifier/issues/71)).
+standard spelling `(uint .ge 0) .le 150` is enforced too, as is the range
+`0..150` (see [Ranges](#ranges)).
 
 ## Schema semantics
 
@@ -192,6 +191,38 @@ only element by element against its first entries.
 This holds wherever an array appears: as a rule, a map field, an array
 element, a choice alternative or inside a tag (`decfrac` rejects `4([1])`).
 
+## Ranges
+
+```cddl
+port   = 0..65535          ; an integer from 0 to 65535
+offset = -128..127
+ratio  = 0.0...1.0         ; a float from 0.0, below 1.0
+level  = low .. high       ; bounds may name numeric constants
+low    = 1
+high   = 5
+```
+
+A range is checked wherever a type can be: at the root, in map fields, as an
+array element, as a choice alternative or socket alternative, as a computed
+map key (`* 0..9 => tstr`) and as a generic argument (`pair<0..3>`).
+
+- `..` includes the upper bound and `...` excludes it (RFC 8610 §2.2.2.1).
+- An integer range matches CBOR integers only (major types 0 and 1): not a
+  float (`5.0`), a boolean or a bignum. A float range matches floats only, so
+  `0.0..1.0` rejects the integer `1`.
+- Both bounds are needed. `1..` and `..10` are not CDDL and raise
+  `SchemaError`, as do a range between an integer and a float (`1..2.5`), an
+  empty range (`5..1`, `1...1`) and text bounds (`"a".."z"`).
+- Errors name the range: "11 is outside 0..10", "expected an integer in
+  0..10, got 5.0".
+- Controls on a parenthesized range apply to the number:
+  `(0..100) .le 50` takes 0 to 50. (`.eq` and `.ne` are not enforced yet on
+  any type: [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76).)
+
+The comparison controls `.ge`, `.gt`, `.le` and `.lt` work the same way on
+integers and floats, at the root, in map fields and in array elements:
+`{a: float .le 1.0}` rejects `{"a": 2.0}`.
+
 ## CBOR tags
 
 ```cddl
@@ -267,9 +298,8 @@ choice works the same way, so with `m = uint / nil`, `m .size 1` is
 any of these.
 
 The root rule may also be a primitive with controls (`id = tstr .size 2`,
-`n = uint .le 5`) or an inline choice (`n = uint / tstr`). Ranges as types
-(`0..255`) are not supported yet
-([#71](https://github.com/sahebbiswas/cddl_verifier/issues/71)).
+`n = uint .le 5`), an inline choice (`n = uint / tstr`) or a range
+(`n = 0..255`).
 
 A type socket (`$name`) is checked the same way as an inline choice of its
 `/=` alternatives, wherever it is used: `$role /= uint` and `$role /= tstr`
