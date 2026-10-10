@@ -315,12 +315,15 @@ class TestTablesUseTheModel(unittest.TestCase):
         for depth in (4, 8, 16):
             nested = "[" * depth + "T" + "]" * depth
             CDDLParser(f"r = grow<uint>\ngrow<T> = {{ next: grow<{nested}> }}")
-        # a recursive choice is expanded once and then left as a reference
-        # (a choice with an inline array is not checked yet: #106)
+        # a recursive choice is expanded once and then left as a reference;
+        # its inline arrays are structures of their own (#133)
         chain = "r = list<uint>\nlist<T> = nil / [x: T, rest: list<T>]"
-        self.assertEqual(CDDLParser(chain).type_aliases['r'],
-                         'nil / [ x: uint, rest: nil / [ x: uint, rest: list<uint> ] ]')
+        p = CDDLParser(chain)
+        self.assertEqual(p.type_aliases['r'], 'nil / r@1')
+        self.assertEqual(p.types['r@1']['element_types'], {0: 'uint', 1: 'nil / r@1@rest@1'})
+        self.assertEqual(p.types['r@1@rest@1']['element_types'], {0: 'uint', 1: 'list<uint>'})
         self.assertTrue(validate(chain, [1, [2, None]]).valid)
+        self.assertFalse(validate(chain, [1, [2]]).valid)
 
     def test_generic_alias_rule(self):
         schema = "r = opt<uint>\nopt<T> = T / nil"

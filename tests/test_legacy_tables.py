@@ -76,7 +76,8 @@ class TestArrays(unittest.TestCase):
     def test_repeated_element(self):
         p = CDDLParser("a = [ + tstr ]")
         self.assertEqual(p.types['a'], {'type': 'array', 'fields': {},
-                                        'element_types': {0: 'tstr'}, 'occurrence': '+'})
+                                        'element_types': {0: 'tstr'}, 'occurrence': '+',
+                                        'length': (1, None)})
 
     def test_repeating_entry_after_positional_ones(self):
         p = CDDLParser("r = [ int, * tstr ]")

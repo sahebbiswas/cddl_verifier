@@ -1580,8 +1580,8 @@ class CBORAnalyzer:
                     # Recursively validate nested structures
                     if field_type and field_type not in ['tstr', 'uint', 'int', 'bstr', 'bool', 'float', 'any']:
                         # Check if field_type is an inline array definition: [ + type ] or [ * type ]
-                        # An inline array with several entries ('[ a, * b ]') is
-                        # checked to be an array; its elements need #72.
+                        # Other inline arrays ('[ a, * b ]') are named types of
+                        # their own (#133) and are checked as such.
                         array_match = query.inline_array(field_type) or (
                             ('', None) if query.is_array(field_type) else None)
                         if array_match:
@@ -1718,9 +1718,23 @@ class CBORAnalyzer:
             
             logger.debug(f"{Colors.CDDL}[{breadcrumb}]{Colors.RESET} Array has {len(data)} elements")
             
-            # Enforce + occurrence (at-least-one) for the top-level array type
-            occurrence = type_def.get('occurrence', '')
-            if occurrence == '+' and len(data) == 0:
+            # Enforce the number of elements the entries' occurrences allow
+            # ('[int, tstr]' takes exactly two). Without known bounds, only
+            # a lone '+' entry is checked.
+            length = type_def.get('length')
+            if length is not None:
+                low, high = length
+                error_msg = None
+                if len(data) < low:
+                    error_msg = (f"Array type '{type_name}' is missing element [{len(data)}]: "
+                                 f"expected at least {low} element(s), got {len(data)}")
+                elif high is not None and len(data) > high:
+                    error_msg = (f"Array type '{type_name}' has unexpected element [{high}]: "
+                                 f"expected at most {high} element(s), got {len(data)}")
+                if error_msg:
+                    logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
+                    self.validation_errors.append(error_msg)
+            elif type_def.get('occurrence', '') == '+' and len(data) == 0:
                 error_msg = f"Array type '{type_name}' requires at least one element (+ occurrence)"
                 logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
                 self.validation_errors.append(error_msg)
@@ -1729,7 +1743,8 @@ class CBORAnalyzer:
             element_types = type_def.get('element_types', {})
             # Elements past the positional ones take the repeating entry's
             # type ('[ int, * tstr ]': index 1). A one-entry array ('[ + tstr ]')
-            # repeats entry 0. Other extra elements are not checked (#72).
+            # repeats entry 0. Which entry an element matches when entries are
+            # optional is not worked out yet (#72).
             repeat = type_def.get('repeat')
             if repeat is None and len(element_types) == 1:
                 repeat = next(iter(element_types))

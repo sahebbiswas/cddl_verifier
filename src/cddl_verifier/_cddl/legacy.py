@@ -10,9 +10,13 @@ always see canonical text.
 
 Two things the validator cannot read from text get a table entry instead:
 
-* An inline map (``a: { b: uint }``), or a map or array inside a tag
+* An inline map (``a: { b: uint }``), an inline array other than
+  ``[ + T ]`` / ``[ * T ]`` (#133), or a map or array inside a tag
   (``#6.563([ value: bytes ])``), becomes a type of its own named
   ``<owner>@<path>`` (``r@a``), and the text refers to that name (#100).
+* An array type has ``length``, the ``(min, max)`` number of elements its
+  entries' occurrences allow (``max`` ``None`` for no limit), when it can be
+  worked out (#133).
 * A map member with a computed key (``* tstr => any``) is listed in the
   map's ``computed_keys``; the validator accepts extra keys that match one
   (#104).
@@ -28,8 +32,9 @@ See ``docs/CDDL_AST_DESIGN.md`` §10.
 import re
 from typing import Any, Dict, List, Optional
 
-from .ast import (Array, Control, GroupRule, InlineGroup, IntLit, Map, Member, Name, Paren,
-                  Tag, TextLit, Type, TypeRule, entry_type, registered_label, walk)
+from .ast import (Array, Control, Group, GroupRef, GroupRule, InlineGroup, IntLit, Map, Member,
+                  Name, Paren, Tag, TextLit, Type, TypeRule, entry_type, registered_label,
+                  walk)
 from .parser import MAX_DEPTH
 from .printer import format_node
 
@@ -60,6 +65,8 @@ class LegacyTables:
         # and those being expanded now, so recursive generics terminate.
         self._instance_names: Dict[tuple, str] = {}
         self._expanding: set = set()
+        # Array lengths of group references (name, args), worked out once.
+        self._ref_lengths: Dict[tuple, Optional[tuple]] = {}
         self._rule_names = {rule.name for rule in schema.rules}
 
         for rule in schema.rules:
@@ -221,7 +228,73 @@ class LegacyTables:
         if last > 0 and last in element_types and entries[last].occurrence is not None \
                 and entries[last].occurrence.max is None:
             type_def['repeat'] = last
+        length = self._group_length(group, ())
+        if length is not None:
+            type_def['length'] = length
         return type_def
+
+    def _group_length(self, group, expanding: tuple):
+        """``(min, max)`` elements an array with *group* holds, or ``None``.
+
+        ``max`` is ``None`` when there is no upper bound. Group choices give
+        the widest bounds of their alternatives. ``None`` means the bounds are
+        unknown: a reference to an undefined name, a socket or a generic
+        parameter, or a group that refers to itself.
+        """
+        bounds = []
+        for choice in group.choices:
+            low, high = 0, 0
+            for entry in choice.entries:
+                length = self._entry_length(entry, expanding)
+                if length is None:
+                    return None
+                low += length[0]
+                high = None if high is None or length[1] is None else high + length[1]
+            bounds.append((low, high))
+        low = min(b[0] for b in bounds)
+        high = None if any(b[1] is None for b in bounds) else max(b[1] for b in bounds)
+        return low, high
+
+    def _entry_length(self, entry, expanding: tuple):
+        if isinstance(entry, Member):
+            inner = (1, 1)
+        elif isinstance(entry, InlineGroup):
+            inner = self._group_length(entry.group, expanding)
+        elif isinstance(entry, GroupRef):
+            inner = self._ref_length(entry, expanding)
+        else:
+            inner = None
+        if inner is None:
+            return None
+        occurrence = entry.occurrence
+        if occurrence is None:
+            return inner
+        low = inner[0] * occurrence.min
+        if inner[1] == 0 or occurrence.max == 0:
+            return low, 0
+        if inner[1] is None or occurrence.max is None:
+            return low, None
+        return low, inner[1] * occurrence.max
+
+    def _ref_length(self, ref: GroupRef, expanding: tuple):
+        """Elements a bare name in an array stands for: one for a type."""
+        if self.resolved is None or ref.name.startswith('$') or ref.name in expanding:
+            return None
+        kind = self.resolved.kind(ref.name)
+        if kind == 'type':
+            return 1, 1
+        if kind != 'group':
+            return None
+        try:
+            group = self.resolved.instantiate(ref.name, ref.args)
+        except ValueError:
+            return None
+        if not isinstance(group, Group):
+            return None
+        key = (ref.name, ref.args)
+        if key not in self._ref_lengths:
+            self._ref_lengths[key] = self._group_length(group, expanding + (ref.name,))
+        return self._ref_lengths[key]
 
     # --------------------------------------------------------------- text
 
@@ -284,6 +357,10 @@ class LegacyTables:
             # 'opt<uint> .size 1' gives '(uint / nil) .size 1'
             return Control(self._lift(node.target, path), node.op, node.arg)
         if isinstance(node, Array):
+            if not _uniform(node):
+                # '[ int, tstr ]': a structure of its own, so its elements are
+                # counted and checked by position (#133)
+                return Name(self._synthetic(node, path))
             return Array(_map_group(node.group, lambda v, i: self._lift(v, f'{path}@{i}')))
         return node
 
@@ -305,6 +382,13 @@ class LegacyTables:
 
 
 # ------------------------------------------------------------------ helpers
+
+def _uniform(array: Array) -> bool:
+    """Whether *array* is ``[ + T ]`` or ``[ * T ]``, which stays as text."""
+    entries = _entries(array.group)
+    return len(entries) == 1 and entries[0].occurrence is not None \
+        and entries[0].occurrence.text in ('+', '*')
+
 
 def _deeper_than(node, limit: int) -> bool:
     """Whether *node* nests more than *limit* levels, checked without recursion."""
