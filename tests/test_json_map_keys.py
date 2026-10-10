@@ -61,7 +61,11 @@ class TestTypedKeys(unittest.TestCase):
     def test_malformed_pairs(self):
         for bad in ('{"$cbor": "map", "$value": [[1, 2, 3]]}',
                     '{"$cbor": "map", "$value": [1]}',
-                    '{"$cbor": "map", "$value": [[1, "a"], [1, "b"]]}'):
+                    '{"$cbor": "map", "$value": [[1, "a"], [1, "b"]]}',
+                    # review of #140: a non-list $value, and NaN keys (NaN != NaN)
+                    '{"$cbor": "map", "$value": {}}',
+                    '{"$cbor": "map"}',
+                    '{"$cbor": "map", "$value": [[{"$cbor": "NaN"}, 1], [{"$cbor": "NaN"}, 2]]}'):
             with self.assertRaises(ValueError, msg=bad):
                 json_to_cbor(bad)
 

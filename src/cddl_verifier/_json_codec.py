@@ -322,15 +322,21 @@ def _process_cbor_annotations(obj: Any) -> Any:
                 value = _process_cbor_annotations(obj["$value"])
                 return (tag_num, value)
             
-            elif cbor_type == "map" and isinstance(obj.get("$value"), list):
+            elif cbor_type == "map":
                 # [[key, value], ...]: a map whose keys are not all strings (#91)
+                if not isinstance(obj.get("$value"), list):
+                    raise ValueError(f"A $cbor map needs a list of [key, value] pairs "
+                                     f"as $value, got {obj.get('$value')!r}")
                 result = {}
                 for pair in obj["$value"]:
                     if not isinstance(pair, list) or len(pair) != 2:
                         raise ValueError(f"A $cbor map entry must be a [key, value] pair, "
                                          f"got {pair!r}")
                     key = _hashable_key(_process_cbor_annotations(pair[0]))
-                    if key in result:
+                    # NaN never equals itself, so 'in' misses a repeated NaN key
+                    if key in result or (isinstance(key, float) and math.isnan(key)
+                                         and any(isinstance(k, float) and math.isnan(k)
+                                                 for k in result)):
                         raise ValueError(f"Duplicate map key in $cbor map: {key!r}")
                     result[key] = _process_cbor_annotations(pair[1])
                 return result
