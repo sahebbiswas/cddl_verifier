@@ -67,6 +67,12 @@ class TestQuery(unittest.TestCase):
         self.assertIsNone(query.without_controls("1..5"))
         self.assertIsNone(query.without_controls("a / b"))
 
+    def test_choice_from(self):
+        self.assertIsNotNone(query.choice_from("&(a: 0, b: 1)").group)
+        self.assertEqual(query.choice_from("&colors").name, "colors")
+        self.assertIsNone(query.choice_from("&a / b"))
+        self.assertIsNone(query.choice_from("tstr"))
+
     def test_tag_and_cbor(self):
         self.assertEqual(query.tag("#6.1(#6.2(m))"), (1, "#6.2(m)"))
         self.assertIsNone(query.tag("#6.<1..3>(m)"))

@@ -190,8 +190,18 @@ The root rule may also be a primitive with controls (`id = tstr .size 2`,
 (`0..255`) are not supported yet
 ([#71](https://github.com/sahebbiswas/cddl_verifier/issues/71)).
 
-When the root type resolves to a socket choice the tool selects the matching
-alternative based on the data.
+A type socket (`$name`) is checked the same way as an inline choice of its
+`/=` alternatives, wherever it is used: `$role /= uint` and `$role /= tstr`
+make `role: $role` accept an unsigned integer or a text string and nothing
+else. A socket with no alternatives in the schema matches nothing (RFC 8610
+§3.9), so an optional field typed with one must be absent.
+
+A choice from a group (`&(a: 0, b: 1)`, or `&colors` with
+`colors = (red: 0, green: 1)`) is the choice of the group's entry types,
+keys dropped: here `0 / 1`. Entries that are groups contribute their own
+entries, and a control applies to each value (`&colors .size 1`). A group too
+deeply nested to expand is reported as an error rather than accepted. CoRIM's role sockets (`$comid-role-type-choice /= &(creator: 1)`)
+are checked this way.
 
 ## IANA registered parameters and CoRIM
 

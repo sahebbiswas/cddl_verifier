@@ -11,7 +11,7 @@ and the standard-library **unittest** runner with no code changes required.
 | `tests/test_cbor_cddl_analyzer.py` | CDDL parsing, validation, EDN generation, CoRIM (internal classes) |
 | `tests/test_cddl_parser.py` | CDDL lexer, AST and parser: node shapes, spans, syntax errors, printer round trip, bundled schemas, strict parsing through the API and CLI |
 | `tests/test_resolve.py` | `_cddl/resolve.py`: semantic errors with positions (undefined and duplicate names, sockets, type/group misuse, generic arity, controls, ranges, occurrences, alias loops), imports, the resolved model, generic instantiation in the tables (#70) |
-| `tests/test_type_query.py` | `_cddl/query.py`: questions about type text answered from the AST (#111); dotted names, decoded `.regexp`, byte literals, controls on literals, parenthesized types (#118) |
+| `tests/test_type_query.py` | `_cddl/query.py`: questions about type text answered from the AST (#111); dotted names, decoded `.regexp`, byte literals, controls on literals, parenthesized types (#118), choices from groups (#119) |
 | `tests/test_legacy_tables.py` | `CDDLParser` tables built from the AST; inline maps (#100) and `key => type` members (#104) |
 | `tests/test_simple_cbor.py` | CBOR encode/decode, diagnostics, round-trips |
 | `tests/test_cbor_builder.py` | Iterative construction, nested access, merge |
@@ -19,7 +19,7 @@ and the standard-library **unittest** runner with no code changes required.
 | `tests/test_deterministic_encoding.py` | RFC 8949 §4.2 deterministic encoding golden vectors |
 | `tests/test_size_control.py` | RFC 8610 `.size` on `tstr`/`bstr`/`uint`, arguments, nested and root contexts |
 | `tests/test_tag_validation.py` | CBOR tag checks for tagged and untagged rules at the root, in fields, arrays and choices |
-| `tests/test_type_choices.py` | Inline type choices in fields, arrays and at the root; controlled primitives as the root rule; parenthesized types and controls on choices (#118) |
+| `tests/test_type_choices.py` | Inline type choices in fields, arrays and at the root; controlled primitives as the root rule; parenthesized types and controls on choices (#118); type sockets and choices from groups (`&(a: 0)`) in fields and arrays (#119) |
 | `tests/test_strict_decoding.py` | Strict single-item decoding, error offsets, CLI `--version` |
 | `tests/test_set_nested.py` | `set_nested` path creation and errors |
 | `tests/test_cbor_diag_dump_extra.py` | Diagnostic dump edge cases and truncated input |
