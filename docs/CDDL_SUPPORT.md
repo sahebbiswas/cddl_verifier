@@ -28,9 +28,9 @@ as in RFC 8610's examples: `"a\\.b"` is the regular expression `a\.b`.
 One non-standard form is accepted: chained controls such as
 `uint .ge 0 .le 150`, read as `(uint .ge 0) .le 150`. RFC 8610 allows one
 control per type, but this form is common and its bounds are enforced. The
-standard spellings (`(uint .ge 0) .le 150`, `0..150`) parse but are not yet
-enforced ([#71](https://github.com/sahebbiswas/cddl_verifier/issues/71),
-[#76](https://github.com/sahebbiswas/cddl_verifier/issues/76)).
+standard spelling `(uint .ge 0) .le 150` is enforced too; the range `0..150`
+parses but is not yet enforced
+([#71](https://github.com/sahebbiswas/cddl_verifier/issues/71)).
 
 ## Schema semantics
 
@@ -176,6 +176,14 @@ failed, for example:
 ```text
 Field 'x' in 'r' matches none of uint / tstr (uint: expected uint, got 1.5; tstr: expected tstr, got 1.5)
 ```
+
+A type in parentheses is checked as the type inside them, and a control
+outside the parentheses applies to each alternative inside them:
+`(uint / tstr) .size 1` is `uint .size 1 / tstr .size 1`. A control on a named
+choice works the same way, so with `m = uint / nil`, `m .size 1` is
+`(uint / nil) .size 1`, as is `opt<uint> .size 1` with `opt<T> = T / nil`.
+`.size` is defined only for `uint`, `bstr` and `tstr`, so `nil` does not match
+any of these.
 
 The root rule may also be a primitive with controls (`id = tstr .size 2`,
 `n = uint .le 5`) or an inline choice (`n = uint / tstr`). Ranges as types

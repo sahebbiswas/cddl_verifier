@@ -48,6 +48,25 @@ class TestQuery(unittest.TestCase):
         self.assertEqual([(c.op, c.arg_text) for c in ops], [("ge", "0"), ("le", "150")])
         self.assertEqual(query.controls("uint / tstr .size 2"), [])
 
+    def test_paren(self):
+        parts = query.paren("(uint / nil) .size 1")
+        self.assertEqual(parts.inner, ["uint", "nil"])
+        self.assertEqual([(c.op, c.arg_text) for c in parts.controls], [("size", "1")])
+        parts = query.paren('(tstr .size 3) .regexp "a+"')
+        self.assertEqual(parts.inner, ["tstr .size 3"])
+        self.assertEqual([c.op for c in parts.controls], ["regexp"])
+        self.assertEqual(query.paren("(tstr)"), (["tstr"], []))
+        self.assertIsNone(query.paren("tstr .size 1"))
+        self.assertIsNone(query.paren("(a) / b"))
+        self.assertIsNone(query.paren("#6.1(a)"))
+
+    def test_without_controls(self):
+        self.assertEqual(query.without_controls("tstr .size 3 .regexp \"a\""), "tstr")
+        self.assertEqual(query.without_controls("foo<uint>"), "foo<uint>")
+        self.assertEqual(query.without_controls("(uint) .le 3"), "(uint)")
+        self.assertIsNone(query.without_controls("1..5"))
+        self.assertIsNone(query.without_controls("a / b"))
+
     def test_tag_and_cbor(self):
         self.assertEqual(query.tag("#6.1(#6.2(m))"), (1, "#6.2(m)"))
         self.assertIsNone(query.tag("#6.<1..3>(m)"))

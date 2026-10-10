@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Inline type choices (``c = a / b``) in map fields, arrays, inline arrays and
-at the root, and root rules that are primitives with controls.
+at the root, root rules that are primitives with controls, and parenthesized
+types (``(uint / nil) .size 1``).
 """
 
 import sys
@@ -15,7 +16,8 @@ except ImportError:
 import unittest
 
 from cddl_verifier import validate
-from cddl_verifier._analyzer import CBORAnalyzer
+from cddl_verifier._analyzer import CBORAnalyzer, CDDLParser
+from cddl_verifier.cbor import encode
 
 RULES = "\nm = {a: uint}\nn = {b: tstr}\nt = #6.7(m)"
 
@@ -180,6 +182,82 @@ class TestRootRules(ChoiceTestCase):
         self.assertEqual(result.errors[0],
                          "Value does not match type 'n': matches none of uint / tstr "
                          "(uint: expected uint, got 1.5; tstr: expected tstr, got 1.5)")
+
+
+class TestParenthesizedTypes(ChoiceTestCase):
+    """``(T)`` is checked as ``T``; controls outside the parentheses apply to
+    each alternative inside them (#118)."""
+
+    def test_field(self):
+        self.check([
+            ("r = { o: (tstr) }", {"o": "x"}, True),
+            ("r = { o: (tstr) }", {"o": 1}, False),              # was accepted
+            ("r = { o: ((tstr)) }", {"o": 1}, False),
+            ("r = { o: (m) }" + RULES, {"o": {"a": 1}}, True),
+            ("r = { o: (m) }" + RULES, {"o": {"a": "x"}}, False),
+            ("r = { o: (#6.7(uint)) }", {"o": (7, 1)}, True),
+            ("r = { o: (#6.7(uint)) }", {"o": (7, "x")}, False),
+        ])
+
+    def test_controls_apply_to_each_alternative(self):
+        self.check([
+            ("r = { o: (uint) .size 1 }", {"o": 255}, True),
+            ("r = { o: (uint) .size 1 }", {"o": 1000}, False),   # was accepted
+            ("r = { o: (uint / nil) .size 1 }", {"o": 10}, True),
+            ("r = { o: (uint / nil) .size 1 }", {"o": 1000}, False),
+            # .size is not defined for nil (RFC 8610 3.8.1)
+            ("r = { o: (uint / nil) .size 1 }", {"o": None}, False),
+            ("r = { o: (uint / tstr) .size 1 }", {"o": "a"}, True),
+            ("r = { o: (uint / tstr) .size 1 }", {"o": "ab"}, False),
+            # controls inside the parentheses still apply
+            ('r = { o: (tstr .size 3) .regexp "a+" }', {"o": "aaa"}, True),
+            ('r = { o: (tstr .size 3) .regexp "a+" }', {"o": "aab"}, False),
+            ('r = { o: (tstr .size 3) .regexp "a+" }', {"o": "aaaa"}, False),
+            ("r = { o: (bstr) .cbor uint }", {"o": b"\x01"}, True),
+            ("r = { o: (bstr) .cbor uint }", {"o": b"\x61a"}, False),
+        ])
+
+    def test_control_on_named_choice(self):
+        # 'm .size 1' with 'm = uint / nil' is '(uint / nil) .size 1'
+        self.check([
+            ("r = { o: m .size 1 }\nm = uint / nil", {"o": 5}, True),
+            ("r = { o: m .size 1 }\nm = uint / nil", {"o": 1000}, False),  # was accepted
+            ("r = { o: m .size 1 }\nm = uint / nil", {"o": "abc"}, False),
+            ("r = { o: m .size 2 }\nm = bstr / tstr", {"o": "ab"}, True),
+            ("r = { o: m .size 2 }\nm = bstr / tstr", {"o": b"abc"}, False),
+            ("r = m .size 2\nm = bstr / tstr", encode(b"ab"), True),
+            ("r = m .size 2\nm = bstr / tstr", "abc", False),
+        ])
+
+    def test_generic_instance_under_a_control(self):
+        schema = "r = { o: opt<uint> .size 1 }\nopt<T> = T / nil"
+        self.assertEqual(CDDLParser(schema).types["r"]["fields"]["o"]["type"],
+                         "(uint / nil) .size 1")
+        self.check([
+            (schema, {"o": 7}, True),
+            (schema, {"o": 1000}, False),                       # was accepted
+        ])
+
+    def test_arrays_and_root(self):
+        self.check([
+            ("r = [ (tstr) ]", ["a"], True),
+            ("r = [ (tstr) ]", [1], False),                      # was accepted
+            ("r = [ * (tstr) ]", ["a", 1], False),
+            ("r = { o: [* (uint) .le 3] }", {"o": [1, 3]}, True),
+            ("r = { o: [* (uint) .le 3] }", {"o": [1, 5]}, False),
+            ("r = (tstr)", 1, False),
+            ("r = (tstr) .size 2", "ab", True),
+            ("r = (tstr) .size 2", "abc", False),
+        ])
+
+    def test_error_message(self):
+        result = validate("r = { o: (uint / nil) .size 1 }", {"o": 1000})
+        self.assertEqual(list(result.errors), [
+            "Field 'o' in 'r' matches none of (uint / nil) .size 1 "
+            "(uint: .size 1000 does not fit in 1 byte(s) (.size 1); "
+            "nil: expected nil, got 1000)"])
+        result = validate("r = { o: (tstr) }", {"o": 1})
+        self.assertEqual(list(result.errors), ["Field 'o' in 'r' expected tstr, got 1"])
 
 
 class TestCorimChoices(unittest.TestCase):

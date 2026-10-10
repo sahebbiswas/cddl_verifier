@@ -280,6 +280,9 @@ class LegacyTables:
             return Tag(node.tag, self._lift(node.type, path))
         if isinstance(node, Paren):
             return Paren(self._lift(node.type, path))
+        if isinstance(node, Control):
+            # 'opt<uint> .size 1' gives '(uint / nil) .size 1'
+            return Control(self._lift(node.target, path), node.op, node.arg)
         if isinstance(node, Array):
             return Array(_map_group(node.group, lambda v, i: self._lift(v, f'{path}@{i}')))
         return node
