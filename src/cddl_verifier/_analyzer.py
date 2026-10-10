@@ -431,10 +431,18 @@ class CDDLParser:
         used = {node.name for node in walk(self.ast) if isinstance(node, (Name, GroupRef))}
         for name, type_def in prelude.types.items():
             owner = name.split('@', 1)[0]
-            if owner in used and name not in self.types \
-                    and self.type_aliases.get(owner) == prelude.type_aliases.get(owner):
-                self.types[name] = copy.deepcopy(type_def)
-                self.synthetic_types.add(name)
+            prelude_text = prelude.type_aliases.get(owner)
+            if owner not in used or self.type_aliases.get(owner) != prelude_text:
+                continue
+            # A schema may have its own rule with that name ('@' is allowed
+            # in CDDL names): pick another one rather than replace it.
+            table_name = name
+            while defined(table_name):
+                table_name += '@prelude'
+            if table_name != name:
+                self.type_aliases[owner] = prelude_text.replace(name, table_name)
+            self.types[table_name] = copy.deepcopy(type_def)
+            self.synthetic_types.add(table_name)
     
     def parse(self):
         """Parse the schema into :attr:`ast` and build the lookup tables from it.

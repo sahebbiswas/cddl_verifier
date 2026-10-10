@@ -199,6 +199,17 @@ class TestSchemaRulesWin(PreludeTestCase):
         self.assertIn("decfrac@tag", CDDLParser("r = {o: decfrac}").types)
         self.assertNotIn("decfrac@tag", CDDLParser("r = {o: decfrac}\ndecfrac = tstr").types)
 
+    def test_schema_rule_with_the_synthetic_name_is_kept(self):
+        # '@' is allowed in CDDL names, so a schema can define 'decfrac@tag'
+        # while also using the prelude's 'decfrac'.
+        schema = "r = {o: decfrac, p: decfrac@tag}\ndecfrac@tag = tstr"
+        self.check([
+            (schema, {"o": (4, [1, 2]), "p": "x"}, True),
+            (schema, {"o": (4, [1, 2]), "p": [1, 2]}, False),
+            (schema, {"o": (4, "x"), "p": "x"}, False),
+            (schema, {"o": (4, ["a", 1]), "p": "x"}, False),
+        ])
+
 
 if __name__ == "__main__":
     unittest.main()
