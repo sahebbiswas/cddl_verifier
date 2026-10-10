@@ -309,6 +309,13 @@ class TestSockets(ChoiceTestCase):
     def test_empty_socket_matches_nothing(self):
         schema = "r = { ? o: $e }"
         self.check([(schema, {}, True), (schema, {"o": 1}, False)])
+        # a control does not give an empty socket any values (review of #131)
+        self.check([
+            ("r = { ? o: $e .size 1 }", {}, True),
+            ("r = { ? o: $e .size 1 }", {"o": 1}, False),
+            ("r = [ * $e .size 1 ]", [], True),
+            ("r = [ * $e .size 1 ]", [1], False),
+        ])
         self.assertEqual(list(validate(schema, {"o": 1}).errors),
                          ["Field 'o' in 'r' type socket $e has no alternatives, "
                           "so no value matches it"])

@@ -1986,6 +1986,8 @@ class CBORAnalyzer:
         if base is not None and query.choice_from(base) is not None:
             # '&colors .size 1': the controls apply to each value of the group
             return query.ParenParts(self._choice_from_values(base) or [base], controls)
+        if base is not None and self._is_empty_socket(base):
+            return query.ParenParts([base], controls)  # '$e .size 1': still matches nothing
         resolved = self.cddl.resolve_type_alias(query.head(expr))
         alternatives = self.cddl.type_choices.get(resolved) or self._split_choice(resolved)
         if len(alternatives) < 2 and resolved not in self.cddl.type_choices:
