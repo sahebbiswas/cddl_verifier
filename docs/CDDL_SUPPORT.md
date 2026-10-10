@@ -156,7 +156,26 @@ that rule instead of the literal.
 ```cddl
 tags    = [ * tstr ]   ; zero or more text strings
 aliases = [ + tstr ]   ; one or more (empty array fails validation)
+point   = [ x: int, y: int, ? label: tstr ]   ; two or three elements
 ```
+
+An array must have as many elements as its entries' occurrences allow: no
+occurrence means exactly one, `?` zero or one, `*` any number, `+` one or more
+and `n*m` between `n` and `m`. A type name counts as one element and a group
+name as its entries (`[ int, pair ]` with `pair = (a: int, b: tstr)` takes
+three). A missing or extra element fails with its index:
+`[ int, tstr ]` rejects `[1]` ("is missing element [1]") and `[1, "a", 2]`
+("has unexpected element [2]"). `[ + g ]` repeats all of a group's entries,
+so with `g = (a: int, b: tstr)` it takes at least two elements. With group
+choices (`[ int // tstr, bool ]`), the shortest and the longest choice set
+the bounds, and the elements are not checked against the entries yet.
+Elements are matched to entries by position;
+when an optional entry comes before others, which entry an element belongs
+to is not worked out yet
+([#72](https://github.com/sahebbiswas/cddl_verifier/issues/72)).
+
+This holds wherever an array appears: as a rule, a map field, an array
+element, a choice alternative or inside a tag (`decfrac` rejects `4([1])`).
 
 ## CBOR tags
 
@@ -270,6 +289,7 @@ every nesting level.
 | Extra key matching a computed key (`* tstr => uint`) with a matching value | ✅ pass |
 | Extra key matching a computed key with a wrong value | ❌ fail |
 | `[ + type ]` with empty array | ❌ fail |
+| Array with a missing or extra element (`[ int, tstr ]` with `[1]`) | ❌ fail |
 | Array element wrong type | ❌ fail |
 
 ## Map members and inline maps
@@ -286,7 +306,9 @@ r = { a: { b: uint }, c: [ + { d: tstr } ], t: #6.9({ x: int }) }
 ```
 
 Error messages refer to an inline map by a generated name, `<rule>@<path>`
-(`r@a`, `r@c@0`, `r@t@tag`). EDN output does not show these names.
+(`r@a`, `r@c@0`, `r@t@tag`). Inline arrays other than `[ + T ]` and
+`[ * T ]` get such names too (`r = { o: [ int, tstr ] }` gives `r@o`). EDN
+output does not show these names.
 
 ## `.size`
 

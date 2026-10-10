@@ -12,7 +12,7 @@ and the standard-library **unittest** runner with no code changes required.
 | `tests/test_cddl_parser.py` | CDDL lexer, AST and parser: node shapes, spans, syntax errors, printer round trip, bundled schemas, strict parsing through the API and CLI |
 | `tests/test_resolve.py` | `_cddl/resolve.py`: semantic errors with positions (undefined and duplicate names, sockets, type/group misuse, generic arity, controls, ranges, occurrences, alias loops), imports, the resolved model, generic instantiation in the tables (#70) |
 | `tests/test_type_query.py` | `_cddl/query.py`: questions about type text answered from the AST (#111); dotted names, decoded `.regexp`, byte literals, controls on literals, parenthesized types (#118), choices from groups (#119) |
-| `tests/test_legacy_tables.py` | `CDDLParser` tables built from the AST; inline maps (#100) and `key => type` members (#104) |
+| `tests/test_legacy_tables.py` | `CDDLParser` tables built from the AST; inline maps (#100), inline arrays (#133) and `key => type` members (#104) |
 | `tests/test_simple_cbor.py` | CBOR encode/decode, diagnostics, round-trips |
 | `tests/test_cbor_builder.py` | Iterative construction, nested access, merge |
 | `tests/test_canonical_and_json.py` | Canonical encoding, JSON ↔ CBOR conversion |
@@ -25,6 +25,7 @@ and the standard-library **unittest** runner with no code changes required.
 | `tests/test_prelude_types.py` | RFC 8610 prelude types: `uri`, `tdate`, `time`, `number`, `decfrac` and other tagged rules (#130); `nint` and the bignum types `biguint`, `bignint`, `bigint`, `integer`, `unsigned` at the 64-bit boundaries (#99) |
 | `tests/test_set_nested.py` | `set_nested` path creation and errors |
 | `tests/test_cbor_diag_dump_extra.py` | Diagnostic dump edge cases and truncated input |
+| `tests/test_array_length.py` | Array length from entry occurrences: missing and extra elements in rules, inline arrays, group references, choices and tags (#133) |
 | `tests/test_check_version_bump.py` | `.github/scripts/check_version_bump.py`: one-step bumps pass, missing or larger bumps and malformed `_version.py` fail (#125) |
 
 ---
