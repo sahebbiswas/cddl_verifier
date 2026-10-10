@@ -314,6 +314,21 @@ Converts to Python `bytes` object.
 
 Converts to Python tuple `(32, "http://example.com")`.
 
+#### Map With Non-String Keys
+
+```json
+{
+    "$cbor": "map",
+    "$value": [[0, "a"], ["0", "b"], [{"$cbor": "bytes", "$value": "AQ=="}, true]]
+}
+```
+
+Converts to the Python dict `{0: "a", "0": "b", b"\x01": True}`. With
+`typed=True`, `cbor_to_json` writes a map this way when any key is not a
+string, or when a key is `"$cbor"` (which would otherwise read back as an
+annotation). Maps with only string keys stay plain JSON objects. A key given
+twice raises `ValueError`.
+
 #### Special Float Values
 
 ```json
@@ -346,9 +361,13 @@ assert cbor_decode(cbor1) == cbor_decode(cbor2)
 
 **Important:** Use `typed=True` when converting CBOR to JSON if you plan to convert back!
 
-**Limitation:** JSON object keys are always strings, so non-string CBOR map keys
-(for example the integer keys of CoRIM maps) come back as strings even with
-`typed=True`: `{0: "a"}` round-trips to `{"0": "a"}`.
+**Map keys:** JSON object keys are always strings. With `typed=True`, a map
+with non-string keys (for example the integer keys of CoRIM maps) is written in
+the `{"$cbor": "map", ...}` form above, so `{0: "a"}` round-trips to `{0: "a"}`.
+Without it, keys become strings (`{"0": "a"}`), and two keys that would become
+the same string (`0` and `"0"`) raise `ValueError` rather than one value being
+lost. `json_to_cbor` also raises `ValueError` for a JSON object with a
+repeated key.
 
 ### Use Cases
 
