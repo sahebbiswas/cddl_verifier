@@ -199,7 +199,8 @@ else. A socket with no alternatives in the schema matches nothing (RFC 8610
 A choice from a group (`&(a: 0, b: 1)`, or `&colors` with
 `colors = (red: 0, green: 1)`) is the choice of the group's entry types,
 keys dropped: here `0 / 1`. Entries that are groups contribute their own
-entries. CoRIM's role sockets (`$comid-role-type-choice /= &(creator: 1)`)
+entries, and a control applies to each value (`&colors .size 1`). A group too
+deeply nested to expand is reported as an error rather than accepted. CoRIM's role sockets (`$comid-role-type-choice /= &(creator: 1)`)
 are checked this way.
 
 ## IANA registered parameters and CoRIM

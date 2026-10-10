@@ -330,6 +330,39 @@ class TestSockets(ChoiceTestCase):
             (roles, {"o": "x"}, False),
         ])
 
+    def test_choice_from_group_under_a_control(self):
+        schema = "r = { c: &colors .size 1 }\ncolors = (red: 0, green: 1, big: 1000)"
+        self.check([
+            (schema, {"c": 0}, True),
+            (schema, {"c": 1000}, False),                       # in the group, too big
+            (schema, {"c": 5}, False),                          # not in the group
+            (schema, {"c": "x"}, False),
+        ])
+
+    def test_deep_and_recursive_groups(self):
+        def chain(n):
+            return ("r = { c: &g0 }\n"
+                    + "\n".join(f"g{i} = (g{i + 1}, a{i}: {i})" for i in range(n))
+                    + f"\ng{n} = (z: 99)")
+        recursive = "r = { c: &g }\ng = (a: 1, ? g)"
+        self.check([
+            (chain(20), {"c": 99}, True),
+            (chain(20), {"c": 500}, False),                     # was accepted (review of #131)
+            (recursive, {"c": 1}, True),
+            (recursive, {"c": 2}, False),
+        ])
+        # a group too deep to expand is reported, not accepted
+        result = validate(chain(70), {"c": 0})
+        self.assertFalse(result.valid)
+        self.assertIn("could not be expanded", result.errors[0])
+
+    def test_socket_as_the_root(self):
+        schema = "$s /= uint\n$s /= tstr"
+        for data, expected in ((1, True), ("x", True), (1.5, False)):
+            with self.subTest(data=data):
+                result = validate(schema, data, root_type="$s")
+                self.assertEqual(result.valid, expected, result.errors)
+
 
 class TestCorimChoices(unittest.TestCase):
 

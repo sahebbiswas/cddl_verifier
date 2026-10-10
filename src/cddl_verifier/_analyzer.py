@@ -1084,7 +1084,13 @@ class CBORAnalyzer:
         seen = set()
         while name not in seen:
             seen.add(name)
-            if name in self.cddl.types or name in self.cddl.type_choices:
+            if name in self.cddl.type_choices or self._is_empty_socket(name):
+                # '$s /= uint', '$s /= tstr': checked like a socket field
+                errors = self._check_value(value, name)
+                for error in errors:
+                    self.validation_errors.append(f"Value does not match type '{type_name}': {error}")
+                return not errors
+            if name in self.cddl.types:
                 return None
             tag_info = self.cddl.extract_cbor_tag(name)
             if tag_info:
@@ -1879,8 +1885,10 @@ class CBORAnalyzer:
         if paren is not None:
             return self._paren_errors(value, expr, paren, _depth, strict)
 
-        values = self._choice_from_values(expr)
-        if values is not None:  # '&(a: 0, b: 1)' is the choice '0 / 1'
+        if query.choice_from(expr) is not None:  # '&(a: 0, b: 1)' is the choice '0 / 1'
+            values = self._choice_from_values(expr)
+            if values is None:
+                return [f"cannot check {expr}: its group could not be expanded"]
             if not values:
                 return [f"{expr} has no values to choose from"]
             return self._check_value(value, ' / '.join(values), _depth + 1, strict)
@@ -1965,7 +1973,8 @@ class CBORAnalyzer:
         """*expr* as a parenthesized type, if it is one.
 
         A named choice under a control counts too: with ``m = uint / nil``,
-        ``m .size 1`` is ``(uint / nil) .size 1``.
+        ``m .size 1`` is ``(uint / nil) .size 1``. So does a choice from a
+        group: ``&(a: 0, b: 1) .le 0`` is ``(0 / 1) .le 0``.
         """
         paren = query.paren(expr)
         if paren is not None:
@@ -1973,6 +1982,10 @@ class CBORAnalyzer:
         controls = query.controls(expr)
         if not controls:
             return None
+        base = query.without_controls(expr)
+        if base is not None and query.choice_from(base) is not None:
+            # '&colors .size 1': the controls apply to each value of the group
+            return query.ParenParts(self._choice_from_values(base) or [base], controls)
         resolved = self.cddl.resolve_type_alias(query.head(expr))
         alternatives = self.cddl.type_choices.get(resolved) or self._split_choice(resolved)
         if len(alternatives) < 2 and resolved not in self.cddl.type_choices:
@@ -1980,12 +1993,13 @@ class CBORAnalyzer:
         return query.ParenParts(list(alternatives), controls)
 
     def _choice_from_values(self, expr: str) -> Optional[List[str]]:
-        """The values ``&( group )`` or ``&name`` chooses from, else ``None``.
+        """The values ``&( group )`` or ``&name`` chooses from.
 
         These are the types of the group's entries, keys dropped:
         ``&(a: 0, ? b: 1)`` gives ``['0', '1']``. Entries that are groups
-        (``&(base, c: 2)``) contribute their own entries. ``None`` also when
-        the group cannot be found.
+        (``&(base, c: 2)``) contribute their own entries. ``None`` when *expr*
+        is not a choice from a group, or when the group cannot be expanded;
+        :meth:`_check_value` reports the latter rather than accepting the value.
         """
         node = query.choice_from(expr)
         if node is None:
@@ -1997,27 +2011,35 @@ class CBORAnalyzer:
             if group is None or not hasattr(group, 'choices'):
                 return None
         values: List[str] = []
-        if not self._collect_group_values(group, values, depth=0):
+        if not self._collect_group_values(group, values, set(), depth=0):
             return None
         return values
 
-    def _collect_group_values(self, group, values: List[str], depth: int) -> bool:
-        """Add the entry types of *group* to *values*; False if one cannot be read."""
-        if depth > 16:
+    def _collect_group_values(self, group, values: List[str], seen: set, depth: int) -> bool:
+        """Add the entry types of *group* to *values*; False if one cannot be read.
+
+        A group already being expanded (``g = (a: 1, ? g)``) adds nothing new
+        and is skipped.
+        """
+        if depth > 64:
             return False
         for choice in group.choices:
             for entry in choice.entries:
                 if isinstance(entry, Member):
                     values.extend(format_node(alt) for alt in entry.value.alternatives)
                 elif isinstance(entry, InlineGroup):
-                    if not self._collect_group_values(entry.group, values, depth + 1):
+                    if not self._collect_group_values(entry.group, values, seen, depth + 1):
                         return False
                 elif isinstance(entry, GroupRef):
+                    key = (entry.name, entry.args)
+                    if key in seen:
+                        continue
+                    seen.add(key)
                     resolved = self.cddl.resolved
                     inner = (resolved.instantiate(entry.name, entry.args)
                              if resolved is not None else None)
                     if inner is None or not hasattr(inner, 'choices') \
-                            or not self._collect_group_values(inner, values, depth + 1):
+                            or not self._collect_group_values(inner, values, seen, depth + 1):
                         return False
                 else:
                     return False
