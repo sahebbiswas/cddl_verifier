@@ -98,11 +98,39 @@ person = {
 | `tstr` / `text` | `str` | Optional `.size` constraint (UTF-8 bytes; see below) |
 | `bstr` / `bytes` | `bytes` | Optional `.size` constraint (bytes) |
 | `uint` | `int >= 0` | `bool` rejected (distinct CBOR major type); optional `.size` constraint (see below) |
+| `nint` | `int < 0` | Major type 1 only: −2⁶⁴ … −1 |
 | `int` | `int` | `bool` rejected |
 | `bool` | `bool` | `int` rejected |
 | `float` / `float16` / `float32` / `float64` | `float` | `int` rejected |
 | `null` / `nil` | `None` | |
 | `any` | anything | No type check performed |
+
+### Other prelude types
+
+The rest of the RFC 8610 prelude (Appendix D) is checked as the prelude
+defines it ([#130](https://github.com/sahebbiswas/cddl_verifier/issues/130)):
+
+| CDDL type | Definition | Accepts |
+|-----------|------------|---------|
+| `number` | `int / float` | an integer or a float |
+| `tdate` | `#6.0(tstr)` | tag 0 around a text string |
+| `time` | `#6.1(number)` | tag 1 around an integer or a float |
+| `uri`, `b64url`, `b64legacy`, `regexp`, `mime-message` | `#6.32(tstr)` … `#6.36(tstr)` | that tag around a text string |
+| `encoded-cbor` | `#6.24(bstr)` | tag 24 around a byte string |
+| `eb64url`, `eb64legacy`, `eb16` | `#6.21(any)` … `#6.23(any)` | that tag around any value |
+| `cbor-any` | `#6.55799(any)` | tag 55799 around any value |
+| `decfrac`, `bigfloat` | `#6.4([e10: int, m: integer])`, `#6.5([e2: int, m: integer])` | that tag around an array of an `int` exponent and an `integer` mantissa |
+| `biguint` | `#6.2(bstr)` | a bignum ≥ 2⁶⁴, or tag 2 around a byte string |
+| `bignint` | `#6.3(bstr)` | a bignum < −2⁶⁴, or tag 3 around a byte string |
+| `bigint` | `biguint / bignint` | either of the above |
+| `integer` | `int / bigint` | any integer, of any size |
+| `unsigned` | `uint / biguint` | any non-negative integer, of any size |
+
+The decoder turns a bignum (tag 2 or 3) whose value does not fit in 64 bits
+into a plain integer, and keeps one that fits as the tag and its bytes (see
+[API.md](API.md)). So `biguint` accepts `2**64` and `(2, b"\x01")`, but not
+`5`, which is a `uint`. A schema that defines its own rule with one of these
+names (`uri = tstr`) gets its own rule.
 
 ## Literal types
 

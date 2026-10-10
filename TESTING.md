@@ -22,6 +22,7 @@ and the standard-library **unittest** runner with no code changes required.
 | `tests/test_type_choices.py` | Inline type choices in fields, arrays and at the root; controlled primitives as the root rule; parenthesized types and controls on choices (#118); type sockets and choices from groups (`&(a: 0)`) in fields and arrays (#119) |
 | `tests/test_strict_decoding.py` | Strict single-item decoding, error offsets, CLI `--version` |
 | `tests/test_literal_types.py` | Literal types (`1`, `1.5`, `"a"`, `h'01'`, `true`) in map fields, arrays, inline arrays, named rules and the root (#73) |
+| `tests/test_prelude_types.py` | RFC 8610 prelude types: `uri`, `tdate`, `time`, `number`, `decfrac` and other tagged rules (#130); `nint` and the bignum types `biguint`, `bignint`, `bigint`, `integer`, `unsigned` at the 64-bit boundaries (#99) |
 | `tests/test_set_nested.py` | `set_nested` path creation and errors |
 | `tests/test_cbor_diag_dump_extra.py` | Diagnostic dump edge cases and truncated input |
 | `tests/test_check_version_bump.py` | `.github/scripts/check_version_bump.py`: one-step bumps pass, missing or larger bumps and malformed `_version.py` fail (#125) |
