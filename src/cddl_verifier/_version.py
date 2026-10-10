@@ -4,4 +4,4 @@ Every pull request merged to ``main`` bumps this once (see CONTRIBUTING.md);
 ``pyproject.toml`` reads it dynamically and the CLI reports it via ``--version``.
 """
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"
