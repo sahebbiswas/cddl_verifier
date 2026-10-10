@@ -108,8 +108,8 @@ class TestValidation(unittest.TestCase):
         self.assertFalse(validate('r = {o: [+ t]}\nt = tstr', {'o': []}).valid)
 
     def test_group_choices(self):
-        # an index does not name one entry across choices: only the number
-        # of elements is checked, not each element against index i (#135)
+        # an index does not name one entry across choices: each choice is
+        # matched as a whole, not each element against index i (#135)
         for schema in ('r = [int // tstr]', 'r = {o: [int // tstr]}'):
             wrap = (lambda v: v) if schema.startswith('r = [') else (lambda v: {'o': v})
             self.assertTrue(validate(schema, wrap(['x'])).valid, schema)

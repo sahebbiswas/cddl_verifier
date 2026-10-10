@@ -16,7 +16,10 @@ Two things the validator cannot read from text get a table entry instead:
   ``<owner>@<path>`` (``r@a``), and the text refers to that name (#100).
 * An array type has ``length``, the ``(min, max)`` number of elements its
   entries' occurrences allow (``max`` ``None`` for no limit), when it can be
-  worked out (#133).
+  worked out (#133). An array whose element *i* does not always take entry
+  *i* (``[ ? int, tstr ]``, ``[ int, pair ]``, ``[ a // b ]``) also has
+  ``sequence``: its entries with their occurrences, which the validator
+  matches the elements to (#135).
 * A map member with a computed key (``* tstr => any``) is listed in the
   map's ``computed_keys``; the validator accepts extra keys that match one
   (#104).
@@ -67,6 +70,8 @@ class LegacyTables:
         self._expanding: set = set()
         # Array lengths of group references (name, args), worked out once.
         self._ref_lengths: Dict[tuple, Optional[tuple]] = {}
+        # Entry sequences of group references (name, args), built once.
+        self._group_sequences: Dict[tuple, Optional[list]] = {}
         self._rule_names = {rule.name for rule in schema.rules}
 
         for rule in schema.rules:
@@ -236,7 +241,70 @@ class LegacyTables:
         length = self._group_length(group, ())
         if length is not None:
             type_def['length'] = length
+        if not _positional(group, entries, element_types, self.resolved):
+            sequence = self._sequence(group, owner, (), element_types)
+            if sequence is not None:
+                type_def['sequence'] = sequence
         return type_def
+
+    def _sequence(self, group, path: str, expanding: tuple,
+                  texts: Optional[Dict[int, str]] = None):
+        """*group* as entry sequences an array's elements are matched to (#135).
+
+        One list per group choice; each entry is ``{'min', 'max', 'type'}``
+        for one element of type text ``type``, or ``{'min', 'max', 'group'}``
+        for a nested group (a group name or an inline group) in the same
+        form. ``max`` is ``None`` for no limit. *texts* are the type texts
+        already written for the top-level entries, by index. ``None`` when
+        an entry cannot be expanded: an undefined name, a socket, a generic
+        parameter or a group that refers to itself.
+        """
+        choices = []
+        index = 0
+        for c, choice in enumerate(group.choices):
+            entries = []
+            for entry in choice.entries:
+                unit = self._sequence_unit(entry, f'{path}@{index}', expanding,
+                                           texts.get(index) if texts is not None else None)
+                index += 1
+                if unit is None:
+                    return None
+                occurrence = entry.occurrence
+                unit['min'] = 1 if occurrence is None else occurrence.min
+                unit['max'] = 1 if occurrence is None else occurrence.max
+                entries.append(unit)
+            choices.append(entries)
+        return choices
+
+    def _sequence_unit(self, entry, path: str, expanding: tuple, text: Optional[str]):
+        if isinstance(entry, Member):
+            if text is None:
+                text = self._text(entry.value, path)
+            return {'type': text}
+        if isinstance(entry, InlineGroup):
+            group = self._sequence(entry.group, path, expanding)
+            return None if group is None else {'group': group}
+        if not isinstance(entry, GroupRef) or self.resolved is None \
+                or entry.name.startswith('$') or entry.name in expanding:
+            return None
+        kind = self.resolved.kind(entry.name)
+        if kind == 'type':
+            if text is None:
+                text = self._text(Type((Name(entry.name, entry.args),)), path)
+            return {'type': text}
+        if kind != 'group':
+            return None
+        key = (entry.name, entry.args)
+        if key not in self._group_sequences:
+            try:
+                group = self.resolved.instantiate(entry.name, entry.args)
+            except ValueError:
+                group = None
+            self._group_sequences[key] = None if not isinstance(group, Group) else \
+                self._sequence(group, re.sub(r'\W', '_', entry.name),
+                               expanding + (entry.name,))
+        sequence = self._group_sequences[key]
+        return None if sequence is None else {'group': sequence}
 
     def _group_length(self, group, expanding: tuple):
         """``(min, max)`` elements an array with *group* holds, or ``None``.
@@ -402,6 +470,35 @@ class LegacyTables:
 
 
 # ------------------------------------------------------------------ helpers
+
+def _positional(group, entries, element_types, resolved) -> bool:
+    """Whether element *i* of an array always takes entry *i* (``element_types``).
+
+    True for one group choice of single-element entries where only the last
+    one has an occurrence (``[ int, tstr ]``, ``[ int, * tstr ]``,
+    ``[ 2*3 int ]``). Other arrays need their elements matched to the entries
+    (``[ ? int, tstr ]``, ``[ int, pair ]``), see ``sequence``.
+    """
+    if len(group.choices) != 1:
+        return False
+    last = len(entries) - 1
+    for index, entry in enumerate(entries):
+        if index not in element_types:
+            return False
+        if isinstance(entry, GroupRef) and (resolved is None or resolved.kind(entry.name) != 'type'):
+            return False
+        if not isinstance(entry, (Member, GroupRef)):
+            return False
+        occurrence = entry.occurrence
+        if occurrence is None:
+            continue
+        if index != last:
+            return False
+        # the last entry repeats its type ('repeat'), or occurs at most once
+        if last > 0 and occurrence.max is not None and occurrence.max > 1:
+            return False
+    return True
+
 
 def _deeper_than(node, limit: int) -> bool:
     """Whether *node* nests more than *limit* levels, checked without recursion."""
