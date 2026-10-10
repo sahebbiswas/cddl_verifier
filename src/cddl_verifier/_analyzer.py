@@ -9,6 +9,7 @@ public ``cddl_verifier`` API (``validate``, ``Validator``) instead.
 
 import argparse
 import logging
+import math
 import re
 import struct
 import sys
@@ -380,8 +381,9 @@ class CDDLParser:
             'uint': 'uint',
             'nint': 'int',  # negative int
             'bool': 'bool',
-            'true': 'bool',
-            'false': 'bool',
+            # Literal values (prelude 'true = #7.21'), not 'bool' (#73)
+            'true': 'true',
+            'false': 'false',
             'nil': 'nil',
             'null': 'nil',
             'undefined': 'undefined',
@@ -1432,7 +1434,7 @@ class CBORAnalyzer:
                     _base_type = query.head(_resolved) if _resolved else ''
                     # Normalize CDDL built-in aliases to their canonical base types
                     _alias_map = {
-                        'text': 'tstr', 'bytes': 'bstr', 'true': 'bool', 'false': 'bool',
+                        'text': 'tstr', 'bytes': 'bstr',
                         'nint': 'int', 'float16': 'float', 'float32': 'float', 'float64': 'float',
                         'nil': 'null', 'undefined': 'null'
                     }
@@ -1793,14 +1795,15 @@ class CBORAnalyzer:
         if isinstance(lit, IntLit):
             ok = isinstance(value, int) and not isinstance(value, bool) and value == lit.value
         elif isinstance(lit, FloatLit):
-            ok = isinstance(value, float) and value == lit.value
+            # 0.0 and -0.0 are different CBOR values
+            ok = (isinstance(value, float) and value == lit.value
+                  and math.copysign(1.0, value) == math.copysign(1.0, lit.value))
         elif isinstance(lit, TextLit):
             ok = isinstance(value, str) and value == lit.value
         elif isinstance(lit, BytesLit):
             ok = isinstance(value, bytes) and value == lit.value
-        elif expr in ('true', 'false') and self.cddl.type_aliases.get(expr) in (None, 'bool'):
-            # The prelude aliases true/false to bool; as a choice alternative
-            # they are the literal values.
+        elif self._is_literal(expr):
+            # 'true' / 'false', unless the schema redefines them
             ok = value is (expr == 'true')
         else:
             return None
@@ -2058,11 +2061,20 @@ class CBORAnalyzer:
         return (self._is_socket(expr) and expr not in self.cddl.type_choices
                 and expr not in self.cddl.types and expr not in self.cddl.type_aliases)
 
+    def _is_literal(self, expr: str) -> bool:
+        """True for a literal type (``1``, ``"x"``, ``h'01'``, ``true``), with or
+        without controls (``"t" .regexp "t+"``)."""
+        return (query.literal(expr) is not None
+                or (expr in ('true', 'false')
+                    and self.cddl.type_aliases.get(expr, expr) == expr))
+
     def _checked_as_whole(self, expr: Optional[str]) -> bool:
         """True for a type that only :meth:`_check_value` can check: an inline
         choice (``uint / tstr``), a type socket (``$name``), a choice from a
-        group (``&(a: 0, b: 1)``) or a parenthesized type (``(uint) .size 1``)."""
+        group (``&(a: 0, b: 1)``), a parenthesized type (``(uint) .size 1``)
+        or a literal (``1``, ``"x"``, #73)."""
         return bool(expr) and (len(self._split_choice(expr)) > 1
+                               or self._is_literal(expr)
                                or expr in self.cddl.type_choices
                                or self._is_socket(expr)
                                or query.choice_from(expr) is not None

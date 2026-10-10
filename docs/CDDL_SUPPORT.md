@@ -104,6 +104,25 @@ person = {
 | `null` / `nil` | `None` | |
 | `any` | anything | No type check performed |
 
+## Literal types
+
+```cddl
+header = [ 1, tstr ]               ; first element must be the integer 1
+kind = { type: "corim" }           ; the field must be the text "corim"
+flags = { strict: true }           ; true only, not any bool
+magic = h'd9d9f7'                  ; these three bytes
+```
+
+A literal matches only its own value, wherever it is used: map fields, array
+elements, inline arrays, named rules (`version = 1`) and the root rule
+([#73](https://github.com/sahebbiswas/cddl_verifier/issues/73)). Integers,
+floats, quoted text, byte strings (`h'01'`, `'ab'`), `true` and `false` are
+supported. The value must also have the literal's CBOR type: `1` does not
+match `1.0` or `true`, `"a"` does not match the byte string `'a'`, and `0.0`
+does not match `-0.0`. Controls on a literal apply too (`"ab" .size 2`,
+`5 .le 10`). A schema that defines its own rule named `true` or `false` gets
+that rule instead of the literal.
+
 ## Array types
 
 ```cddl
