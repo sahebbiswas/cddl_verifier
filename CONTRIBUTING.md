@@ -23,8 +23,16 @@ work.
   closing keyword in a commit message does close it on merge, but does not
   link the pull request, so use the description. Use `Part of #N` or
   `Refs #N` for an issue the pull request only advances.
-- **Gaps you find but don't fix** get an issue of their own, linked from the
-  pull request.
+- **Gaps you find but don't fix** are tracked in an issue, linked from the
+  pull request. Search the open issues first, and read the ones that touch
+  the same area, before filing a new one:
+  - If an open issue already covers the gap, add what you found to it (a
+    comment with the reproduction) instead of filing a duplicate.
+  - If the gap is part of a broader issue but can be fixed on its own, file
+    it as a new issue and make it a sub-issue of the broader one, so the
+    broader issue shows it in its scope.
+  - Only when no open issue covers it, file a standalone issue that links
+    the related ones.
 
 ## Versioning
 
