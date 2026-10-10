@@ -2166,8 +2166,10 @@ class CBORAnalyzer:
             base = query.without_controls(alt)
             if base is None and query.range_of(alt) is not None:
                 # '(0..10) .ne 5': the controls apply to the number in the range
-                bounds = self._range_bounds(query.range_of(alt))
-                base = None if bounds is None else ('int' if isinstance(bounds[0], int) else 'float')
+                node = query.range_of(alt)
+                # either known bound gives the kind ('($low .. 10) .le 5')
+                known = self._bound_literal(node.low) or self._bound_literal(node.high)
+                base = None if known is None else ('int' if isinstance(known, IntLit) else 'float')
             if not errors and base is not None:
                 for control in paren.controls:
                     errors = self._check_value(value, f"{base} .{control.op} {control.arg_text}",

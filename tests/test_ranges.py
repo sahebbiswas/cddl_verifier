@@ -117,6 +117,10 @@ class TestUnresolvedBounds(Checks):
         # with, but the other bound still says the value is an integer
         self.check('r = $low .. 10\n$low /= 1\n$low /= 2', [5], ['x', 5.0])
 
+    def test_controls_on_a_range_with_one_known_bound(self):
+        # review of #141: the known bound gives the kind the controls apply to
+        self.check('r = ($low .. 10) .le 5\n$low /= 1\n$low /= 2', [3, 5], [9, 11])
+
     def test_known_bound_is_enforced(self):
         # review of #141: the bound that is known still limits the value
         self.check('r = $low .. 10\n$low /= 1\n$low /= 2', [-3, 10], [11, 99])
