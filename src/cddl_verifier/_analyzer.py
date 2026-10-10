@@ -16,7 +16,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from ._cddl import parse_cddl, query
-from ._cddl.ast import BytesLit, FloatLit, IntLit, Name, Paren, Range, TextLit
+from ._cddl.ast import (BytesLit, FloatLit, GroupRef, InlineGroup, IntLit, Member, Name, Paren,
+                        Range, TextLit)
+from ._cddl.printer import format_node
 from ._cddl.legacy import LegacyTables
 from ._cddl.resolve import resolve
 from ._version import __version__
@@ -1554,7 +1556,7 @@ class CBORAnalyzer:
                                         continue
 
                                     # Check if element type is a type choice
-                                    if element_type.startswith('$'):
+                                    if element_type.startswith('$') and not self._checked_as_whole(element_type):
                                         logger.debug(f"{Colors.CDDL}[{item_breadcrumb}]{Colors.RESET} Element type is a choice: {element_type}")
                                         selected_type = self.cddl.resolve_type_choice_for_data(element_type, item, validator=self)
                                         if selected_type:
@@ -1861,7 +1863,9 @@ class CBORAnalyzer:
             return [f"cannot check '{expr}'"] if strict else []  # alias cycle
         alternatives = self._split_choice(expr)
         if len(alternatives) == 1 and expr in self.cddl.type_choices:
-            alternatives = self.cddl.type_choices[expr]
+            alternatives = self.cddl.type_choices[expr]  # '$socket', even with one alternative
+            if len(alternatives) == 1:
+                return self._check_value(value, alternatives[0], _depth + 1, strict)
         if len(alternatives) > 1:
             failures = []
             for alt in alternatives:
@@ -1874,6 +1878,15 @@ class CBORAnalyzer:
         paren = self._paren_parts(expr)
         if paren is not None:
             return self._paren_errors(value, expr, paren, _depth, strict)
+
+        values = self._choice_from_values(expr)
+        if values is not None:  # '&(a: 0, b: 1)' is the choice '0 / 1'
+            if not values:
+                return [f"{expr} has no values to choose from"]
+            return self._check_value(value, ' / '.join(values), _depth + 1, strict)
+
+        if self._is_empty_socket(expr):
+            return [f"type socket {expr} has no alternatives, so no value matches it"]
 
         tag_info = self.cddl.extract_cbor_tag(expr)
         if tag_info:
@@ -1961,15 +1974,74 @@ class CBORAnalyzer:
         if not controls:
             return None
         resolved = self.cddl.resolve_type_alias(query.head(expr))
-        alternatives = self._split_choice(resolved)
-        if len(alternatives) < 2:
+        alternatives = self.cddl.type_choices.get(resolved) or self._split_choice(resolved)
+        if len(alternatives) < 2 and resolved not in self.cddl.type_choices:
             return None
-        return query.ParenParts(alternatives, controls)
+        return query.ParenParts(list(alternatives), controls)
+
+    def _choice_from_values(self, expr: str) -> Optional[List[str]]:
+        """The values ``&( group )`` or ``&name`` chooses from, else ``None``.
+
+        These are the types of the group's entries, keys dropped:
+        ``&(a: 0, ? b: 1)`` gives ``['0', '1']``. Entries that are groups
+        (``&(base, c: 2)``) contribute their own entries. ``None`` also when
+        the group cannot be found.
+        """
+        node = query.choice_from(expr)
+        if node is None:
+            return None
+        group = node.group
+        if group is None:
+            resolved = self.cddl.resolved
+            group = resolved.instantiate(node.name, node.args) if resolved is not None else None
+            if group is None or not hasattr(group, 'choices'):
+                return None
+        values: List[str] = []
+        if not self._collect_group_values(group, values, depth=0):
+            return None
+        return values
+
+    def _collect_group_values(self, group, values: List[str], depth: int) -> bool:
+        """Add the entry types of *group* to *values*; False if one cannot be read."""
+        if depth > 16:
+            return False
+        for choice in group.choices:
+            for entry in choice.entries:
+                if isinstance(entry, Member):
+                    values.extend(format_node(alt) for alt in entry.value.alternatives)
+                elif isinstance(entry, InlineGroup):
+                    if not self._collect_group_values(entry.group, values, depth + 1):
+                        return False
+                elif isinstance(entry, GroupRef):
+                    resolved = self.cddl.resolved
+                    inner = (resolved.instantiate(entry.name, entry.args)
+                             if resolved is not None else None)
+                    if inner is None or not hasattr(inner, 'choices') \
+                            or not self._collect_group_values(inner, values, depth + 1):
+                        return False
+                else:
+                    return False
+        return True
+
+    @staticmethod
+    def _is_socket(expr: str) -> bool:
+        """True for a bare type socket name (``$name``)."""
+        return (expr.startswith('$') and not expr.startswith('$$')
+                and query.names(expr) == {expr} and query.head(expr) == expr)
+
+    def _is_empty_socket(self, expr: str) -> bool:
+        """True for a type socket (``$name``) that has no alternatives."""
+        return (self._is_socket(expr) and expr not in self.cddl.type_choices
+                and expr not in self.cddl.types and expr not in self.cddl.type_aliases)
 
     def _checked_as_whole(self, expr: Optional[str]) -> bool:
         """True for a type that only :meth:`_check_value` can check: an inline
-        choice (``uint / tstr``) or a parenthesized type (``(uint) .size 1``)."""
+        choice (``uint / tstr``), a type socket (``$name``), a choice from a
+        group (``&(a: 0, b: 1)``) or a parenthesized type (``(uint) .size 1``)."""
         return bool(expr) and (len(self._split_choice(expr)) > 1
+                               or expr in self.cddl.type_choices
+                               or self._is_socket(expr)
+                               or query.choice_from(expr) is not None
                                or self._paren_parts(expr) is not None)
 
     def _check_primitive_type(self, value, type_name, _depth: int = 0):

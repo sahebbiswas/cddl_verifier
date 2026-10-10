@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
 Inline type choices (``c = a / b``) in map fields, arrays, inline arrays and
-at the root, root rules that are primitives with controls, and parenthesized
-types (``(uint / nil) .size 1``).
+at the root, root rules that are primitives with controls, parenthesized
+types (``(uint / nil) .size 1``), type sockets and choices from groups
+(``&(a: 0, b: 1)``).
 """
 
 import sys
@@ -260,6 +261,76 @@ class TestParenthesizedTypes(ChoiceTestCase):
         self.assertEqual(list(result.errors), ["Field 'o' in 'r' expected tstr, got 1"])
 
 
+class TestSockets(ChoiceTestCase):
+    """A field or element typed ``$socket`` is checked like the inline
+    choice of its ``/=`` alternatives (#119)."""
+
+    ROLE = "\n$role /= uint\n$role /= tstr"
+
+    def test_primitive_alternatives_in_a_field(self):
+        schema = "r = { role: $role }" + self.ROLE
+        self.check([
+            (schema, {"role": 1}, True),
+            (schema, {"role": "x"}, True),
+            (schema, {"role": 1.5}, False),                     # was accepted
+            (schema, {"role": [1]}, False),                     # was accepted
+        ])
+
+    def test_arrays(self):
+        self.check([
+            ("r = [ * $role ]" + self.ROLE, [1, "a"], True),
+            ("r = [ * $role ]" + self.ROLE, [1, 1.5], False),   # was accepted
+            ("r = { o: [ * $role ] }" + self.ROLE, {"o": [1]}, True),
+            ("r = { o: [ * $role ] }" + self.ROLE, {"o": [1, 1.5]}, False),
+        ])
+
+    def test_mixed_and_single_alternatives(self):
+        mixed = "r = { o: $s }\n$s /= uint\n$s /= m" + RULES
+        one = "r = { o: $one }\n$one /= text"
+        defined = "r = { o: $s }\n$s = { a: uint }"
+        self.check([
+            (mixed, {"o": 1}, True),
+            (mixed, {"o": {"a": 1}}, True),
+            (mixed, {"o": {"a": "x"}}, False),
+            (mixed, {"o": "x"}, False),                         # was accepted
+            (one, {"o": "a"}, True),
+            (one, {"o": 5}, False),                             # was accepted
+            (defined, {"o": {"a": 1}}, True),
+            (defined, {"o": {"a": "x"}}, False),                # was accepted
+        ])
+
+    def test_socket_under_a_control(self):
+        schema = "r = { o: $s .size 1 }\n$s /= uint\n$s /= tstr"
+        self.check([
+            (schema, {"o": "a"}, True),
+            (schema, {"o": "abc"}, False),                      # was accepted
+        ])
+
+    def test_empty_socket_matches_nothing(self):
+        schema = "r = { ? o: $e }"
+        self.check([(schema, {}, True), (schema, {"o": 1}, False)])
+        self.assertEqual(list(validate(schema, {"o": 1}).errors),
+                         ["Field 'o' in 'r' type socket $e has no alternatives, "
+                          "so no value matches it"])
+
+    def test_choice_from_group(self):
+        colors = "r = { c: &colors }\ncolors = (red: 0, green: 1, ? blue: 2)"
+        nested = "r = { c: &(base, z: 9) }\nbase = (x: 1, y: 2)"
+        roles = "r = { o: $r }\n$r /= &(a: 0)\n$r /= &(b: 1)"
+        self.check([
+            (colors, {"c": 2}, True),
+            (colors, {"c": 3}, False),                          # was accepted
+            ('r = { c: &(x: 1, y: "s") }', {"c": "s"}, True),
+            ('r = { c: &(x: 1, y: "s") }', {"c": 2}, False),
+            (nested, {"c": 9}, True),
+            (nested, {"c": 2}, True),
+            (nested, {"c": 3}, False),
+            (roles, {"o": 1}, True),
+            (roles, {"o": 7}, False),                           # was accepted
+            (roles, {"o": "x"}, False),
+        ])
+
+
 class TestCorimChoices(unittest.TestCase):
 
     def test_svn_type_choice(self):
@@ -274,6 +345,20 @@ class TestCorimChoices(unittest.TestCase):
         for data, expected in cases:
             with self.subTest(data=data):
                 result = validate(schema, data, root_type="svn-type-choice")
+                self.assertEqual(result.valid, expected, result.errors)
+
+    def test_socket_fields(self):
+        # '$entity-name-type-choice' (text) and '$corim-role-type-choice'
+        # ('&(manifest-creator: 1)' / ...) were not checked in fields (#119)
+        schema = Path(__file__).resolve().parent.parent / "cddl-schemas" / "unified.cddl"
+        cases = [
+            ({0: "name", 2: [1]}, True),
+            ({0: "name", 2: [7]}, False),
+            ({0: 5, 2: [1]}, False),
+        ]
+        for data, expected in cases:
+            with self.subTest(data=data):
+                result = validate(schema, data, root_type="corim-entity-map")
                 self.assertEqual(result.valid, expected, result.errors)
 
 

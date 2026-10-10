@@ -17,8 +17,8 @@ Removing the text from the tables altogether is tracked in a follow-up to #111.
 from functools import lru_cache
 from typing import List, NamedTuple, Optional, Set, Tuple
 
-from .ast import (Array, BytesLit, Control, FloatLit, GroupRef, IntLit, Member, Name,
-                  Paren, Range, Tag, TextLit, Type, walk)
+from .ast import (Array, BytesLit, ChoiceFrom, Control, FloatLit, GroupRef, IntLit, Member,
+                  Name, Paren, Range, Tag, TextLit, Type, walk)
 from .errors import CDDLSyntaxError
 from .parser import parse_type_expr
 
@@ -152,6 +152,14 @@ def without_controls(text: str) -> Optional[str]:
     parsed, node = single
     base, _ = _unwrap_controls(node)
     return None if isinstance(base, Range) else parsed.slice(base)
+
+
+def choice_from(text: str) -> Optional[ChoiceFrom]:
+    """The node for ``&( group )`` or ``&name``, else ``None``."""
+    single = _single(text)
+    if single is None or not isinstance(single[1], ChoiceFrom):
+        return None
+    return single[1]
 
 
 def tag(text: str) -> Optional[Tuple[int, str]]:
