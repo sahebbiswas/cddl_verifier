@@ -117,6 +117,13 @@ class TestUnresolvedBounds(Checks):
         # with, but the other bound still says the value is an integer
         self.check('r = $low .. 10\n$low /= 1\n$low /= 2', [5], ['x', 5.0])
 
+    def test_known_bound_is_enforced(self):
+        # review of #141: the bound that is known still limits the value
+        self.check('r = $low .. 10\n$low /= 1\n$low /= 2', [-3, 10], [11, 99])
+        self.check('r = $low ... 10\n$low /= 1\n$low /= 2', [9], [10])
+        self.check('r = 1 .. $high\n$high /= 5\n$high /= 6', [1, 99], [0])
+        self.check('r = 0.5 .. $high\n$high /= 1.0\n$high /= 2.0', [0.5], [0.4])
+
 
 class TestIntegerComparisonControls(Checks):
 

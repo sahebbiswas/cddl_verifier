@@ -1901,7 +1901,16 @@ class CBORAnalyzer:
         if not ok_type:
             return [f"expected {kind} in {expr}, got {shown}"]
         if bounds is None:
-            return [f"cannot check range '{expr}'"] if strict else []
+            if strict:
+                return [f"cannot check range '{expr}'"]
+            # '$low .. 10' with an unknown '$low': the known bound still applies
+            low, high = self._bound_literal(node.low), self._bound_literal(node.high)
+            if low is not None and value < low.value:
+                return [f"{shown} is outside {expr}"]
+            if high is not None and not (value <= high.value if node.inclusive
+                                         else value < high.value):
+                return [f"{shown} is outside {expr}"]
+            return []
         low, high = bounds
         if not (low <= value and (value <= high if node.inclusive else value < high)):
             return [f"{shown} is outside {expr}"]
