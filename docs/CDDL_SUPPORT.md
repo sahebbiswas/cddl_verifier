@@ -165,14 +165,29 @@ and `n*m` between `n` and `m`. A type name counts as one element and a group
 name as its entries (`[ int, pair ]` with `pair = (a: int, b: tstr)` takes
 three). A missing or extra element fails with its index:
 `[ int, tstr ]` rejects `[1]` ("is missing element [1]") and `[1, "a", 2]`
-("has unexpected element [2]"). `[ + g ]` repeats all of a group's entries,
-so with `g = (a: int, b: tstr)` it takes at least two elements. With group
-choices (`[ int // tstr, bool ]`), the shortest and the longest choice set
-the bounds, and the elements are not checked against the entries yet.
-Elements are matched to entries by position;
-when an optional entry comes before others, which entry an element belongs
-to is not worked out yet
-([#72](https://github.com/sahebbiswas/cddl_verifier/issues/72)).
+("has unexpected element [2]").
+
+Elements are assigned to the entries in order, as RFC 8610 §3.4 describes:
+each entry takes as many elements as its occurrence allows, a group name or
+an inline group (`( int, tstr )`) takes its entries, and a group choice
+(`//`) takes one of its alternatives. Every assignment is tried, so these
+all match:
+
+```cddl
+a = [ ? int, tstr ]            ; ["x"] and [1, "x"]
+b = [ * int, tstr ]            ; ["x"], [1, 2, "x"]
+c = [ int, pair ]              ; [1, 2, "x"] with pair = (a: int, b: tstr)
+d = [ + ( int, tstr ) ]        ; [1, "a", 2, "b"]
+e = [ int // tstr, bool ]      ; [1] and ["x", true], not [1, true]
+```
+
+When no assignment takes every element, the error names the first element
+that none gets past: "Array element [1] of 'c' matches no entry (int:
+expected int, got str)", "is missing element [n]" when the array ends too
+early, or "has unexpected element [i]" when the entries are used up. The
+work grows linearly with the number of elements. A group that refers to
+itself (`g = (int, ? g)`) is not expanded, and such an array is checked
+only element by element against its first entries.
 
 This holds wherever an array appears: as a rule, a map field, an array
 element, a choice alternative or inside a tag (`decfrac` rejects `4([1])`).

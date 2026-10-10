@@ -16,7 +16,7 @@ import re
 import struct
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from ._cddl import parse_cddl, parse_prelude, query
 from ._cddl.ast import (BytesLit, FloatLit, GroupRef, InlineGroup, IntLit, Member, Name, Paren,
@@ -1717,7 +1717,17 @@ class CBORAnalyzer:
                 return False
             
             logger.debug(f"{Colors.CDDL}[{breadcrumb}]{Colors.RESET} Array has {len(data)} elements")
-            
+
+            sequence = type_def.get('sequence')
+            if sequence is not None:
+                # Optional or repeated entries before others, group names and
+                # group choices: assign the elements to the entries (#135)
+                error_msg = self._match_array(data, sequence, type_name)
+                if error_msg:
+                    logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
+                    self.validation_errors.append(error_msg)
+                return len(self.validation_errors) == 0
+
             # Enforce the number of elements the entries' occurrences allow
             # ('[int, tstr]' takes exactly two). Without known bounds, only
             # a lone '+' entry is checked.
@@ -1907,6 +1917,78 @@ class CBORAnalyzer:
             except re.error as exc:
                 errors.append(f"invalid .regexp pattern /{pattern}/: {exc}")
         return errors
+
+    def _match_array(self, data: Sequence, sequence: List, type_name: str) -> Optional[str]:
+        """Match the elements of *data* to the entry *sequence* of an array.
+
+        Each entry takes between its ``min`` and ``max`` elements in order,
+        and a nested group takes one of its choices (RFC 8610 §3.4). Every
+        assignment is followed at once, as the set of positions it can reach
+        after each entry, so each element is checked against each entry type
+        at most once. Returns ``None`` when one assignment takes every
+        element, else an error naming the first element none gets past.
+        """
+        count = len(data)
+        fits: Dict[Tuple[int, str], bool] = {}
+        tried: Dict[int, List[Tuple[str, str]]] = {}
+        furthest = [0]
+
+        def unit_ends(entry, starts):
+            if 'group' in entry:
+                return group_ends(entry['group'], starts)
+            text = entry['type']
+            ends = set()
+            for pos in starts:
+                if pos >= count:
+                    continue
+                key = (pos, text)
+                if key not in fits:
+                    errors = self._check_value(data[pos], text)
+                    fits[key] = not errors
+                    if errors:
+                        tried.setdefault(pos, []).append((text, errors[0]))
+                if fits[key]:
+                    ends.add(pos + 1)
+                    furthest[0] = max(furthest[0], pos + 1)
+            return ends
+
+        def entry_ends(entry, starts):
+            low, high = entry['min'], entry['max']
+            ends = set(starts) if low == 0 else set()
+            seen = set(ends)
+            frontier, done = set(starts), 0
+            while frontier and (high is None or done < high):
+                done += 1
+                reached = unit_ends(entry, frontier)
+                if done >= low:
+                    # a position reached again, after more repeats, adds nothing
+                    reached -= seen
+                    seen |= reached
+                    ends |= reached
+                frontier = reached
+            return ends
+
+        def group_ends(choices, starts):
+            ends = set()
+            for entries in choices:
+                reached = set(starts)
+                for entry in entries:
+                    reached = entry_ends(entry, reached)
+                    if not reached:
+                        break
+                ends |= reached
+            return ends
+
+        if count in group_ends(sequence, {0}):
+            return None
+        index = furthest[0]
+        if index >= count:
+            return (f"Array type '{type_name}' is missing element [{count}]: "
+                    f"the array ends before its required entries")
+        if index in tried:
+            reasons = '; '.join(f"{text}: {error}" for text, error in tried[index][:3])
+            return f"Array element [{index}] of '{type_name}' matches no entry ({reasons})"
+        return f"Array type '{type_name}' has unexpected element [{index}]"
 
     def _sandboxed_validate(self, value: Any, type_def: Dict, type_name: str) -> List[str]:
         """Run :meth:`_validate_type` and return its errors without keeping them."""
