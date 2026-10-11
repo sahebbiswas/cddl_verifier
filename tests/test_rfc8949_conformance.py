@@ -15,7 +15,12 @@ try:
 except ImportError:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from cddl_verifier._cbor import (\n    CBORDecodeError,\n    CBORTruncatedError,\n    CBORTrailingDataError,\n    cbor_decode,\n)
+from cddl_verifier._cbor import (
+    CBORDecodeError,
+    CBORTruncatedError,
+    CBORTrailingDataError,
+    cbor_decode,
+)
 
 
 # (RFC concept, encoded bytes, expected Python value). Tags currently decode to
