@@ -120,10 +120,11 @@ of the problem. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/b
 - **CBOR**: indefinite-length items and `undefined` are not supported
   (`CBORUnsupportedError`). CBOR sequences are rejected; a sequence API is not
   available yet.
-- **Value types**: tags decode to `(tag, value)` tuples and arrays or maps used
-  as map keys decode to tuples. These are provisional and expected to change
-  ([#78](https://github.com/sahebbiswas/cddl_verifier/issues/78),
-  [#88](https://github.com/sahebbiswas/cddl_verifier/issues/88)).
+- **Value types**: tags decode to `(tag, value)` tuples. This is provisional
+  and expected to change
+  ([#78](https://github.com/sahebbiswas/cddl_verifier/issues/78)). Map keys
+  that are booleans, floats, arrays, maps or tags decode to `CBORKey`, so
+  `{1: a, true: b}` keeps both entries and re-encodes to the same bytes.
 
 ## Documentation
 

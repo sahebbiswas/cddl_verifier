@@ -5,7 +5,7 @@ Install with `pip install cddl-verifier` and import `cddl_verifier`.
 | Module | Status | Main entry points |
 |--------|--------|-------------------|
 | [`cddl_verifier`](#cddl_verifier-validation) | Public | `validate`, `Validator`, `ValidationResult`, `Diagnostic`, `SchemaError`, `CBORDecodeError`, `__version__` |
-| [`cddl_verifier.cbor`](#cddl_verifiercbor-encoding-and-decoding) | Public | `encode`, `decode`, `diag_dump`, `CBOR`, decode errors |
+| [`cddl_verifier.cbor`](#cddl_verifiercbor-encoding-and-decoding) | Public | `encode`, `decode`, `diag_dump`, `CBOR`, `CBORKey`, decode errors |
 | [`cddl_verifier.json_codec`](#cddl_verifierjson_codec-json-conversion) | Public | `cbor_to_json`, `json_to_cbor`, file helpers |
 | [`cddl_verifier._analyzer`](#internal-parser-validator-and-edn-generator) | Internal | `CDDLParser`, `CBORAnalyzer`, `EDNGenerator` |
 
@@ -14,8 +14,7 @@ any release without notice. The public names above follow the versioning policy
 in the [README](../README.md#versioning).
 
 > **Provisional value types.** Decoded CBOR values currently represent tags as
-> `(tag, value)` tuples and arrays or maps used as map keys as tuples. These
-> types are expected to change ([#78](https://github.com/sahebbiswas/cddl_verifier/issues/78), [#88](https://github.com/sahebbiswas/cddl_verifier/issues/88)).
+> `(tag, value)` tuples. This is expected to change ([#78](https://github.com/sahebbiswas/cddl_verifier/issues/78)).
 
 ---
 
@@ -170,11 +169,38 @@ data = cbor_decode(raw)
 ```
 
 Decoded values map to Python as follows: integers to `int`, byte strings to
-`bytes`, text to `str`, arrays to `list`, maps to `dict` (array or map keys become
-tuples so they are hashable), tags to `(tag_number, value)` tuples (except
-bignums, tags 2/3, whose value is outside the 64-bit range: those decode to
-`int`), and
-`true` / `false` / `null` / floats to their Python equivalents.
+`bytes`, text to `str`, arrays to `list`, maps to `dict` (see
+[Map keys](#map-keys) for their keys), tags to `(tag_number, value)` tuples
+(except bignums, tags 2/3, whose value is outside the 64-bit range: those
+decode to `int`), and `true` / `false` / `null` / floats to their Python
+equivalents.
+
+### Map keys
+
+Integer, text, byte string and `null` map keys decode to plain `int`, `str`,
+`bytes` and `None`. Every other key (a boolean, float, array, map or tag) decodes
+to a `CBORKey`, which wraps the key and keeps its CBOR type. As plain Python
+values these keys would be unhashable or would merge with a different key:
+Python treats `True`, `1` and `1.0` as one dict key, but they are three CBOR keys.
+
+```python
+from cddl_verifier.cbor import CBORKey, decode, encode
+
+data = decode(bytes.fromhex("a201f5f5f4"))   # {1: true, true: false}
+data                    # {1: True, CBORKey(True): False}
+data[CBORKey(True)]     # False
+key = next(iter(decode(bytes.fromhex("a1820102f6"))))   # {[1, 2]: null}
+key.value               # [1, 2] (a copy)
+encode(data).hex()      # 'a201f5f5f4': keys keep their type
+```
+
+Two `CBORKey` objects are equal when they stand for the same CBOR value: the
+types must match (`CBORKey(True) != CBORKey(1) != CBORKey(1.0)`), floats compare
+by value whatever their encoded width (`-0.0` and `0.0` differ), and maps
+compare without regard to entry order. A `CBORKey` never equals a plain value.
+The encoder writes a `CBORKey` as the value it wraps, and `CBORKey` objects are
+immutable. The decoder rejects a map with two keys that are equal in this sense
+(including two NaN keys with the same encoding).
 
 ### Strict single-item decoding
 

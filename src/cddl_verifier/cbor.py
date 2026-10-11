@@ -6,14 +6,18 @@ names ``cbor_encode``/``cbor_decode``/``cbor_diag_dump``.
 ``decode`` accepts exactly one complete CBOR data item and raises
 :class:`CBORDecodeError` (with a byte ``offset``) for anything else.
 
-Decoded value types are provisional: tags currently decode to
-``(tag, value)`` tuples, and arrays or maps used as map keys to tuples. These are
-expected to change in a later release.
+Map keys that are not integers, text, byte strings or null (booleans, floats,
+arrays, maps and tags) decode to :class:`CBORKey`, which keeps their CBOR type:
+``{1: a, true: b}`` keeps both entries and re-encodes to the same bytes.
+
+Decoded tags are provisional: they currently decode to ``(tag, value)`` tuples,
+which is expected to change in a later release.
 """
 
 from ._cbor import (
     CBOR,
     CBORDecodeError,
+    CBORKey,
     CBORTrailingDataError,
     CBORTruncatedError,
     CBORUnsupportedError,
@@ -25,6 +29,7 @@ from ._cbor import (
 __all__ = [
     "CBOR",
     "CBORDecodeError",
+    "CBORKey",
     "CBORTrailingDataError",
     "CBORTruncatedError",
     "CBORUnsupportedError",
