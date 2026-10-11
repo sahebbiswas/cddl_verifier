@@ -37,7 +37,7 @@ class TestTypedKeys(unittest.TestCase):
                      {True: "t"}, {False: "f"}, {None: "null"},
                      {0: "int", "0": "str"}, {"a": {2: "nested"}}, [{3: 4}],
                      {"$cbor": "not an annotation"}):
-            self.assertEqual(typed_round_trip(data), data, data)
+            self.assertEqual(typed_round_trip(data), decode(encode(data)), data)
 
     def test_pairs_form(self):
         self.assertEqual(json.loads(cbor_to_json(encode({0: "a", "0": "b"}), typed=True)),

@@ -26,7 +26,7 @@ import json
 import base64
 import math
 from typing import Any, Dict, List, Union
-from ._cbor import CBOR, cbor_encode, cbor_decode
+from ._cbor import CBOR, CBORKey, cbor_encode, cbor_decode, map_key
 
 
 class CBORJSONEncoder(json.JSONEncoder):
@@ -155,6 +155,9 @@ def _preprocess_for_json(obj: Any, typed: bool) -> Any:
     - tagged tuples → value or typed annotation
     - nested structures recursively
     """
+    if isinstance(obj, CBORKey):
+        obj = obj.value
+
     # Handle bytes
     if isinstance(obj, bytes):      
         
@@ -220,6 +223,8 @@ def _preprocess_for_json(obj: Any, typed: bool) -> Any:
 
 def _json_key(key: Any) -> str:
     """The JSON object key untyped conversion writes for a CBOR map key."""
+    if isinstance(key, CBORKey):
+        key = key.value
     if isinstance(key, str):
         return key
     if isinstance(key, bytes):
@@ -242,16 +247,6 @@ def _reject_duplicate_keys(pairs: List) -> Dict:
             raise ValueError(f"Duplicate JSON object key: {key!r}")
         result[key] = value
     return result
-
-
-def _hashable_key(key: Any) -> Any:
-    """A map key read from JSON, in the form the CBOR decoder gives it."""
-    if isinstance(key, list):
-        return tuple(_hashable_key(item) for item in key)
-    if isinstance(key, dict):
-        return tuple(sorted(((_hashable_key(k), _hashable_key(v)) for k, v in key.items()),
-                            key=lambda pair: (type(pair[0]).__name__, repr(pair[0]))))
-    return key
 
 
 def json_to_cbor(json_str: str, canonical: bool = False) -> bytes:
@@ -332,11 +327,9 @@ def _process_cbor_annotations(obj: Any) -> Any:
                     if not isinstance(pair, list) or len(pair) != 2:
                         raise ValueError(f"A $cbor map entry must be a [key, value] pair, "
                                          f"got {pair!r}")
-                    key = _hashable_key(_process_cbor_annotations(pair[0]))
-                    # NaN never equals itself, so 'in' misses a repeated NaN key
-                    if key in result or (isinstance(key, float) and math.isnan(key)
-                                         and any(isinstance(k, float) and math.isnan(k)
-                                                 for k in result)):
+                    # Same key form as the CBOR decoder (#88): 1, true and 1.0 stay distinct
+                    key = map_key(_process_cbor_annotations(pair[0]))
+                    if key in result:
                         raise ValueError(f"Duplicate map key in $cbor map: {key!r}")
                     result[key] = _process_cbor_annotations(pair[1])
                 return result

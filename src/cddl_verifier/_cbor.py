@@ -92,6 +92,130 @@ class CBORUnsupportedError(CBORDecodeError, NotImplementedError):
     """
 
 
+# ============================================================================
+# MAP KEYS
+# ============================================================================
+
+def _is_tag(obj: Any) -> bool:
+    """True for a ``(tag_number, value)`` tuple, the way the encoder reads it."""
+    return (isinstance(obj, tuple) and len(obj) == 2 and isinstance(obj[0], int)
+            and 0 <= obj[0] < 2**64)
+
+
+def _key_identity(obj: Any) -> Any:
+    """A hashable value equal for two items exactly when CBOR sees them as equal.
+
+    Python treats ``True``, ``1`` and ``1.0`` as one dict key, and ``0.0`` and
+    ``-0.0`` as another, but they are distinct CBOR keys. The identity keeps the
+    CBOR type, compares floats by their float64 bits (so float16 ``1.5`` and
+    float64 ``1.5`` are the same key), and ignores the order of a map's entries.
+    """
+    if isinstance(obj, CBORKey):
+        return obj._identity
+    if obj is None:
+        return ('null',)
+    if isinstance(obj, bool):
+        return ('bool', obj)
+    if isinstance(obj, int):
+        return ('int', obj)
+    if isinstance(obj, float):
+        return ('float', struct.pack('>d', obj))
+    if isinstance(obj, str):
+        return ('tstr', obj)
+    if isinstance(obj, bytes):
+        return ('bstr', obj)
+    if _is_tag(obj):
+        return ('tag', obj[0], _key_identity(obj[1]))
+    if isinstance(obj, (list, tuple)):
+        return ('array', tuple(_key_identity(item) for item in obj))
+    if isinstance(obj, dict):
+        return ('map', frozenset((_key_identity(k), _key_identity(v)) for k, v in obj.items()))
+    raise TypeError(f"Cannot use {type(obj).__name__} as a CBOR map key")
+
+
+class CBORKey:
+    """A CBOR map key that a plain Python dict key can't represent faithfully.
+
+    The decoder returns integer, text, byte string and null keys as ``int``,
+    ``str``, ``bytes`` and ``None``. It wraps every other key (booleans,
+    floats, arrays, maps and tags) in a ``CBORKey``, because as plain values
+    they would either be unhashable or merge with a different key: Python
+    treats ``True``, ``1`` and ``1.0`` as the same dict key, while CBOR does
+    not.
+
+    Two ``CBORKey`` objects are equal when they stand for the same CBOR value:
+    the type must match, floats compare by value whatever their encoded width
+    (``-0.0`` differs from ``0.0``), and maps compare without regard to entry
+    order. A ``CBORKey`` never equals a plain value, so ``CBORKey(True)`` and
+    ``1`` can be keys of the same dict. The encoder writes a ``CBORKey`` as
+    the value it wraps.
+
+    Example:
+        >>> data = decode(bytes.fromhex('a201f5f5f4'))   # {1: true, true: false}
+        >>> data
+        {1: True, CBORKey(True): False}
+        >>> data[CBORKey(True)]
+        False
+        >>> encode(data).hex()
+        'a201f5f5f4'
+    """
+
+    __slots__ = ('_value', '_identity')
+
+    def __init__(self, value: Any):
+        """Wrap *value*, the key as the decoder gives values (list, dict, ...).
+
+        Raises:
+            TypeError: *value* is not a CBOR-encodable value.
+        """
+        identity = _key_identity(value)
+        if isinstance(value, CBORKey):
+            value = value._value
+        object.__setattr__(self, '_value', copy_module.deepcopy(value))
+        object.__setattr__(self, '_identity', identity)
+
+    @property
+    def value(self) -> Any:
+        """The key as an ordinary decoded value (a copy, so changing it is safe)."""
+        return copy_module.deepcopy(self._value)
+
+    def __setattr__(self, name, value):
+        raise AttributeError("CBORKey is immutable")
+
+    def __eq__(self, other):
+        if isinstance(other, CBORKey):
+            return self._identity == other._identity
+        return NotImplemented
+
+    def __hash__(self):
+        return hash(self._identity)
+
+    def __repr__(self) -> str:
+        return f"CBORKey({self._value!r})"
+
+    def __copy__(self):
+        return self
+
+    def __deepcopy__(self, memo):
+        return self
+
+    def __reduce__(self):
+        return (CBORKey, (self._value,))
+
+
+def map_key(key: Any) -> Any:
+    """The dict key the decoder uses for the CBOR map key *key*.
+
+    ``int``, ``str``, ``bytes`` and ``None`` are returned as they are; any other
+    value is wrapped in a :class:`CBORKey`.
+    """
+    if key is None or isinstance(key, (str, bytes, CBORKey)):
+        return key
+    if isinstance(key, int) and not isinstance(key, bool):
+        return key
+    return CBORKey(key)
+
+
 class CBOR:
     """
     Unified CBOR encoder, decoder, and diagnostic dumper.
@@ -133,17 +257,6 @@ class CBOR:
         self._cached_bytes = None
         self._indent_str = "  "
 
-    def _make_hashable(self, obj: Any) -> Any:
-        """Recursively convert unhashable objects to hashable ones."""
-        if isinstance(obj, (list, tuple)):
-            return tuple(self._make_hashable(item) for item in obj)
-        if isinstance(obj, dict):
-            return tuple(sorted(
-                ((self._make_hashable(k), self._make_hashable(v)) for k, v in obj.items()),
-                key=lambda x: (type(x[0]).__name__, repr(x[0]))
-            ))
-        return obj
-    
     # ========================================================================
     # CLASS METHODS - Loading and Convenience
     # ========================================================================
@@ -245,6 +358,8 @@ class CBOR:
     
     def _encode_item(self, obj: Any) -> bytes:
         """Encode a single Python object to CBOR."""
+        if isinstance(obj, CBORKey):
+            return self._encode_item(obj._value)
         # Handle tagged values (tag_num, value)
         if isinstance(obj, tuple) and len(obj) == 2 and isinstance(obj[0], int) and obj[0] >= 0:
             tag_num, value = obj
@@ -487,12 +602,10 @@ class CBOR:
         map_dict = {}
         for _ in range(length):
             key_offset = self._decode_pos
-            key = self._decode_item()
+            # Keys other than int/str/bytes/null become CBORKey, so that they
+            # keep their CBOR type and only true duplicates collide (#88)
+            key = map_key(self._decode_item())
             value = self._decode_item()
-            try:
-                hash(key)
-            except TypeError:
-                key = self._make_hashable(key)
             if key in map_dict:
                 raise CBORDecodeError(f"Duplicate map key: {key!r}", key_offset)
             map_dict[key] = value
