@@ -88,7 +88,7 @@ class TestRFC8949RejectVectors(unittest.TestCase):
         ("truncated text string", "636162"),
         ("truncated array child", "8201"),
         ("truncated map value", "a101"),
-        ("truncated tag child", "c101"),
+        ("truncated tag child", "c1"),
         ("invalid UTF-8 text", "61ff"),
         ("reserved additional information", "1c"),
         ("break outside indefinite item", "ff"),
