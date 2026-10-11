@@ -15,7 +15,7 @@ try:
 except ImportError:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from cddl_verifier._cbor import CBORDecodeError, cbor_decode
+from cddl_verifier._cbor import (\n    CBORDecodeError,\n    CBORTruncatedError,\n    CBORTrailingDataError,\n    cbor_decode,\n)
 
 
 # (RFC concept, encoded bytes, expected Python value). Tags currently decode to
@@ -80,26 +80,28 @@ class TestRFC8949DecodeVectors(unittest.TestCase):
 class TestRFC8949RejectVectors(unittest.TestCase):
     # These are malformed or incomplete single-item inputs, not unsupported
     # optional features such as indefinite-length items.
+    # (name, hex input, expected error class, byte offset)
     INVALID_VECTORS = [
-        ("empty input", ""),
-        ("truncated uint argument", "18"),
-        ("truncated uint32 argument", "1a0000"),
-        ("truncated byte string", "430102"),
-        ("truncated text string", "636162"),
-        ("truncated array child", "8201"),
-        ("truncated map value", "a101"),
-        ("truncated tag child", "c1"),
-        ("invalid UTF-8 text", "61ff"),
-        ("reserved additional information", "1c"),
-        ("break outside indefinite item", "ff"),
-        ("trailing second data item", "0001"),
+        ("empty input", "", CBORTruncatedError, 0),
+        ("truncated uint argument", "18", CBORTruncatedError, 1),
+        ("truncated uint32 argument", "1a0000", CBORTruncatedError, 1),
+        ("truncated byte string", "430102", CBORTruncatedError, 1),
+        ("truncated text string", "636162", CBORTruncatedError, 1),
+        ("truncated array child", "8201", CBORTruncatedError, 2),
+        ("truncated map value", "a101", CBORTruncatedError, 2),
+        ("truncated tag child", "c1", CBORTruncatedError, 1),
+        ("invalid UTF-8 text", "61ff", CBORDecodeError, 1),
+        ("reserved additional information", "1c", CBORDecodeError, 0),
+        ("break outside indefinite item", "ff", CBORDecodeError, 0),
+        ("trailing second data item", "0001", CBORTrailingDataError, 1),
     ]
 
     def test_invalid_vectors_rejected(self):
-        for name, encoded_hex in self.INVALID_VECTORS:
+        for name, encoded_hex, error_type, expected_offset in self.INVALID_VECTORS:
             with self.subTest(vector=name):
-                with self.assertRaises(CBORDecodeError):
+                with self.assertRaises(error_type) as caught:
                     cbor_decode(bytes.fromhex(encoded_hex))
+                self.assertEqual(caught.exception.offset, expected_offset)
 
 
 if __name__ == "__main__":
