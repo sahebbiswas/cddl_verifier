@@ -28,6 +28,9 @@ and decoding are bundled. Extras for contributors: `pip install "cddl-verifier[t
 
 ## Quick start
 
+For copy-pasteable workflows from installation through validation, debugging,
+JSON conversion, and CI, see the [task-oriented recipes](docs/RECIPES.md).
+
 ### Command line
 
 ```bash
@@ -130,6 +133,7 @@ of the problem. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/b
 
 | Document | Contents |
 |----------|----------|
+| [docs/RECIPES.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/RECIPES.md) | End-to-end CLI, Python, debugging, JSON/CBOR, CoRIM, and CI recipes |
 | [docs/CLI.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CLI.md) | `cddl-verify` and JSON converter options, input rules, EDN output formats |
 | [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/API.md) | Python API: `validate`, `Validator`, CBOR and JSON helpers |
 | [docs/CDDL_SUPPORT.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CDDL_SUPPORT.md) | Supported CDDL syntax, types, and validation behaviour |
