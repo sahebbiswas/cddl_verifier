@@ -187,10 +187,8 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
-          # TestPyPI never allows re-uploading a version. Manual dry runs may
-          # repeat one, but a release must upload the files it just built, so
-          # that the install check below tests exactly what goes to PyPI.
-          skip-existing: ${{ github.event_name == 'workflow_dispatch' }}
+          # Never skip an existing version: verification must fail rather
+          # than silently install an older artifact from a previous run.
 
   verify-testpypi:
     name: Verify TestPyPI install
@@ -211,7 +209,6 @@ jobs:
           for attempt in 1 2 3 4 5 6; do
             if "$RUNNER_TEMP/venv/bin/python" -m pip install --no-cache-dir \
                  --index-url https://test.pypi.org/simple/ \
-                 --extra-index-url https://pypi.org/simple/ \
                  "cddl-verifier==$VERSION"; then
               break
             fi
