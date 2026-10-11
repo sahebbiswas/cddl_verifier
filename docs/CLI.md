@@ -7,6 +7,8 @@ The project ships two command-line tools:
 | `cddl-verify` | Validate a CBOR file against a CDDL schema and print annotated EDN |
 | `python -m cddl_verifier.json_codec` | Convert between CBOR and JSON |
 
+For complete workflows, see the [task-oriented recipes](RECIPES.md).
+
 ## `cddl-verify`
 
 `cddl-verify` is installed by `pip install cddl-verifier`. `python -m cddl_verifier`

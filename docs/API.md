@@ -1,5 +1,8 @@
 # Python API reference
 
+Install with `pip install cddl-verifier` and import `cddl_verifier`. For end-to-end
+consumer workflows, see [Recipes](RECIPES.md).
+
 Install with `pip install cddl-verifier` and import `cddl_verifier`.
 
 | Module | Status | Main entry points |
