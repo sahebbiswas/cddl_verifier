@@ -1505,7 +1505,8 @@ class CBORAnalyzer:
                         else:
                             # Regular type - try to get nested type definition
                             nested_type_def = self.cddl.get_type(field_type)
-                            if nested_type_def:
+                            # 'bstr .cbor m' was checked above; checking again repeats its errors
+                            if nested_type_def and not cbor_control:
                                 logger.debug(f"{Colors.CDDL}[{field_breadcrumb}]{Colors.RESET} Recursing into nested type: {field_type}")
                                 self._validate_type(value, nested_type_def, field_type)
                     

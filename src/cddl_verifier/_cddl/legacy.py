@@ -44,6 +44,8 @@ from .printer import format_node
 #: How many generic instances may be expanding inside each other. Past it,
 #: a reference is kept as text, so 'g<T> = { n: g<[T]> }' terminates.
 _MAX_INSTANCE_DEPTH = 16
+# Controls whose argument is a type that data is checked against (RFC 8610 §3.8)
+_TYPE_ARG_CONTROLS = frozenset({'cbor', 'cborseq'})
 
 # Occurrences that make a map member optional.
 _OPTIONAL = ('?', '*')
@@ -428,7 +430,16 @@ class LegacyTables:
             return Paren(self._lift(node.type, path))
         if isinstance(node, Control):
             # 'opt<uint> .size 1' gives '(uint / nil) .size 1'
-            return Control(self._lift(node.target, path), node.op, node.arg)
+            arg = node.arg
+            if node.op in _TYPE_ARG_CONTROLS:
+                # 'bstr .cbor pair<uint, tstr>', 'bstr .cbor { a: uint }': the
+                # embedded item is checked against the argument (#127)
+                if isinstance(arg, Array):
+                    # '[+ p]' too: the embedded item is checked as a rule of its own
+                    arg = Name(self._synthetic(arg, f'{path}@arg'))
+                else:
+                    arg = _as_type2(self._lift(Type((arg,)), f'{path}@arg'))
+            return Control(self._lift(node.target, path), node.op, arg)
         if isinstance(node, Array):
             if not self._uniform(node):
                 # '[ int, tstr ]': a structure of its own, so its elements are
@@ -498,6 +509,11 @@ def _positional(group, entries, element_types, resolved) -> bool:
         if last > 0 and occurrence.max is not None and occurrence.max > 1:
             return False
     return True
+
+
+def _as_type2(ty: Type):
+    """*ty* as a single type2: its only alternative, or a parenthesized choice."""
+    return ty.alternatives[0] if len(ty.alternatives) == 1 else Paren(ty)
 
 
 def _deeper_than(node, limit: int) -> bool:

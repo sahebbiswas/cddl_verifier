@@ -71,7 +71,9 @@ Generic rules are instantiated where they are used: `pair<uint, tstr>`, with
 `pair<A, B> = [A, B]`, checks a two-element array of an unsigned integer and a
 text string, as a rule, a map field or an array element. `opt<uint>`, with
 `opt<T> = T / nil`, is the choice `uint / nil`. Recursive generics such as
-`tree<T> = { v: T, ? l: tree<T> }` are checked at every depth. A control around a generic
+`tree<T> = { v: T, ? l: tree<T> }` are checked at every depth. A generic can also be
+the argument of `.cbor` (`bstr .cbor pair<uint, tstr>`): the embedded item is
+checked against the instance. A control around a generic
 structure is not enforced: `non-empty<{ a: int }>`, with
 `non-empty<M> = (M) .and ({ + any => any })`, is checked as the map
 `{ a: int }` ([#120](https://github.com/sahebbiswas/cddl_verifier/issues/120)).
@@ -262,6 +264,10 @@ inner-type = {
   )
 )
 ```
+
+The argument of `.cbor` can be any type: a rule name, a generic instance
+(`bstr .cbor pair<uint, tstr>`), an inline map (`bstr .cbor { a: uint }`) or an
+inline array (`bstr .cbor [+ uint]`). The embedded item is checked against it.
 
 The nested byte string must hold exactly one CBOR item. Truncated content or
 trailing bytes inside it are reported as a validation error, using the same strict
