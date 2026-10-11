@@ -148,6 +148,10 @@ Next: [Python API reference](API.md).
 
 ## 4. Diagnose a failure
 
+**Prerequisite:** the `person.cddl` and `person-invalid.cbor` fixtures created in
+[Recipe 2](#2-validate-a-cbor-file). Run that recipe first, or substitute your
+own schema and CBOR input paths.
+
 Start by asking the CLI to write annotated EDN to a file:
 
 ```bash
@@ -236,8 +240,9 @@ cddl-verify person.cddl person.cbor --type person --output person.edn \
 ```
 
 Keep the schema and CBOR fixture as version-controlled test inputs. Configure
-your CI system to upload `validation.stdout`, `validation.stderr`, and
-`person.edn` as artifacts when the job fails. Do not omit `--type` in
+your CI system to upload `validation.stdout` and `validation.stderr` as artifacts
+when the job fails. The `person.edn` output file is not created when explicit
+`--type` validation fails. Do not omit `--type` in
 automation if you need validation failures to make the command fail.
 
 Next: [CLI exit status](CLI.md) and [testing guide](../TESTING.md).
