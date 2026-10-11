@@ -16,7 +16,8 @@ and the standard-library **unittest** runner with no code changes required.
 | `tests/test_simple_cbor.py` | CBOR encode/decode, diagnostics, round-trips |
 | `tests/test_cbor_builder.py` | Iterative construction, nested access, merge |
 | `tests/test_canonical_and_json.py` | Canonical encoding, JSON ↔ CBOR conversion |
-| `tests/test_deterministic_encoding.py` | RFC 8949 §4.2 deterministic encoding golden vectors, Appendix A encoder vectors and float-width boundaries |\n| `tests/test_rfc8949_conformance.py` | RFC 8949 decode vectors, non-preferred encodings, malformed/truncated inputs and strict single-item rejection |
+| `tests/test_deterministic_encoding.py` | RFC 8949 §4.2 deterministic encoding golden vectors, Appendix A encoder vectors and float-width boundaries |
+| `tests/test_rfc8949_conformance.py` | RFC 8949 decode vectors, non-preferred encodings, malformed/truncated inputs and strict single-item rejection |
 | `tests/test_size_control.py` | RFC 8610 `.size` on `tstr`/`bstr`/`uint`, arguments, nested and root contexts |
 | `tests/test_tag_validation.py` | CBOR tag checks for tagged and untagged rules at the root, in fields, arrays and choices |
 | `tests/test_type_choices.py` | Inline type choices in fields, arrays and at the root; controlled primitives as the root rule; parenthesized types and controls on choices (#118); type sockets and choices from groups (`&(a: 0)`) in fields and arrays (#119) |
