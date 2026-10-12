@@ -215,7 +215,7 @@ class TestKeyTypeMembers(unittest.TestCase):
             with self.subTest(schema=schema):
                 result = validate(schema, {"a": 1, "foo": "x"})
                 self.assertFalse(result.valid)
-                self.assertIn("Unknown fields", result.errors[0])
+                self.assertIn("Unknown fields", " ".join(result.errors))
 
     def test_any_and_socket_keys(self):
         self.assertTrue(validate("m = { * any => int }", {"x": 1, 2: 3}).valid)
@@ -226,7 +226,8 @@ class TestKeyTypeMembers(unittest.TestCase):
     def test_computed_key_table_entry(self):
         p = CDDLParser("m = { * tstr => any, ? int => { a: int } }")
         self.assertEqual(p.types['m']['computed_keys'],
-                         [{'key': 'tstr', 'type': 'any'}, {'key': 'int', 'type': 'm@value'}])
+                         [{'key': 'tstr', 'type': 'any', 'min': 0, 'max': None},
+                          {'key': 'int', 'type': 'm@value2', 'min': 0, 'max': 1}])
 
 
 class TestBundledSchemas(unittest.TestCase):

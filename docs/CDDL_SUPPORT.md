@@ -58,13 +58,14 @@ schema.cddl:4:12: undefined name 'tsrt'; did you mean 'tstr'?
 `a = b` and `a = ( b )` define a group when `b` is a group and a type
 otherwise. Recursive rules (`tree = [ uint, * tree ]`) are fine.
 
-Data is not checked against an unwrapped type (`~m`) used as a map field type
-or as an alternative of a choice yet
-([#72](https://github.com/sahebbiswas/cddl_verifier/issues/72)). It matches
-nothing and the error says it cannot be checked, so `c = ~m / tstr` accepts a
-text string and rejects every other value, instead of accepting everything
-([#106](https://github.com/sahebbiswas/cddl_verifier/issues/106)). Splicing
-a group into an array (`[ ~hdr, x: int ]`) is not affected.
+`~x` (unwrap) takes the type out of a tag or the entries out of a map or an
+array: `~t` with `t = #6.5(int)` is `int`, and `[ ~hdr, x: int ]` or
+`{ ~hdr, x: int }` has the entries of `hdr` followed by `x`. A map or array
+unwrapped in a place that needs a type (`a: ~m` with `m = { b: int }`) is a
+group, not a type, so nothing matches it and the error says why; in a choice
+(`c = ~m / tstr`) the other alternatives still match
+([#106](https://github.com/sahebbiswas/cddl_verifier/issues/106)). A map
+cannot splice an array (`{ ~hdr }` with `hdr = [ a: int ]` is rejected).
 
 Names from other modules are not checked when the schema imports the module in
 the comment syntax of the CDDL modules draft (draft-ietf-cbor-cddl-modules), as
@@ -88,9 +89,13 @@ must also match `{ + any => any }`, so `{}` is rejected. Other controls
 around a generic structure (`.size`, ...) are not enforced yet
 ([#76](https://github.com/sahebbiswas/cddl_verifier/issues/76)).
 
-A map member with a wildcard key keeps its minimum: `{ + tstr => int }` needs
-at least one entry and `{ 2*3 tstr => int }` two to three. Upper bounds alone
-(`? K => V`) and a member without an occurrence are not counted yet.
+A map member with a wildcard key counts the entries it takes and checks the
+occurrence: `{ + tstr => int }` needs at least one, `{ 2*3 tstr => int }` two
+to three, `{ ? tstr => int }` at most one, and a member without an occurrence
+(`{ tstr => int }`) exactly one. A key goes to the first member whose key type
+and value type both match and that still has room; if several members could
+take it and none matches the value, the first one reports the value. A member
+written `K ^=> V` (a cut) keeps a key matching `K` from the members after it.
 
 ## Schema format
 
@@ -369,6 +374,23 @@ Members can be written in any RFC 8610 form: `name: T`, `1: T`, `"x": T`,
 `1 => T`, and the IANA form `&(name: 1) => T`. A member with a computed key,
 such as `* tstr => uint` or `* cose-label => cose-value`, allows any number of
 extra keys that match the key type; their values must match the value type.
+
+Groups work in maps as they do in arrays (RFC 8610 §3.5, §3.7): a group
+name, an inline group `( a: int, b: tstr )`, a group choice (`//`), a group
+socket (`$$ext`) and an unwrapped map (`~hdr`) are expanded into their
+members, with the occurrence written on them:
+
+```cddl
+r = { id: uint, header, ? ( x: int, y: int ) }   ; header = ( a: tstr, b: bool )
+s = { (name: tstr) // (code: uint) }               ; exactly one of the two
+t = { ~hdr, extra: int }                           ; hdr = { a: tstr }
+```
+
+A choice or an optional group gives the map several alternatives, and the map
+must match one of them: `s` takes `{ "name": "x" }` or `{ "code": 1 }`, not
+both and not neither, and `{ ? ( x: int, y: int ) }` takes both members or
+neither. When no alternative matches, the errors of the closest one are
+reported. A group that refers to itself adds its members once.
 
 A literal key stands for the CBOR value it denotes, so `1.5: tstr`,
 `h'01': int` and `true => int` are required members like `1: int`. Note that
