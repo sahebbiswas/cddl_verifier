@@ -358,28 +358,48 @@ class _Resolver:
 
     def check_cycles(self):
         """Reject rules that only rename each other (``a = b``, ``b = a``)."""
+        # Alias chains commonly share suffixes. Cache chains proven to terminate
+        # so each rule is followed at most once, rather than rescanning every
+        # suffix and doing quadratic work on long rename chains.
+        done: Set[str] = set()
         for start in self.rules.values():
-            if start.prelude:
+            if start.prelude or start.name in done:
                 continue
-            chain = [start.name]
+            chain: List[str] = []
+            positions: Dict[str, int] = {}
             rule = start
-            while True:
+            while rule is not None and rule.name not in done:
+                if rule.name in positions:
+                    # A cycle not starting at this rule will be reported when
+                    # the cycle's own first rule is visited. Cache only the
+                    # non-cyclic prefix; caching cycle members would hide it.
+                    cycle_start = positions[rule.name]
+                    done.update(chain[:cycle_start])
+                    break
+                positions[rule.name] = len(chain)
+                chain.append(rule.name)
                 target = _alias_target(rule)
                 if target is None:
+                    done.update(chain)
                     break
-                if target == start.name:
-                    names = chain + [target]
-                    if len(names) > 8:
-                        names = names[:4] + ['...'] + names[-2:]
-                    path = ' -> '.join(names)
-                    raise self.error(f"'{start.name}' is defined only in terms of "
-                                     f"itself ({path})", start.span)
-                if target in chain:
-                    break  # a loop further on; reported for its own rules
-                chain.append(target)
+                if target in positions:
+                    if target == start.name:
+                        names = chain + [target]
+                        if len(names) > 8:
+                            names = names[:4] + ['...'] + names[-2:]
+                        path = ' -> '.join(names)
+                        raise self.error(f"'{start.name}' is defined only in terms of "
+                                         f"itself ({path})", start.span)
+                    # The repeated target begins a cycle beyond the start.
+                    done.update(chain[:positions[target]])
+                    break
+                if target in done:
+                    done.update(chain)
+                    break
                 rule = self.rules.get(target)
-                if rule is None:
-                    break
+            else:
+                # The chain reached a rule already checked as terminating.
+                done.update(chain)
 
     # ------------------------------------------------------- references
 
