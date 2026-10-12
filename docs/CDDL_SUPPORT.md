@@ -73,10 +73,16 @@ text string, as a rule, a map field or an array element. `opt<uint>`, with
 `opt<T> = T / nil`, is the choice `uint / nil`. Recursive generics such as
 `tree<T> = { v: T, ? l: tree<T> }` are checked at every depth. A generic can also be
 the argument of `.cbor` (`bstr .cbor pair<uint, tstr>`): the embedded item is
-checked against the instance. A control around a generic
-structure is not enforced: `non-empty<{ a: int }>`, with
-`non-empty<M> = (M) .and ({ + any => any })`, is checked as the map
-`{ a: int }` ([#120](https://github.com/sahebbiswas/cddl_verifier/issues/120)).
+checked against the instance. `.and` and `.within` around a generic
+structure are enforced: `non-empty<{ ? a: int }>`, with
+`non-empty<M> = (M) .and ({ + any => any })`, is the map `{ ? a: int }` that
+must also match `{ + any => any }`, so `{}` is rejected. Other controls
+around a generic structure (`.size`, ...) are not enforced yet
+([#76](https://github.com/sahebbiswas/cddl_verifier/issues/76)).
+
+A map member with a wildcard key keeps its minimum: `{ + tstr => int }` needs
+at least one entry and `{ 2*3 tstr => int }` two to three. Upper bounds alone
+(`? K => V`) and a member without an occurrence are not counted yet.
 
 ## Schema format
 

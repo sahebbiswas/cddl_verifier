@@ -98,11 +98,12 @@ $corim-role-type-choice /= & ( manifest-signer : 2 )
 - Future enhancement: expand choices to show all possible types
 
 ### ⚠ Generics
-CoRIM defines generic types like `non-empty<M>`.
+CoRIM defines generic types like `non-empty<M>`. The validator enforces
+the `.and` operand, so an empty `triples-map` or `environment-map` is rejected.
 
 **Example:**
 ```cddl
-non-empty<M> = (M) .within ({ + any => any })
+non-empty<M> = (M) .and ({ + any => any })
 
 validity-map = non-empty<{
   ? & ( not-before : 0 ) => time,
@@ -111,10 +112,11 @@ validity-map = non-empty<{
 ```
 
 **Support:** ⚠ PARTIAL
-- Parses generic type definitions
-- Strips generic parameters (e.g., `<M>`) from type names
-- Does NOT instantiate or validate generic constraints
-- Treats instantiated generics as regular types
+- Parses generic type definitions and instantiates them where they are used
+- Enforces `.and` / `.within` around a generic structure (`non-empty<M>`
+  rejects an empty map)
+- Does NOT enforce other controls (`.size`, ...) around a generic structure
+  ([#76](https://github.com/sahebbiswas/cddl_verifier/issues/76))
 
 ### ⚠ CDDL Control Operators
 CoRIM uses operators like `.size`, `.within`, `.cbor`, etc.
@@ -249,7 +251,7 @@ Note how IANA registered parameter keys (0, 1, 2, etc.) are displayed as their s
 
 1. **No Type Choice Expansion:** Type choices (`$name /= value`) are not fully expanded
 2. **No Constraint Validation:** Control operators (`.size`, `.within`) are not validated
-3. **No Generic Instantiation:** Generic types are not instantiated with actual types
+3. **Generic Controls:** Generics are instantiated, but only `.and` / `.within` around a structure are enforced
 4. **Basic Validation Only:** Structural validation only, not semantic validation
 
 ## Future Enhancements

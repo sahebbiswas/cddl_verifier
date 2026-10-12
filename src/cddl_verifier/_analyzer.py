@@ -1188,6 +1188,14 @@ class CBORAnalyzer:
         
         logger.debug(f"{offset_str}{Colors.CDDL}[{breadcrumb}]{Colors.RESET} Validating type '{type_name}'")
         logger.debug(f"  Expected: {type_def['type']}, Got: {type(data).__name__}")
+
+        # '.and' / '.within' around a structure (``non-empty<M>``): the value
+        # must match the other operand too (#120)
+        for constraint in type_def.get('constraints', ()):
+            for error in self._check_value(data, constraint):
+                error_msg = f"Type '{type_name}' does not satisfy its control operand '{constraint}': {error}"
+                logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
+                self.validation_errors.append(error_msg)
         
         # Check if this is a .cbor control type (bytes containing CBOR)
         if type_def.get('cbor_inner_type'):
@@ -1524,17 +1532,32 @@ class CBORAnalyzer:
             actual_keys = set(data.keys())
             extra_keys = actual_keys - defined_keys
             # Keys allowed by computed-key members ('* label => value', #104)
+            computed_counts = {}
             for key in sorted(extra_keys, key=repr):
                 key_value = key.value if isinstance(key, CBORKey) else key
-                for computed in type_def.get('computed_keys', ()):
+                for index, computed in enumerate(type_def.get('computed_keys', ())):
                     if self._check_value(key_value, computed['key'], strict=True):
                         continue
+                    computed_counts[index] = computed_counts.get(index, 0) + 1
                     extra_keys.discard(key)
                     for error in self._check_value(data[key], computed['type']):
                         self.validation_errors.append(
                             f"Value for key {key!r} in type '{type_name}' "
                             f"does not match '{computed['type']}': {error}")
                     break
+            # Occurrence of computed-key members ('+ K => V', '2*3 K => V', #120)
+            for index, computed in enumerate(type_def.get('computed_keys', ())):
+                if 'min' not in computed:
+                    continue
+                count = computed_counts.get(index, 0)
+                if count < computed['min'] or (computed['max'] is not None and count > computed['max']):
+                    wanted = (f"at least {computed['min']}" if computed['max'] is None
+                              else f"{computed['min']} to {computed['max']}")
+                    error_msg = (f"Type '{type_name}' needs {wanted} "
+                                 f"{'entry' if computed['max'] is None and computed['min'] == 1 else 'entries'} "
+                                 f"with key '{computed['key']}', found {count}")
+                    logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
+                    self.validation_errors.append(error_msg)
             if extra_keys:
                 error_msg = f"Unknown fields not in schema for type '{type_name}': {extra_keys}"
                 logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
