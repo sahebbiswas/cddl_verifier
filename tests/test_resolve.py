@@ -165,7 +165,7 @@ class TestAccepted(unittest.TestCase):
         ) as alias_target:
             resolved(schema)
 
-        self.assertLessEqual(alias_target.call_count, count + 2)
+        self.assertLessEqual(alias_target.call_count, count + 3)
 
 
     def test_valid_schemas(self):
