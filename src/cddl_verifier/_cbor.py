@@ -216,6 +216,33 @@ def map_key(key: Any) -> Any:
     return CBORKey(key)
 
 
+class CBORLocations:
+    """Where each decoded item sits in the CBOR input (internal, #75).
+
+    Built by :meth:`CBOR.loads_with_locations`. An item is addressed by its
+    path from the root: the map keys and array indexes leading to it, as the
+    decoder returns them. A tagged item is addressed by its tag, so the value
+    inside a tag shares its path.
+    """
+
+    __slots__ = ('_items', '_keys')
+
+    def __init__(self):
+        self._items: Dict[tuple, Tuple[int, int]] = {}
+        self._keys: Dict[Tuple[tuple, Any], Tuple[int, int]] = {}
+
+    def span(self, path: tuple) -> Optional[Tuple[int, int]]:
+        """``(start, end)`` byte offsets of the item at *path*, or ``None``."""
+        return self._items.get(tuple(path))
+
+    def key_span(self, path: tuple, key: Any) -> Optional[Tuple[int, int]]:
+        """``(start, end)`` of the key *key* of the map at *path*, or ``None``."""
+        try:
+            return self._keys.get((tuple(path), key))
+        except TypeError:  # an unhashable key was never recorded
+            return None
+
+
 class CBOR:
     """
     Unified CBOR encoder, decoder, and diagnostic dumper.
@@ -256,6 +283,8 @@ class CBOR:
         self.data = data
         self._cached_bytes = None
         self._indent_str = "  "
+        self._locations = None  # a CBORLocations while decoding with locations
+        self._loc_path: list = []
 
     # ========================================================================
     # CLASS METHODS - Loading and Convenience
@@ -309,6 +338,31 @@ class CBOR:
             CBORDecodeError: See :meth:`load`.
         """
         return cls.load(cbor_bytes).data
+    
+    @classmethod
+    def loads_with_locations(cls, cbor_bytes: bytes) -> Tuple[Any, 'CBORLocations']:
+        """Decode like :meth:`loads` and also return where each item sits.
+
+        Returns:
+            ``(data, locations)``; see :class:`CBORLocations`.
+
+        Raises:
+            CBORDecodeError: See :meth:`load`.
+        """
+        if isinstance(cbor_bytes, (bytearray, memoryview)):
+            cbor_bytes = bytes(cbor_bytes)
+        elif not isinstance(cbor_bytes, bytes):
+            raise TypeError(
+                f"CBOR input must be bytes-like, not {type(cbor_bytes).__name__}"
+            )
+        obj = cls()
+        locations = CBORLocations()
+        obj._locations = locations
+        obj._loc_path = []
+        obj.data = obj._decode(cbor_bytes)
+        obj._cached_bytes = cbor_bytes
+        obj._locations = None
+        return obj.data, locations
     
     # ========================================================================
     # ENCODING - Convert Python objects to CBOR bytes
@@ -516,6 +570,18 @@ class CBOR:
         return result
     
     def _decode_item(self) -> Any:
+        """Decode a single CBOR item, recording where it sits when asked to."""
+        locations = self._locations
+        if locations is None:
+            return self._decode_value()
+        start = self._decode_pos
+        path = tuple(self._loc_path)
+        value = self._decode_value()
+        # The outermost item at a path wins: a tag finishes after its content
+        locations._items[path] = (start, self._decode_pos)
+        return value
+
+    def _decode_value(self) -> Any:
         """Decode a single CBOR item."""
         if self._decode_pos >= len(self._decode_data):
             raise CBORTruncatedError("Unexpected end of data", self._decode_pos)
@@ -592,20 +658,38 @@ class CBOR:
         """Decode array."""
         length = self._decode_length(additional_info)
         array = []
-        for _ in range(length):
+        tracking = self._locations is not None
+        for index in range(length):
+            if tracking:
+                self._loc_path.append(index)
             array.append(self._decode_item())
+            if tracking:
+                self._loc_path.pop()
         return array
     
     def _decode_map(self, additional_info: int) -> Dict[Any, Any]:
         """Decode map."""
         length = self._decode_length(additional_info)
         map_dict = {}
+        locations = self._locations
         for _ in range(length):
             key_offset = self._decode_pos
             # Keys other than int/str/bytes/null become CBORKey, so that they
             # keep their CBOR type and only true duplicates collide (#88)
-            key = map_key(self._decode_item())
-            value = self._decode_item()
+            if locations is not None:
+                # A key is not addressed by path, so its items are not recorded
+                self._locations = None
+                try:
+                    key = map_key(self._decode_item())
+                finally:
+                    self._locations = locations
+                locations._keys[(tuple(self._loc_path), key)] = (key_offset, self._decode_pos)
+                self._loc_path.append(key)
+                value = self._decode_item()
+                self._loc_path.pop()
+            else:
+                key = map_key(self._decode_item())
+                value = self._decode_item()
             if key in map_dict:
                 raise CBORDecodeError(f"Duplicate map key: {key!r}", key_offset)
             map_dict[key] = value

@@ -21,6 +21,7 @@ and the standard-library **unittest** runner with no code changes required.
 | `tests/test_size_control.py` | RFC 8610 `.size` on `tstr`/`bstr`/`uint`, arguments, nested and root contexts |
 | `tests/test_tag_validation.py` | CBOR tag checks for tagged and untagged rules at the root, in fields, arrays and choices |
 | `tests/test_type_choices.py` | Inline type choices in fields, arrays and at the root; controlled primitives as the root rule; parenthesized types and controls on choices (#118); type sockets and choices from groups (`&(a: 0)`) in fields and arrays (#119) |
+| `tests/test_diagnostics.py` | Structured diagnostics (#75): decoder item locations, data path, byte offsets and bounded hex, categories, expected/found, rule and schema location, embedded CBOR, `render_text` and `render_json` |
 | `tests/test_strict_decoding.py` | Strict single-item decoding, error offsets, CLI `--version` |
 | `tests/test_literal_types.py` | Literal types (`1`, `1.5`, `"a"`, `h'01'`, `true`) in map fields, arrays, inline arrays, named rules and the root (#73) |
 | `tests/test_prelude_types.py` | RFC 8610 prelude types: `uri`, `tdate`, `time`, `number`, `decfrac` and other tagged rules (#130); `nint` and the bignum types `biguint`, `bignint`, `bigint`, `integer`, `unsigned` at the 64-bit boundaries (#99) |

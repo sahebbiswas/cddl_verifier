@@ -56,7 +56,7 @@ if result.valid:
     print("valid")
 else:
     for diagnostic in result.diagnostics:
-        print(diagnostic.code, diagnostic.message)
+        print(diagnostic.code, diagnostic.path_text, diagnostic.message)
 ```
 
 - `schema` is CDDL text (`str`) or a path (`pathlib.Path`).
@@ -64,6 +64,10 @@ else:
 - `root_type` defaults to the first rule in the schema.
 - CBOR that cannot be decoded gives an invalid result with a `"decode"`
   diagnostic and its byte offset; it does not raise.
+- Each diagnostic also has the data `path`, the byte `offset` and bytes of the
+  item, the `rule`, and what was `expected` and found. `result.to_json()` and
+  `render_text(result.diagnostics, verbose=True)` render them. See
+  [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/API.md#diagnostic).
 
 To check many items against one schema, or to render EDN, use `Validator`:
 

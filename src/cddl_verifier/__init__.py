@@ -7,7 +7,8 @@ Public API::
     result = validate(schema_text, cbor_bytes, root_type="corim-map")
     if not result.valid:
         for diagnostic in result.diagnostics:
-            print(diagnostic)
+            print(diagnostic.path_text, diagnostic.offset, diagnostic)
+        print(result.to_json())
 
 CBOR helpers live in :mod:`cddl_verifier.cbor` and JSON conversion in
 :mod:`cddl_verifier.json_codec`. Modules whose names start with an underscore
@@ -17,7 +18,8 @@ The supported CDDL (RFC 8610) and CBOR (RFC 8949) features are a practical
 subset; see the project README for what is and is not covered.
 """
 
-from ._api import Diagnostic, SchemaError, ValidationResult, Validator, validate
+from ._api import (Diagnostic, SchemaError, ValidationResult, Validator, render_json, render_text,
+                   validate)
 from ._cbor import CBORDecodeError
 from ._version import __version__
 
@@ -28,5 +30,7 @@ __all__ = [
     "ValidationResult",
     "Validator",
     "__version__",
+    "render_json",
+    "render_text",
     "validate",
 ]
