@@ -88,7 +88,7 @@ class LegacyTables:
             if isinstance(node, Member):
                 label = registered_label(node)
                 if label is not None:
-                    key = _literal_key(label[1])
+                    key = _literal_key(label[1], self._rule_names)
                     if key is not None:
                         self.registered_params[key] = label[0]
 
@@ -200,7 +200,7 @@ class LegacyTables:
 
         label = registered_label(member)
         if label is not None:
-            key, name = _literal_key(label[1]), label[0]
+            key, name = _literal_key(label[1], self._rule_names), label[0]
         elif key_node.kind == 'bareword':
             key, name = key_node.name, member.comment or key_node.name
         else:

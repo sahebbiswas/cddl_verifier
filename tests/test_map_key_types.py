@@ -264,6 +264,11 @@ class TestLiteralKeys(unittest.TestCase):
     def test_redefined_true_is_not_a_bool_key(self):
         self.check("r = {true => int}\ntrue = 5", [("a10501", True), ("a1f501", False)])
 
+    def test_redefined_true_in_a_registered_label(self):
+        # '&(flag: true) => int' follows the schema's own 'true', like 'true => int'
+        schema = "r = {&(flag: true) => int}\ntrue = 5"
+        self.check(schema, [("a10501", True), ("a1f501", False)])
+
     def test_nested_and_in_arrays(self):
         self.check("r = [* m]\nm = {1.5 => int}", [
             ("82a1fb3ff800000000000001a1fb3ff800000000000002", True),
