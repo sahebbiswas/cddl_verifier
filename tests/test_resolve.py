@@ -146,6 +146,16 @@ class TestRejected(unittest.TestCase):
 class TestAccepted(unittest.TestCase):
     """Schemas that are valid, though some look odd."""
 
+    def test_long_alias_chain_resolves_without_revisiting_every_suffix(self):
+        # Every rule aliases the next; this used to rescan each suffix and
+        # take quadratic time. Keep this large enough to guard against that.
+        count = 1200
+        schema = ("r = [g0]\\n"
+                  + "".join(f"g{i} = (g{i + 1})\\n" for i in range(count))
+                  + f"g{count} = (int)\\n")
+        resolved(schema)
+
+
     def test_valid_schemas(self):
         for text in [
             "",
