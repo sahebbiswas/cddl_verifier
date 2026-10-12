@@ -371,6 +371,53 @@ class TestSockets(ChoiceTestCase):
                 self.assertEqual(result.valid, expected, result.errors)
 
 
+class TestUncheckableAlternatives(ChoiceTestCase):
+    """An alternative the validator cannot check matches nothing (#106)."""
+
+    UNWRAP = "r = {x: c}\nc = ~m / tstr\nm = {a: int}"
+
+    def test_unwrap_alternative_does_not_accept_everything(self):
+        self.check([
+            (self.UNWRAP, {"x": 1.5}, False),
+            (self.UNWRAP, {"x": b"a"}, False),
+            (self.UNWRAP, {"x": "a"}, True),   # the checkable alternative still matches
+        ])
+
+    def test_unwrap_alternative_in_an_inline_choice_and_an_array(self):
+        self.check([
+            ("r = {x: ~m / tstr}\nm = {a: int}", {"x": 1.5}, False),
+            ("r = {x: ~m / tstr}\nm = {a: int}", {"x": "a"}, True),
+            ("r = [c]\nc = ~m / tstr\nm = [int]", [1.5], False),
+            ("r = [c]\nc = ~m / tstr\nm = [int]", ["a"], True),
+        ])
+
+    def test_unwrap_as_a_field_type(self):
+        self.check([
+            ("r = {x: ~m}\nm = {a: int}", {"x": 1.5}, False),
+        ])
+
+    def test_unwrap_error_says_it_is_unsupported(self):
+        result = validate(self.UNWRAP, {"x": 1.5})
+        self.assertFalse(result.valid)
+        self.assertIn("unwrapping (~) is not supported", result.errors[0])
+        result = validate("r = {x: ~m}\nm = {a: int}", {"x": 1.5})
+        self.assertIn("cannot check '~m'", result.errors[0])
+
+    def test_unwrap_group_splice_in_an_array_is_unchanged(self):
+        self.check([
+            ("r = [ ~hdr, x: int ]\nhdr = [ a: int ]", [1, 2], True),
+        ])
+
+    def test_checkable_alternatives_still_reject_and_accept(self):
+        # range, inline map, generic and '.and' alternatives are checked (#71, #100)
+        self.check([
+            ("r = {x: c}\nc = 0..10 / tstr", {"x": 1.5}, False),
+            ("r = {x: c}\nc = 0..10 / tstr", {"x": 5}, True),
+            ("r = {x: c}\nc = {a: int} / tstr", {"x": 1.5}, False),
+            ("r = {x: c}\nc = {a: int} / tstr", {"x": {"a": 1}}, True),
+        ])
+
+
 class TestCorimChoices(unittest.TestCase):
 
     def test_svn_type_choice(self):

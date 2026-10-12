@@ -58,6 +58,14 @@ schema.cddl:4:12: undefined name 'tsrt'; did you mean 'tstr'?
 `a = b` and `a = ( b )` define a group when `b` is a group and a type
 otherwise. Recursive rules (`tree = [ uint, * tree ]`) are fine.
 
+Data is not checked against an unwrapped type (`~m`) used as a map field type
+or as an alternative of a choice yet
+([#72](https://github.com/sahebbiswas/cddl_verifier/issues/72)). It matches
+nothing and the error says it cannot be checked, so `c = ~m / tstr` accepts a
+text string and rejects every other value, instead of accepting everything
+([#106](https://github.com/sahebbiswas/cddl_verifier/issues/106)). Splicing
+a group into an array (`[ ~hdr, x: int ]`) is not affected.
+
 Names from other modules are not checked when the schema imports the module in
 the comment syntax of the CDDL modules draft (draft-ietf-cbor-cddl-modules), as
 the CoRIM drafts do: after `;# import rfc9393 as coswid`, `coswid.tag-id` is

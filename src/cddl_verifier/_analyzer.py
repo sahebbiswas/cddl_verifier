@@ -1501,7 +1501,7 @@ class CBORAnalyzer:
 
                     # Inline type choice ('c = uint / tstr', 'x: m / n'): any alternative may match
                     # (or a parenthesized type, whose controls apply to each alternative)
-                    if self._checked_as_whole(_resolved):
+                    if self._checked_as_whole(_resolved) or (_resolved or '').startswith('~'):  # '~m' (#106)
                         for choice_error in self._check_value(value, _resolved):
                             self._report(
                                 f"Field '{field_name}' in '{type_name}' {choice_error}")
@@ -2152,6 +2152,13 @@ class CBORAnalyzer:
 
         if self._is_empty_socket(expr):
             return [f"type socket {expr} has no alternatives, so no value matches it"]
+
+        if expr.startswith('~'):
+            # Unwrapping ('~m') is not checked yet (#72). Accepting the value
+            # would let one such alternative make a whole choice accept
+            # everything (#106), so it matches nothing and the error says why.
+            return [f"cannot check '{expr}': unwrapping (~) is not supported here, "
+                    f"so no value matches it"]
 
         tag_info = self.cddl.extract_cbor_tag(expr)
         if tag_info:
