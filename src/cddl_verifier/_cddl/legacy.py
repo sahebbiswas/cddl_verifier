@@ -35,9 +35,10 @@ See ``docs/CDDL_AST_DESIGN.md`` §10.
 import re
 from typing import Any, Dict, List, Optional
 
-from .ast import (Array, Control, Group, GroupRef, GroupRule, InlineGroup, IntLit, Map, Member,
-                  Name, Paren, Tag, TextLit, Type, TypeRule, entry_type, registered_label,
-                  walk)
+from .._cbor import map_key
+from .ast import (Array, BytesLit, Control, FloatLit, Group, GroupRef, GroupRule, InlineGroup,
+                  IntLit, Map, Member, Name, Paren, Tag, TextLit, Type, TypeRule, entry_type,
+                  registered_label, walk)
 from .parser import MAX_DEPTH
 from .printer import format_node
 
@@ -205,7 +206,7 @@ class LegacyTables:
         else:
             # '1: T', '"x": T', and literal keys written '1 => T' (#104)
             literal = key_node.value if key_node.kind == 'value' else key_node.type
-            key = _literal_key(literal)
+            key = _literal_key(literal, self._rule_names)
             name = member.comment or (_spelling(literal) if key is not None else None)
         if key is None:
             return None
@@ -646,16 +647,33 @@ def _structure(ty, instance: bool = False):
     return node if isinstance(node, (Map, Array)) else None
 
 
-def _literal_key(node):
-    """The CBOR map key a literal stands for, or ``None``."""
+def _literal_key(node, rule_names=()):
+    """The CBOR map key a literal stands for, or ``None``.
+
+    The key is the dict key the decoder gives the same CBOR value
+    (:func:`~cddl_verifier._cbor.map_key`): ``1.5`` is ``CBORKey(1.5)``, a
+    byte string is ``bytes``, and ``true``/``false`` written as a type
+    (``true => int``; ``true: int`` is the text key ``"true"``) are
+    ``CBORKey(True)``/``CBORKey(False)``, unless the schema defines those
+    names itself (#142).
+    """
     if isinstance(node, (IntLit, TextLit)):
         return node.value
+    if isinstance(node, (FloatLit, BytesLit)):
+        return map_key(node.value)
+    if isinstance(node, Name) and not node.args and node.name in ('true', 'false') \
+            and node.name not in rule_names:
+        return map_key(node.name == 'true')
     return None
 
 
 def _spelling(node) -> str:
     """How the legacy parser named a field with a literal key."""
-    return node.value if isinstance(node, TextLit) else str(node.value)
+    if isinstance(node, TextLit):
+        return node.value
+    if isinstance(node, Name):
+        return node.name
+    return node.text if isinstance(node, (FloatLit, BytesLit)) else str(node.value)
 
 
 def _path(key) -> str:

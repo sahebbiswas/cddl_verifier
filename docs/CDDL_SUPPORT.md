@@ -364,6 +364,12 @@ Members can be written in any RFC 8610 form: `name: T`, `1: T`, `"x": T`,
 such as `* tstr => uint` or `* cose-label => cose-value`, allows any number of
 extra keys that match the key type; their values must match the value type.
 
+A literal key stands for the CBOR value it denotes, so `1.5: tstr`,
+`h'01': int` and `true => int` are required members like `1: int`. Note that
+`true: int` is the text key `"true"` (RFC 8610: a bare word before `:` is a
+text string); write `true => int` for the simple value. A `null => T` member
+is not checked yet.
+
 Inline maps are validated like named rules, wherever they appear:
 
 ```cddl
