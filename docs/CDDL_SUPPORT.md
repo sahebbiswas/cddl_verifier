@@ -200,9 +200,15 @@ When no assignment takes every element, the error names the first element
 that none gets past: "Array element [1] of 'c' matches no entry (int:
 expected int, got str)", "is missing element [n]" when the array ends too
 early, or "has unexpected element [i]" when the entries are used up. The
-work grows linearly with the number of elements. A group that refers to
-itself (`g = (int, ? g)`) is not expanded, and such an array is checked
-only element by element against its first entries.
+work grows linearly with the number of elements.
+
+A group that refers to itself, directly or through other groups
+(`g = (int, ? g)`), is followed as far as the elements go:
+`[ g ]` takes one or more integers and rejects `[1, "x"]`. A rule that only
+refers to itself without taking an element (`g = (? g)`) adds nothing. The
+length of the array is not limited, but the work for such a group grows with
+the square of the number of elements (10,000 elements take about a second and
+a half; see [#138](https://github.com/sahebbiswas/cddl_verifier/issues/138)).
 
 This holds wherever an array appears: as a rule, a map field, an array
 element, a choice alternative or inside a tag (`decfrac` rejects `4([1])`).
