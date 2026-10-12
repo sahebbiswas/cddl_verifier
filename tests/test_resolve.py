@@ -150,9 +150,9 @@ class TestAccepted(unittest.TestCase):
         # Every rule aliases the next; this used to rescan each suffix and
         # take quadratic time. Keep this large enough to guard against that.
         count = 1200
-        schema = ("r = [g0]\\n"
-                  + "".join(f"g{i} = (g{i + 1})\\n" for i in range(count))
-                  + f"g{count} = (int)\\n")
+        schema = ("r = [g0]\n"
+                  + "".join(f"g{i} = (g{i + 1})\n" for i in range(count))
+                  + f"g{count} = (int)\n")
         resolved(schema)
 
 
