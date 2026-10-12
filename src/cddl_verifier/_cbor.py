@@ -216,6 +216,12 @@ def map_key(key: Any) -> Any:
     return CBORKey(key)
 
 
+#: Most path steps a :class:`CBORLocations` stores. Every recorded item costs
+#: its path length plus one, so the index of deeply nested input is bounded
+#: by this budget and not by the item count times the nesting depth.
+MAX_LOCATION_STEPS = 1_000_000
+
+
 class CBORLocations:
     """Where each decoded item sits in the CBOR input (internal, #75).
 
@@ -223,13 +229,35 @@ class CBORLocations:
     path from the root: the map keys and array indexes leading to it, as the
     decoder returns them. A tagged item is addressed by its tag, so the value
     inside a tag shares its path.
+
+    The index has a budget (``max_steps``, see :data:`MAX_LOCATION_STEPS`).
+    When the input is too large to index in full, items decoded after the
+    budget is used up have no location and :attr:`complete` is ``False``; the
+    root item always has one.
     """
 
-    __slots__ = ('_items', '_keys')
+    __slots__ = ('_items', '_keys', '_budget', 'exhausted')
 
-    def __init__(self):
+    def __init__(self, max_steps: int = MAX_LOCATION_STEPS):
         self._items: Dict[tuple, Tuple[int, int]] = {}
         self._keys: Dict[Tuple[tuple, Any], Tuple[int, int]] = {}
+        self._budget = max_steps
+        self.exhausted = False
+
+    @property
+    def complete(self) -> bool:
+        """``False`` when the budget ran out and some items have no location."""
+        return not self.exhausted
+
+    def _spend(self, steps: int) -> bool:
+        """Take *steps* from the budget; ``False`` (and stop recording) if it is spent."""
+        if self.exhausted:
+            return False
+        if steps > self._budget:
+            self.exhausted = True
+            return False
+        self._budget -= steps
+        return True
 
     def span(self, path: tuple) -> Optional[Tuple[int, int]]:
         """``(start, end)`` byte offsets of the item at *path*, or ``None``."""
@@ -340,8 +368,15 @@ class CBOR:
         return cls.load(cbor_bytes).data
     
     @classmethod
-    def loads_with_locations(cls, cbor_bytes: bytes) -> Tuple[Any, 'CBORLocations']:
+    def loads_with_locations(cls, cbor_bytes: bytes,
+                             max_steps: int = MAX_LOCATION_STEPS) -> Tuple[Any, 'CBORLocations']:
         """Decode like :meth:`loads` and also return where each item sits.
+
+        Args:
+            cbor_bytes: CBOR encoded bytes.
+            max_steps: Budget for the location index (see :class:`CBORLocations`).
+                Input that needs more is still decoded in full, but
+                the items past the budget have no location.
 
         Returns:
             ``(data, locations)``; see :class:`CBORLocations`.
@@ -356,12 +391,13 @@ class CBOR:
                 f"CBOR input must be bytes-like, not {type(cbor_bytes).__name__}"
             )
         obj = cls()
-        locations = CBORLocations()
+        locations = CBORLocations(max_steps)
         obj._locations = locations
         obj._loc_path = []
         obj.data = obj._decode(cbor_bytes)
         obj._cached_bytes = cbor_bytes
         obj._locations = None
+        locations._items[()] = (0, len(cbor_bytes))  # the root is always known
         return obj.data, locations
     
     # ========================================================================
@@ -572,13 +608,14 @@ class CBOR:
     def _decode_item(self) -> Any:
         """Decode a single CBOR item, recording where it sits when asked to."""
         locations = self._locations
-        if locations is None:
+        if locations is None or locations.exhausted:
             return self._decode_value()
         start = self._decode_pos
         path = tuple(self._loc_path)
         value = self._decode_value()
         # The outermost item at a path wins: a tag finishes after its content
-        locations._items[path] = (start, self._decode_pos)
+        if path in locations._items or locations._spend(len(path) + 1):
+            locations._items[path] = (start, self._decode_pos)
         return value
 
     def _decode_value(self) -> Any:
@@ -683,7 +720,10 @@ class CBOR:
                     key = map_key(self._decode_item())
                 finally:
                     self._locations = locations
-                locations._keys[(tuple(self._loc_path), key)] = (key_offset, self._decode_pos)
+                if not locations.exhausted:
+                    key_path = tuple(self._loc_path)
+                    if locations._spend(len(key_path) + 2):
+                        locations._keys[(key_path, key)] = (key_offset, self._decode_pos)
                 self._loc_path.append(key)
                 value = self._decode_item()
                 self._loc_path.pop()

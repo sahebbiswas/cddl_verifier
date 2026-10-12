@@ -203,7 +203,14 @@ def render_json(diagnostics: Iterable[Diagnostic], *, indent: Optional[int] = 2,
     element is :meth:`Diagnostic.to_dict`. Keyword arguments other than
     ``indent`` are added as top-level members before ``diagnostics``
     (``valid=False``, ``root_type="corim-map"``).
+
+    Raises:
+        TypeError: ``format_version`` or ``diagnostics`` is passed as a
+            keyword argument; the renderer owns those two members.
     """
+    reserved = sorted({"format_version", "diagnostics"} & set(extra))
+    if reserved:
+        raise TypeError(f"render_json sets {', '.join(reserved)} itself; it cannot be passed")
     document: Dict[str, Any] = {"format_version": JSON_FORMAT_VERSION}
     document.update(extra)
     document["diagnostics"] = [diagnostic.to_dict() for diagnostic in diagnostics]

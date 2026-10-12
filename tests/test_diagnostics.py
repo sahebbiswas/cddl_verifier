@@ -10,6 +10,7 @@ import json
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 try:
     import cddl_verifier  # noqa: F401
@@ -18,7 +19,7 @@ except ImportError:
 
 from cddl_verifier import (CBORDecodeError, Diagnostic, ValidationResult, Validator, cbor,
                            render_json, render_text, validate)
-from cddl_verifier._cbor import CBOR, CBORKey
+from cddl_verifier._cbor import CBOR, MAX_LOCATION_STEPS, CBORKey
 from cddl_verifier._diagnostics import CATEGORIES, MAX_HEX_BYTES, SEVERITIES
 
 SCHEMA = """\
@@ -77,6 +78,36 @@ class TestLocations(unittest.TestCase):
                 with self.assertRaises(CBORDecodeError) as located:
                     CBOR.loads_with_locations(raw)
                 self.assertEqual(str(plain.exception), str(located.exception))
+
+    def test_budget_bounds_the_index(self):
+        raw = cbor.encode([[1, 2, 3], [4, 5, 6]])
+        data, full = CBOR.loads_with_locations(raw)
+        self.assertTrue(full.complete)
+        data_small, small = CBOR.loads_with_locations(raw, max_steps=4)
+        self.assertEqual(data_small, data)                    # still decoded in full
+        self.assertFalse(small.complete)
+        self.assertEqual(small.span(()), (0, len(raw)))       # the root is always known
+        self.assertIsNone(small.span((1, 2)))
+        self.assertLess(len(small._items), len(full._items))
+
+    def test_budget_is_not_spent_on_a_tag_twice(self):
+        raw = bytes.fromhex("d9 01f5 82 01 02")
+        _, locations = CBOR.loads_with_locations(raw, max_steps=5)
+        self.assertEqual(locations.span(()), (0, 6))
+        self.assertEqual(locations.span((0,)), (4, 5))
+        self.assertEqual(locations.span((1,)), (5, 6))
+        self.assertTrue(locations.complete)
+
+    def test_zero_budget_still_decodes(self):
+        raw = cbor.encode({1: [1, 2]})
+        data, locations = CBOR.loads_with_locations(raw, max_steps=0)
+        self.assertEqual(data, {1: [1, 2]})
+        self.assertEqual(locations.span(()), (0, len(raw)))
+        self.assertIsNone(locations.span((1,)))
+        self.assertIsNone(locations.key_span((), 1))
+
+    def test_default_budget(self):
+        self.assertEqual(MAX_LOCATION_STEPS, 1_000_000)
 
     def test_loads_does_not_track(self):
         decoder = CBOR()
@@ -226,6 +257,21 @@ class TestDiagnosticFields(unittest.TestCase):
         for diag in found:
             self.assertEqual(raw[diag.offset:diag.end_offset], cbor.encode(inner))
 
+    def test_input_too_large_to_index_still_fails_validation(self):
+        original = CBOR.loads_with_locations
+        raw = cbor.encode([1, "x", 3])
+        with mock.patch.object(CBOR, "loads_with_locations",
+                               staticmethod(lambda data: original(data, max_steps=1))):
+            nested = validate("r = [* uint]", raw)
+            root = validate("n = uint", raw)
+        self.assertFalse(nested.valid)
+        self.assertEqual(nested.diagnostics[0].path, (1,))
+        self.assertIsNone(nested.diagnostics[0].offset)       # past the budget: no guess
+        self.assertIsNone(nested.diagnostics[0].hex)
+        self.assertFalse(root.valid)
+        self.assertEqual((root.diagnostics[0].offset, root.diagnostics[0].end_offset),
+                         (0, len(raw)))
+
     def test_valid_data_has_no_diagnostics(self):
         result, found = diagnostics_of({0: "a", 1: [1, 2], 2: b"ab", 3: 5})
         self.assertTrue(result.valid)
@@ -294,6 +340,16 @@ class TestRenderers(unittest.TestCase):
                 "expected", "actual"}
         for item in document["diagnostics"]:
             self.assertEqual(set(item), keys)
+
+    def test_json_reserved_members_cannot_be_overwritten(self):
+        for name in ("format_version", "diagnostics"):
+            with self.subTest(name=name):
+                with self.assertRaises(TypeError) as caught:
+                    render_json((), **{name: 2})
+                self.assertIn(name, str(caught.exception))
+        with self.assertRaises(TypeError):
+            render_json((), format_version=2, diagnostics=[])
+        self.assertTrue(self.result.to_json())  # its own members are not reserved
 
     def test_json_extra_members(self):
         document = json.loads(render_json((), indent=None, valid=True, root_type="r"))
