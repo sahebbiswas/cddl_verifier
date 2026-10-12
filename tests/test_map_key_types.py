@@ -207,5 +207,80 @@ class TestValidation(unittest.TestCase):
         self.assertIn("h'01': 0", Validator("r = {* any => any}").to_edn(bytes.fromhex("a1410100")))
 
 
+class TestLiteralKeys(unittest.TestCase):
+    """A literal key stands for the CBOR value it denotes (#142)."""
+
+    def check(self, schema, cases):
+        for hex_data, expected in cases:
+            with self.subTest(schema=schema, data=hex_data):
+                result = validate(schema, bytes.fromhex(hex_data))
+                self.assertEqual(result.valid, expected, result.errors)
+
+    def test_float_key(self):
+        self.check("r = {1.5: tstr}", [
+            ("a1fb3ff800000000000061" "61", True),
+            ("a0", False),                              # the member is required
+            ("a1fb3ff8000000000000" "01", False),       # wrong value type
+            ("a1fb4004000000000000" "6161", False),     # another float key
+            ("a1016161", False),                        # integer key 1
+        ])
+
+    def test_float_key_with_arrow_and_optional(self):
+        self.check("r = {? 1.5 => tstr}", [
+            ("a0", True),
+            ("a1fb3ff80000000000006161", True),
+            ("a1fb3ff800000000000001", False),
+        ])
+
+    def test_byte_string_key(self):
+        self.check("r = {h'01': int}", [
+            ("a1410101", True),
+            ("a0", False),
+            ("a1410201", False),
+            ("a141016161", False),
+            ("a16101" "01", False),                     # the text key "\x01" is not h'01'
+        ])
+
+    def test_bool_keys_written_as_types(self):
+        self.check("r = {true => int}", [
+            ("a1f501", True),
+            ("a0", False),
+            ("a1f401", False),
+            ("a10101", False),
+        ])
+        self.check("r = {false => int, ? true => tstr}", [
+            ("a1f401", True),
+            ("a2f401f56161", True),
+            ("a1f501", False),
+        ])
+
+    def test_bare_true_is_the_text_key(self):
+        # RFC 8610: 'true: T' is the text string "true"; 'true => T' is the simple value
+        self.check("r = {true: int}", [
+            ("a164" "74727565" "01", True),
+            ("a1f501", False),
+        ])
+
+    def test_redefined_true_is_not_a_bool_key(self):
+        self.check("r = {true => int}\ntrue = 5", [("a10501", True), ("a1f501", False)])
+
+    def test_redefined_true_in_a_registered_label(self):
+        # '&(flag: true) => int' follows the schema's own 'true', like 'true => int'
+        schema = "r = {&(flag: true) => int}\ntrue = 5"
+        self.check(schema, [("a10501", True), ("a1f501", False)])
+
+    def test_nested_and_in_arrays(self):
+        self.check("r = [* m]\nm = {1.5 => int}", [
+            ("82a1fb3ff800000000000001a1fb3ff800000000000002", True),
+            ("82a1fb3ff800000000000001a0", False),
+        ])
+
+    def test_field_name_in_errors(self):
+        errors = validate("r = {1.5: tstr}", bytes.fromhex("a0")).errors
+        self.assertIn("'1.5'", errors[0])
+        errors = validate("r = {h'01': int}", bytes.fromhex("a0")).errors
+        self.assertIn("h'01'", errors[0])
+
+
 if __name__ == "__main__":
     unittest.main()
