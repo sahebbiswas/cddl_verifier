@@ -168,6 +168,30 @@ class TestRecursiveGroups(unittest.TestCase):
         self.check("r = [g]\ng = (g, int)", [([1], False)])
         self.check("r = [g, int]\ng = (? g)", [([1], True), ([1, 2], False)])
 
+    def test_left_recursion_keeps_the_matches_that_take_elements(self):
+        # the recursive reference comes before the element ('g = (? g, int)')
+        self.check("r = [g]\ng = (? g, int)", [
+            ([1], True), ([1, 2], True), ([1, 2, 3], True), (list(range(50)), True),
+            ([], False), ([1, 2, "x"], False), (["x", 1], False),
+        ])
+        self.check("r = [g]\ng = (* g, int)", [([1, 2, 3], True), ([1, "a"], False)])
+        self.check("r = [g, tstr]\ng = (? g, int)", [
+            ([1, 2, 3, "x"], True), ([1, 2, 3], False)])
+
+    def test_mutual_left_recursion(self):
+        schema = "r = [a]\na = (? b, int)\nb = (? a, tstr)"
+        self.check(schema, [
+            ([1], True), (["x", 1], True), ([1, "x", 2], True), ([1, "x", 2, "y", 3], True),
+            (["x"], False), ([1, 1], False), ([1, "x", "y"], False), ([], False),
+        ])
+
+    def test_recursion_around_an_element(self):
+        # the group is entered again before and after its own element
+        self.check("r = [g]\ng = (int, ? g, tstr)", [
+            ([1, "a"], True), ([1, 2, "a", "b"], True),
+            ([1, 2, "a"], False), ([1, "a", "b"], False),
+        ])
+
     def test_recursion_in_a_field_and_a_nested_array(self):
         self.check("r = {x: [g]}\ng = (int, ? g)", [
             ({"x": [1, 2]}, True), ({"x": [1, "a"]}, False)])

@@ -2044,7 +2044,10 @@ class CBORAnalyzer:
         fits: Dict[Tuple[int, str], bool] = {}
         tried: Dict[int, List[Tuple[str, str]]] = {}
         furthest = [0]
-        entered: set = set()
+        # Ends found so far for a group reference being followed, by (reference,
+        # positions), and those of them that were entered again meanwhile.
+        approximate: Dict[tuple, set] = {}
+        reentered: set = set()
 
         # The functions below are generators that hand the group they need
         # next to ``solve`` instead of calling it, so a group that refers to
@@ -2055,19 +2058,30 @@ class CBORAnalyzer:
             if 'group' in entry:
                 return (yield group_ends(entry['group'], starts))
             if 'ref' in entry:
-                # a group that refers to itself: follow it from these
-                # positions. Entering it again from the same positions
-                # consumed nothing, so it adds no way to match.
+                # A group that refers to itself: follow it from these positions.
+                # Reaching it again from the same positions, before any element
+                # is taken (``g = (? g, int)``), gives what is known so far, and
+                # the outer visit is repeated until nothing new is found, so the
+                # matches that take elements after the inner one are kept and
+                # a recursion that takes none ends (a least fixed point).
                 visit = (entry['ref'], frozenset(starts))
                 choices = self.cddl.group_sequence(entry['ref'])
-                if visit in entered or choices is None:
+                if choices is None:
                     return set()
-                entered.add(visit)
+                if visit in approximate:
+                    reentered.add(visit)
+                    return set(approximate[visit])
+                approximate[visit] = set()
                 try:
-                    ends = yield group_ends(choices, starts)
+                    while True:
+                        ends = yield group_ends(choices, starts)
+                        if visit not in reentered or ends <= approximate[visit]:
+                            return ends
+                        approximate[visit] = ends
+                        reentered.discard(visit)
                 finally:
-                    entered.discard(visit)
-                return ends
+                    del approximate[visit]
+                    reentered.discard(visit)
             text = entry['type']
             ends = set()
             for pos in starts:
