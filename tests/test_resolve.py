@@ -17,6 +17,7 @@ except ImportError:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import unittest
+from unittest.mock import patch
 
 from cddl_verifier import SchemaError, Validator, validate
 from cddl_verifier._analyzer import CDDLParser
@@ -153,7 +154,18 @@ class TestAccepted(unittest.TestCase):
         schema = ("r = [g0]\n"
                   + "".join(f"g{i} = (g{i + 1})\n" for i in range(count))
                   + f"g{count} = (int)\n")
-        resolved(schema)
+        # Count deterministic alias-target inspections, not elapsed time.
+        # Each rule in the chain should be inspected only a constant number
+        # of times; suffix rescanning would make this count quadratic.
+        with patch(
+            "cddl_verifier._cddl.resolve._alias_target",
+            wraps=__import__(
+                "cddl_verifier._cddl.resolve", fromlist=["_alias_target"]
+            )._alias_target,
+        ) as alias_target:
+            resolved(schema)
+
+        self.assertLessEqual(alias_target.call_count, count + 2)
 
 
     def test_valid_schemas(self):
