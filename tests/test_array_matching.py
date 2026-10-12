@@ -46,9 +46,17 @@ class TestSequenceTable(unittest.TestCase):
         self.assertEqual(self.sequence('r = [int, 2*3 tstr]'), [[
             {'type': 'int', 'min': 1, 'max': 1}, {'type': 'tstr', 'min': 2, 'max': 3}]])
 
-    def test_self_referencing_group_is_not_expanded(self):
-        self.assertIsNone(self.sequence('r = [? int, g]\ng = (int, ? g)'))
+    def test_self_referencing_group_is_a_reference(self):
+        # the group refers to itself by key; the matcher follows it (#138)
+        group = [[{'type': 'int', 'min': 1, 'max': 1},
+                  {'ref': ('g', ()), 'min': 0, 'max': 1}]]
+        self.assertEqual(self.sequence('r = [? int, g]\ng = (int, ? g)'), [[
+            {'type': 'int', 'min': 0, 'max': 1}, {'group': group, 'min': 1, 'max': 1}]])
         self.assertTrue(validate('r = [g]\ng = (int, ? g)', [1, 2, 3]).valid)
+
+    def test_group_that_cannot_be_expanded_has_no_sequence(self):
+        self.assertIsNone(self.sequence('r = [? int, g]\ng = (int, ? g, ? $s)'))
+        self.assertIsNone(self.sequence('r = [? int, a]\na = (int, ? b)\nb = (tstr, ? a, ? $s)'))
 
 
 class TestMatching(unittest.TestCase):
@@ -119,6 +127,60 @@ class TestSize(unittest.TestCase):
             start = time.monotonic()
             self.assertTrue(validate(schema, data).valid)
             self.assertLess(time.monotonic() - start, 10, schema)
+
+class TestRecursiveGroups(unittest.TestCase):
+    """An array built from a group that refers to itself is matched (#138)."""
+
+    def check(self, schema, cases):
+        for data, expected in cases:
+            with self.subTest(schema=schema, data=data):
+                result = validate(schema, data)
+                self.assertEqual(result.valid, expected, result.errors)
+
+    def test_right_recursion(self):
+        self.check("r = [g]\ng = (int, ? g)", [
+            ([1], True), ([1, 2, 3], True),
+            ([], False), ([1, "x"], False), (["x"], False), ([1, 2, "x"], False),
+        ])
+
+    def test_entries_around_the_group(self):
+        self.check("r = [tstr, g]\ng = (int, ? g)", [
+            (["a", 1], True), (["a", 1, 2], True), (["a"], False), (["a", "b"], False),
+        ])
+        self.check("r = [g, tstr]\ng = (int, ? g)", [
+            ([1, "x"], True), ([1, 2, "x"], True), ([1, 2], False), (["x"], False),
+        ])
+
+    def test_repeated_group(self):
+        self.check("r = [g]\ng = (int, * g)", [
+            ([1, 2, 3], True), ([1, "a"], False), ([], False),
+        ])
+
+    def test_mutual_recursion(self):
+        schema = "r = [a]\na = (int, ? b)\nb = (tstr, ? a)"
+        self.check(schema, [
+            ([1], True), ([1, "a"], True), ([1, "a", 2, "b"], True),
+            ([1, "a", 2, 3], False), (["a"], False), ([1, 2], False),
+        ])
+
+    def test_recursion_that_consumes_nothing_terminates(self):
+        self.check("r = [g]\ng = (? g)", [([], True), ([1], False)])
+        self.check("r = [g]\ng = (g, int)", [([1], False)])
+        self.check("r = [g, int]\ng = (? g)", [([1], True), ([1, 2], False)])
+
+    def test_recursion_in_a_field_and_a_nested_array(self):
+        self.check("r = {x: [g]}\ng = (int, ? g)", [
+            ({"x": [1, 2]}, True), ({"x": [1, "a"]}, False)])
+        self.check("r = [* [g]]\ng = (int, ? g)", [
+            ([[1], [1, 2]], True), ([[1], [1, "a"]], False), ([[]], False)])
+
+    def test_long_array_is_matched_or_rejected_with_a_reason(self):
+        schema = "r = [g]\ng = (int, ? g)"
+        self.assertTrue(validate(schema, list(range(100))).valid)
+        result = validate(schema, list(range(10000)))
+        self.assertFalse(result.valid)
+        self.assertIn("refers to itself", result.errors[0])
+
 
 
 if __name__ == '__main__':

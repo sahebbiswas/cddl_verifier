@@ -296,6 +296,12 @@ class CDDLParser:
         self.type_aliases = tables.type_aliases
         self.first_definition = tables.first_definition
         self.synthetic_types = tables.synthetic_types
+        self._tables = tables
+
+    def group_sequence(self, key: tuple) -> Optional[list]:
+        """Entry sequence of the group *key* (``(name, args)``) an array entry refers to (#138)."""
+        tables = getattr(self, '_tables', None)
+        return None if tables is None else tables.group_sequence(key)
 
     def rule_location(self, name: str) -> Optional[str]:
         """``file:line:column`` where the schema defines rule *name*, if it does.
@@ -2038,10 +2044,24 @@ class CBORAnalyzer:
         fits: Dict[Tuple[int, str], bool] = {}
         tried: Dict[int, List[Tuple[str, str]]] = {}
         furthest = [0]
+        entered: set = set()
 
         def unit_ends(entry, starts):
             if 'group' in entry:
                 return group_ends(entry['group'], starts)
+            if 'ref' in entry:
+                # a group that refers to itself (#138): follow it from these
+                # positions. Entering it again from the same positions
+                # consumed nothing, so it adds no way to match.
+                visit = (entry['ref'], frozenset(starts))
+                choices = self.cddl.group_sequence(entry['ref'])
+                if visit in entered or choices is None:
+                    return set()
+                entered.add(visit)
+                try:
+                    return group_ends(choices, starts)
+                finally:
+                    entered.discard(visit)
             text = entry['type']
             ends = set()
             for pos in starts:
@@ -2085,8 +2105,15 @@ class CBORAnalyzer:
                 ends |= reached
             return ends
 
-        if count in group_ends(sequence, {0}):
-            return None
+        try:
+            if count in group_ends(sequence, {0}):
+                return None
+        except RecursionError:
+            # A group that refers to itself is followed one level per element
+            # (#138); a very long array runs out of stack. Reject it rather
+            # than guess.
+            return (f"Array type '{type_name}' has {count} elements, too many to match "
+                    f"against a group that refers to itself")
         index = furthest[0]
         if index >= count:
             return (f"Array type '{type_name}' is missing element [{count}]: "

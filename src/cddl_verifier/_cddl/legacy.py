@@ -75,6 +75,8 @@ class LegacyTables:
         self._ref_lengths: Dict[tuple, Optional[tuple]] = {}
         # Entry sequences of group references (name, args), built once.
         self._group_sequences: Dict[tuple, Optional[list]] = {}
+        # Group references whose entry sequence is being built now (#138).
+        self._sequences_building: set = set()
         self._rule_names = {rule.name for rule in schema.rules}
 
         for rule in schema.rules:
@@ -266,10 +268,13 @@ class LegacyTables:
         One list per group choice; each entry is ``{'min', 'max', 'type'}``
         for one element of type text ``type``, or ``{'min', 'max', 'group'}``
         for a nested group (a group name or an inline group) in the same
-        form. ``max`` is ``None`` for no limit. *texts* are the type texts
-        already written for the top-level entries, by index. ``None`` when
-        an entry cannot be expanded: an undefined name, a socket, a generic
-        parameter or a group that refers to itself.
+        form. ``max`` is ``None`` for no limit. A group that refers to itself
+        is entered as ``{'min', 'max', 'ref'}``, with the ``(name, args)`` key
+        of the group, which the matcher looks up with :meth:`group_sequence`
+        while matching, so the recursion is followed as deep as the elements
+        go (#138). *texts* are the type texts already written for the
+        top-level entries, by index. ``None`` when an entry cannot be
+        expanded: an undefined name, a socket or a generic parameter.
         """
         choices = []
         index = 0
@@ -297,26 +302,47 @@ class LegacyTables:
             group = self._sequence(entry.group, path, expanding)
             return None if group is None else {'group': group}
         if not isinstance(entry, GroupRef) or self.resolved is None \
-                or entry.name.startswith('$') or entry.name in expanding:
+                or entry.name.startswith('$'):
             return None
         kind = self.resolved.kind(entry.name)
+        key = (entry.name, entry.args)
+        if kind == 'group' and key in self._sequences_building:
+            return {'ref': key}  # a group that refers to itself, directly or not
+        if entry.name in expanding:
+            return None  # the same group with other arguments
         if kind == 'type':
             if text is None:
                 text = self._text(Type((Name(entry.name, entry.args),)), path)
             return {'type': text}
         if kind != 'group':
             return None
-        key = (entry.name, entry.args)
         if key not in self._group_sequences:
-            try:
-                group = self.resolved.instantiate(entry.name, entry.args)
-            except ValueError:
-                group = None
-            self._group_sequences[key] = None if not isinstance(group, Group) else \
-                self._sequence(group, re.sub(r'\W', '_', entry.name),
-                               expanding + (entry.name,))
+            self._build_group_sequence(key, expanding)
         sequence = self._group_sequences[key]
         return None if sequence is None else {'group': sequence}
+
+    def _build_group_sequence(self, key: tuple, expanding: tuple):
+        """Work out the entry sequence of the group *key* and keep it."""
+        known = set(self._group_sequences)
+        self._sequences_building.add(key)
+        try:
+            try:
+                group = self.resolved.instantiate(key[0], key[1])
+            except ValueError:
+                group = None
+            sequence = None if not isinstance(group, Group) else \
+                self._sequence(group, re.sub(r'\W', '_', key[0]), expanding + (key[0],))
+        finally:
+            self._sequences_building.discard(key)
+        self._group_sequences[key] = sequence
+        if sequence is None:
+            # groups built meanwhile may refer to this one, which has no sequence
+            for other in set(self._group_sequences) - known - {key}:
+                del self._group_sequences[other]
+
+    def group_sequence(self, key: tuple) -> Optional[list]:
+        """The entry sequence of the group *key* (``(name, args)``), if it has one (#138)."""
+        return self._group_sequences.get(key)
 
     def _group_length(self, group, expanding: tuple):
         """``(min, max)`` elements an array with *group* holds, or ``None``.
