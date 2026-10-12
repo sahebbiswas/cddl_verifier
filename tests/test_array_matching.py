@@ -174,12 +174,13 @@ class TestRecursiveGroups(unittest.TestCase):
         self.check("r = [* [g]]\ng = (int, ? g)", [
             ([[1], [1, 2]], True), ([[1], [1, "a"]], False), ([[]], False)])
 
-    def test_long_array_is_matched_or_rejected_with_a_reason(self):
+    def test_long_arrays_are_not_limited_by_the_recursion_limit(self):
         schema = "r = [g]\ng = (int, ? g)"
-        self.assertTrue(validate(schema, list(range(100))).valid)
-        result = validate(schema, list(range(10000)))
+        self.assertTrue(validate(schema, list(range(3000))).valid)
+        result = validate(schema, list(range(3000)) + ["x"])
         self.assertFalse(result.valid)
-        self.assertIn("refers to itself", result.errors[0])
+        self.assertIn("[3000]", result.errors[0])
+        self.assertTrue(validate("r = [* g]\ng = (int, ? g)", list(range(3000))).valid)
 
 
 

@@ -206,9 +206,9 @@ A group that refers to itself, directly or through other groups
 (`g = (int, ? g)`), is followed as far as the elements go:
 `[ g ]` takes one or more integers and rejects `[1, "x"]`. A rule that only
 refers to itself without taking an element (`g = (? g)`) adds nothing. The
-recursion is followed one level per element, so an array of more than a few
-hundred elements built from such a group is rejected with an error that says
-so ([#138](https://github.com/sahebbiswas/cddl_verifier/issues/138)).
+length of the array is not limited, but the work for such a group grows with
+the square of the number of elements (10,000 elements take about a second and
+a half; see [#138](https://github.com/sahebbiswas/cddl_verifier/issues/138)).
 
 This holds wherever an array appears: as a rule, a map field, an array
 element, a choice alternative or inside a tag (`decfrac` rejects `4([1])`).

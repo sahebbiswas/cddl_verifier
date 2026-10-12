@@ -2046,11 +2046,16 @@ class CBORAnalyzer:
         furthest = [0]
         entered: set = set()
 
+        # The functions below are generators that hand the group they need
+        # next to ``solve`` instead of calling it, so a group that refers to
+        # itself is followed one element at a time on a stack of its own and
+        # not on the Python call stack: the length of the array is not limited
+        # by the recursion limit (#138, #162).
         def unit_ends(entry, starts):
             if 'group' in entry:
-                return group_ends(entry['group'], starts)
+                return (yield group_ends(entry['group'], starts))
             if 'ref' in entry:
-                # a group that refers to itself (#138): follow it from these
+                # a group that refers to itself: follow it from these
                 # positions. Entering it again from the same positions
                 # consumed nothing, so it adds no way to match.
                 visit = (entry['ref'], frozenset(starts))
@@ -2059,9 +2064,10 @@ class CBORAnalyzer:
                     return set()
                 entered.add(visit)
                 try:
-                    return group_ends(choices, starts)
+                    ends = yield group_ends(choices, starts)
                 finally:
                     entered.discard(visit)
+                return ends
             text = entry['type']
             ends = set()
             for pos in starts:
@@ -2085,7 +2091,7 @@ class CBORAnalyzer:
             frontier, done = set(starts), 0
             while frontier and (high is None or done < high):
                 done += 1
-                reached = unit_ends(entry, frontier)
+                reached = yield unit_ends(entry, frontier)
                 if done >= low:
                     # a position reached again, after more repeats, adds nothing
                     reached -= seen
@@ -2099,21 +2105,28 @@ class CBORAnalyzer:
             for entries in choices:
                 reached = set(starts)
                 for entry in entries:
-                    reached = entry_ends(entry, reached)
+                    reached = yield entry_ends(entry, reached)
                     if not reached:
                         break
                 ends |= reached
             return ends
 
-        try:
-            if count in group_ends(sequence, {0}):
-                return None
-        except RecursionError:
-            # A group that refers to itself is followed one level per element
-            # (#138); a very long array runs out of stack. Reject it rather
-            # than guess.
-            return (f"Array type '{type_name}' has {count} elements, too many to match "
-                    f"against a group that refers to itself")
+        def solve(task):
+            """Run *task*, a generator that yields the generators it needs."""
+            stack, value = [task], None
+            while stack:
+                try:
+                    needed = stack[-1].send(value)
+                except StopIteration as done:
+                    stack.pop()
+                    value = done.value
+                else:
+                    stack.append(needed)
+                    value = None
+            return value
+
+        if count in solve(group_ends(sequence, {0})):
+            return None
         index = furthest[0]
         if index >= count:
             return (f"Array type '{type_name}' is missing element [{count}]: "
