@@ -113,10 +113,13 @@ class LegacyTables:
         if rule.maybe_group and isinstance(alt, Paren):
             ty = alt.type  # 'h = ( name )' where 'name' is a type
         expanded = ty if rule.params else self._expand(ty)
-        structure = _structure(expanded, instance=expanded is not ty)
+        instance = expanded is not ty
+        structure = _structure(expanded, instance=instance)
         ty = expanded
         if structure is not None:
             self.types[name] = self._structure_def(structure, name)
+            if instance:
+                self._add_constraints(self.types[name], expanded, name)
         else:
             self.type_aliases[name] = self._text(ty, name)
 
@@ -178,10 +181,16 @@ class LegacyTables:
                 type_def['fields'][key] = info
             elif entry.key.kind == 'type':
                 # '* label => value': extra keys matching 'label' are allowed (#104)
-                type_def.setdefault('computed_keys', []).append({
+                computed = {
                     'key': self._text(Type((entry.key.type,)), f'{owner}@key'),
                     'type': self._text(entry.value, f'{owner}@value'),
-                })
+                }
+                if entry.occurrence is not None and entry.occurrence.min > 0 and not optional:
+                    # '+ K => V', '2*3 K => V': how many entries must match (#120).
+                    # Upper bounds alone ('? K => V') are not enforced yet.
+                    computed['min'] = entry.occurrence.min
+                    computed['max'] = entry.occurrence.max
+                type_def.setdefault('computed_keys', []).append(computed)
 
     def _field(self, member: Member, owner: str, optional: bool = False):
         """``(key, field-info)`` for a member with a fixed key, else ``None``."""
@@ -412,7 +421,9 @@ class LegacyTables:
                 structure = _structure(expanded, instance=True)
                 if structure is not None:
                     # 'non-empty<{ ... }>', 'pair<int, tstr>': a structure of its own
-                    return Name(self._synthetic(structure, path, key))
+                    synthetic = self._synthetic(structure, path, key)
+                    self._add_constraints(self.types[synthetic], expanded, synthetic)
+                    return Name(synthetic)
                 if expanded.alternatives != (node,):
                     lifted = self._lift(expanded, path)
                     if len(lifted.alternatives) == 1:
@@ -479,8 +490,58 @@ class LegacyTables:
         self.types[name] = self._structure_def(structure, name)
         return name
 
+    def _add_constraints(self, type_def: Dict, expanded: Type, owner: str):
+        """Record the ``.and`` / ``.within`` operands around an instantiated structure.
+
+        ``non-empty<M>`` instantiates to ``(M) .and ({ + any => any })``. The
+        table describes ``M``; the other operand is kept in
+        ``type_def['constraints']`` as type text, and a value must match it
+        as well (#120).
+        """
+        operands = _control_operands(expanded)
+        if not operands:
+            return
+        constraints = []
+        for index, (op, operand) in enumerate(operands):
+            path = f'{owner}@{op}{index}'
+            inner = operand
+            while isinstance(inner, Paren) and len(inner.type.alternatives) == 1:
+                inner = inner.type.alternatives[0]
+            if isinstance(inner, Array):
+                # '.and ([ + int ])': a structure of its own, so its length is checked
+                constraints.append(self._synthetic(inner, path))
+            else:
+                constraints.append(self._text(Type((operand,)), path))
+        type_def['constraints'] = constraints
+
 
 # ------------------------------------------------------------------ helpers
+
+# Controls that restrict a structure by a second type the value must also match.
+_AND_CONTROLS = ('and', 'within')
+
+
+def _control_operands(ty):
+    """The ``(control, operand)`` pairs :func:`_structure` looks through.
+
+    Only ``.and`` and ``.within`` are collected: both need the value to match
+    the operand too. Other controls (``.size``, ...) are still ignored there.
+    """
+    operands = []
+    node = ty.alternatives[0] if len(ty.alternatives) == 1 else None
+    if isinstance(node, Name) and len(node.args) == 1:
+        node = node.args[0]
+    while True:
+        if isinstance(node, Control):
+            if node.op in _AND_CONTROLS:
+                operands.append((node.op, node.arg))
+            node = node.target
+        elif isinstance(node, Paren) and len(node.type.alternatives) == 1:
+            node = node.type.alternatives[0]
+        else:
+            break
+    operands.reverse()
+    return operands
 
 def _positional(group, entries, element_types, resolved) -> bool:
     """Whether element *i* of an array always takes entry *i* (``element_types``).
@@ -565,8 +626,8 @@ def _structure(ty, instance: bool = False):
     ``x = { ... }`` and ``x = [ ... ]`` give that node. For an instantiated
     generic (*instance*), parentheses and controls around the structure are
     looked through, so ``non-empty<{ ... }>``, which instantiates to
-    ``({ ... }) .and ({ + any => any })``, is read as its map (the control is
-    not enforced). Without a resolved model, a single generic argument
+    ``({ ... }) .and ({ + any => any })``, is read as its map (``.and`` and
+    ``.within`` operands are kept as constraints, see ``_add_constraints``). Without a resolved model, a single generic argument
     (``x = non-empty<{ ... }>``) is read as the map inside, as the
     line-based parser did.
     """
