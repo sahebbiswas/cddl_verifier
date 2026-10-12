@@ -8,40 +8,22 @@ can move to a standards-oriented CDDL AST without changing these signatures.
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 from . import _analyzer
 from ._cbor import CBOR, CBORDecodeError
+from ._diagnostics import (JSON_FORMAT_VERSION, Diagnostic, decode_diagnostic, render_json,
+                           render_text)
 from ._errors import SchemaError
 
-__all__ = ["Diagnostic", "SchemaError", "ValidationResult", "Validator", "validate"]
+__all__ = ["Diagnostic", "SchemaError", "ValidationResult", "Validator", "render_json",
+           "render_text", "validate"]
 
 #: CDDL schema input: schema text (``str``) or a path to a ``.cddl`` file.
 SchemaSource = Union[str, "os.PathLike[str]"]
 
 _BYTES_TYPES = (bytes, bytearray, memoryview)
 _EDN_FORMATS = ("keyindex", "keyname", "both")
-
-
-@dataclass(frozen=True)
-class Diagnostic:
-    """One finding produced while checking data against a schema.
-
-    Attributes:
-        message:  Human-readable description.
-        code:     ``"decode"`` when the CBOR input could not be decoded,
-                  ``"validation"`` when decoded data does not match the schema.
-        severity: ``"error"`` for every diagnostic in this release.
-        offset:   Byte offset into the CBOR input, when known (decode errors).
-    """
-
-    message: str
-    code: str = "validation"
-    severity: str = "error"
-    offset: Optional[int] = None
-
-    def __str__(self) -> str:
-        return self.message
 
 
 @dataclass(frozen=True)
@@ -64,6 +46,28 @@ class ValidationResult:
     def errors(self) -> Tuple[str, ...]:
         """Messages of the error diagnostics."""
         return tuple(d.message for d in self.diagnostics if d.severity == "error")
+
+    def to_dict(self) -> Dict[str, Any]:
+        """The outcome as JSON-ready data: ``valid``, ``root_type`` and ``diagnostics``.
+
+        Each diagnostic is :meth:`Diagnostic.to_dict`. The decoded ``data`` is
+        not included.
+        """
+        return {
+            "format_version": JSON_FORMAT_VERSION,
+            "valid": self.valid,
+            "root_type": self.root_type,
+            "diagnostics": [d.to_dict() for d in self.diagnostics],
+        }
+
+    def to_json(self, indent: Optional[int] = 2) -> str:
+        """The outcome as a JSON document (see :meth:`to_dict`)."""
+        return render_json(self.diagnostics, indent=indent, valid=self.valid,
+                           root_type=self.root_type)
+
+    def format(self, *, verbose: bool = False) -> str:
+        """The diagnostics as text, one finding per line (see :func:`render_text`)."""
+        return render_text(self.diagnostics, verbose=verbose)
 
 
 def _read_schema(schema: SchemaSource) -> str:
@@ -139,11 +143,10 @@ class Validator:
             try:
                 data = CBOR.loads(cbor_bytes)
             except CBORDecodeError as e:
-                diag = Diagnostic(str(e), code="decode", offset=e.offset)
-                return ValidationResult(False, root, (diag,), None)
+                return ValidationResult(False, root, (decode_diagnostic(e, cbor_bytes),), None)
         analyzer = _analyzer.CBORAnalyzer(self._parser)
         ok = analyzer.validate(data, root, cbor_bytes)
-        diagnostics = tuple(Diagnostic(msg) for msg in analyzer.get_errors())
+        diagnostics = analyzer.get_diagnostics()
         return ValidationResult(bool(ok) and not diagnostics, root, diagnostics, data)
 
     def to_edn(self, data: Any, root_type: Optional[str] = None, *,

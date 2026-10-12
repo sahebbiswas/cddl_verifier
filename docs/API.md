@@ -5,7 +5,7 @@ consumer workflows, see [Recipes](RECIPES.md).
 
 | Module | Status | Main entry points |
 |--------|--------|-------------------|
-| [`cddl_verifier`](#cddl_verifier-validation) | Public | `validate`, `Validator`, `ValidationResult`, `Diagnostic`, `SchemaError`, `CBORDecodeError`, `__version__` |
+| [`cddl_verifier`](#cddl_verifier-validation) | Public | `validate`, `Validator`, `ValidationResult`, `Diagnostic`, `render_text`, `render_json`, `SchemaError`, `CBORDecodeError`, `__version__` |
 | [`cddl_verifier.cbor`](#cddl_verifiercbor-encoding-and-decoding) | Public | `encode`, `decode`, `diag_dump`, `CBOR`, `CBORKey`, decode errors |
 | [`cddl_verifier.json_codec`](#cddl_verifierjson_codec-json-conversion) | Public | `cbor_to_json`, `json_to_cbor`, file helpers |
 | [`cddl_verifier._analyzer`](#internal-parser-validator-and-edn-generator) | Internal | `CDDLParser`, `CBORAnalyzer`, `EDNGenerator` |
@@ -81,6 +81,12 @@ If `root_type` is `None` and the schema has no rules, `SchemaError` is raised.
 | `errors` | Tuple of error messages (shortcut over `diagnostics`) |
 | `data` | The decoded value, or `None` if decoding failed |
 
+| Method | Description |
+|--------|-------------|
+| `to_dict()` | `format_version`, `valid`, `root_type` and `diagnostics` as JSON-ready data |
+| `to_json(indent=2)` | The same as a JSON document |
+| `format(verbose=False)` | The diagnostics as text (see [`render_text`](#rendering-diagnostics)) |
+
 CBOR that cannot be decoded does **not** raise: the result is invalid and holds
 one `Diagnostic` with `code == "decode"` and the byte `offset` of the problem.
 
@@ -90,8 +96,58 @@ one `Diagnostic` with `code == "decode"` and the byte `offset` of the problem.
 |-----------|-------------|
 | `message` | Human-readable text (also `str(diagnostic)`) |
 | `code` | `"decode"` or `"validation"` |
-| `severity` | `"error"` |
-| `offset` | Byte offset into the CBOR input for decode errors, otherwise `None` |
+| `severity` | `"error"`, `"warning"` or `"info"`; every diagnostic is an `"error"` today |
+| `category` | The kind of problem: `decode`, `schema`, `tag`, `type`, `value`, `missing`, `unknown`, `occurrence`, `nested` or `other` |
+| `path` | Where the item is in the data: the map keys and array indexes from the root, as the decoder returns them (`(1, 2)`); `()` is the root |
+| `offset`, `end_offset` | Byte span of the offending item in the CBOR input, or `None` (see below) |
+| `hex`, `hex_truncated` | Hex of the first 16 bytes of that item (`"18 c8"`); `hex_truncated` is `True` when the item is longer |
+| `rule` | The CDDL rule being checked |
+| `schema_location` | `file:line:column` of that rule (`<schema>` for schema text) |
+| `schema_path` | The rules and members the check went through, root first |
+| `expected`, `actual` | What the schema asks for and what the data has, as short text, when known |
+
+`path_text` and `schema_path_text` give the paths as `/1/2` and `/measurement/1/[2]`.
+`to_dict()` and `to_json()` give the JSON form, and `format()` several lines of text.
+
+A field is `None` or empty when it is not known. Read the fields instead of
+parsing `message`: the wording of messages can improve between versions, while
+the fields and the JSON layout (`format_version`) stay stable.
+
+**Offsets.** CBOR that cannot be decoded gives the offset of the problem. For
+validation errors the offset is the position of the item in the CBOR bytes, found
+by the decoder, and only when the data was given as bytes: validating an
+already-decoded Python value gives no offsets. A missing member points at the map
+that lacks it, and an unknown member at its key. Inside CBOR embedded in a byte
+string (`bstr .cbor`), `path` continues below the byte string but the offsets are
+those of the byte string.
+
+### Rendering diagnostics
+
+```python
+from cddl_verifier import render_json, render_text, validate
+
+result = validate(schema, cbor_bytes)
+print(render_text(result.diagnostics))                # one message per line
+print(render_text(result.diagnostics, verbose=True))  # with path, offset, rule, bytes
+print(render_json(result.diagnostics, valid=result.valid))
+```
+
+`render_text` prints each message on its own line, as `cddl-verify` does. With
+`verbose=True` each diagnostic also shows where it is:
+
+```text
+error[type]: Element [1] of field '2' has wrong type: expected tstr, got int
+  at data /2/1, offset 11
+  in rule person (<schema>:1:1)
+  expected tstr, found int
+  bytes 05
+```
+
+`render_json` writes `{"format_version": 1, "diagnostics": [...]}`, with each
+diagnostic as `Diagnostic.to_dict()`. Keyword arguments (`valid=`, `root_type=`)
+become extra top-level members. Every field is always present, and unknown values
+are `null`. A path step is a JSON integer or string; byte-string, boolean, float
+and other keys are written as text (`"h'aa'"`, `"true"`).
 
 The library does not log anything by default. The `cddl-verify` CLI prints
 progress and errors to stderr.
@@ -124,6 +180,7 @@ if analyzer.validate(data, "person"):
 else:
     for err in analyzer.get_errors():
         print(err)
+    diagnostics = analyzer.get_diagnostics()   # the same findings as `Diagnostic`s
 ```
 
 The supported schema syntax and validation rules are described in

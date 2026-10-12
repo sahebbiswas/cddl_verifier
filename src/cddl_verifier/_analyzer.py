@@ -8,6 +8,7 @@ public ``cddl_verifier`` API (``validate``, ``Validator``) instead.
 """
 
 import argparse
+import contextlib
 import copy
 import functools
 import logging
@@ -26,7 +27,9 @@ from ._cddl.legacy import LegacyTables
 from ._cddl.resolve import resolve
 from ._version import __version__
 
-from ._cbor import CBOR, CBORKey
+from ._cbor import CBOR, CBORDecodeError, CBORKey
+from ._diagnostics import (MAX_HEX_BYTES, Diagnostic, _Finding, classify_message, diagnostic_of,
+                           expected_and_found)
 
 
 # Compatibility wrapper for existing code that uses SimpleCBORDecoder
@@ -293,6 +296,21 @@ class CDDLParser:
         self.type_aliases = tables.type_aliases
         self.first_definition = tables.first_definition
         self.synthetic_types = tables.synthetic_types
+
+    def rule_location(self, name: str) -> Optional[str]:
+        """``file:line:column`` where the schema defines rule *name*, if it does.
+
+        The file is the schema's name (``<schema>`` for text given directly).
+        Rules from the prelude, and generated names, have no location.
+        """
+        ast = self.ast
+        if ast is None or ast.source is None:
+            return None
+        for rule in ast.rules:
+            if rule.name == name:
+                line, column = ast.source.line_col(rule.span.start)
+                return f"{ast.source.name or '<schema>'}:{line}:{column}"
+        return None
 
     def resolve_type_alias(self, type_name: str, max_depth: int = 10) -> str:
         """Follow the alias chain for *type_name* and return the terminal type.
@@ -593,6 +611,7 @@ class CDDLParser:
                 # Save current validation state
                 saved_errors = validator.validation_errors.copy()
                 saved_breadcrumb = validator.breadcrumb.copy()
+                saved_path = validator._data_path.copy()
                 
                 # Attempt validation
                 try:
@@ -602,6 +621,7 @@ class CDDLParser:
                         # Restore state and return
                         validator.validation_errors = saved_errors
                         validator.breadcrumb = saved_breadcrumb
+                        validator._data_path = saved_path
                         return alt
                     else:
                         logger.debug(f"    [X] Validation failed")
@@ -611,6 +631,7 @@ class CDDLParser:
                 # Restore state for next attempt
                 validator.validation_errors = saved_errors
                 validator.breadcrumb = saved_breadcrumb
+                validator._data_path = saved_path
         
         # Fallback: return first compatible alternative, or first alternative if none compatible
         if compatible:
@@ -768,6 +789,54 @@ class CDDLParser:
         return self.socket_extensions.get(socket_name)
 
 
+#: Marks a breadcrumb component (a rule name) that is not a step in the data.
+_NO_STEP = object()
+
+def _cbor_type_name(value: Any) -> str:
+    """Name *value* by its CBOR type (``uint``, ``tstr``, ``map``, ``tag 501``...)."""
+    if isinstance(value, CBORKey):
+        value = value.value
+    if value is None:
+        return 'null'
+    if isinstance(value, bool):
+        return 'bool'
+    if isinstance(value, int):
+        return 'uint' if value >= 0 else 'nint'
+    if isinstance(value, float):
+        return 'float'
+    if isinstance(value, str):
+        return 'tstr'
+    if isinstance(value, bytes):
+        return 'bstr'
+    if isinstance(value, dict):
+        return 'map'
+    if CBORAnalyzer._is_tagged(value):
+        return f'tag {value[0]}'
+    if isinstance(value, (list, tuple)):
+        return 'array'
+    return type(value).__name__
+
+
+def _mismatch_category(base_type: str, value: Any) -> str:
+    """``value`` when *value* has the CBOR type *base_type* asks for but fails a
+    control on it (a range, ``.regexp``), else ``type``."""
+    if base_type in ('uint', 'int'):
+        fits = (isinstance(value, int) and not isinstance(value, bool)
+                and -2**64 <= value < 2**64 and not (base_type == 'uint' and value < 0))
+        return 'value' if fits else 'type'
+    if base_type == 'tstr':
+        return 'value' if isinstance(value, str) else 'type'
+    return 'type'
+
+
+def _describe_value(value: Any) -> str:
+    """The CBOR type of *value*, plus the value itself for numbers and booleans."""
+    name = _cbor_type_name(value)
+    if isinstance(value, (bool, int, float)) and not isinstance(value, CBORKey):
+        return f"{name} {value!r}"
+    return name
+
+
 class CBORAnalyzer:
     """Validate decoded CBOR data against a parsed CDDL schema.
 
@@ -802,15 +871,114 @@ class CBORAnalyzer:
         self.breadcrumb: List[str] = []  # Track CDDL path for logging
         self.cbor_bytes: Optional[bytes] = None  # Raw CBOR bytes for offset tracking
         self.offset_map: Dict[int, int] = {}  # Map data id() to byte offset
+        # Structured diagnostics (#75): where in the data each breadcrumb
+        # component sits, the rules being checked, and the item offsets
+        self._data_path: List[Any] = []
+        self._rules: List[str] = []
+        self._locations = None  # CBORLocations, decoded from cbor_bytes on first use
+        self._locations_tried = False
+        self._embedded_depth = 0  # >0 while checking CBOR embedded in a byte string
+        self._embedded_span: Optional[Tuple[int, int]] = None  # that byte string's span
     
-    def _push_breadcrumb(self, component: str):
-        """Add a component to the CDDL breadcrumb."""
+    def _push_breadcrumb(self, component: str, step: Any = _NO_STEP):
+        """Add a component to the CDDL breadcrumb.
+
+        *step* is the map key or array index of the data item the component
+        stands for; a rule name has none.
+        """
         self.breadcrumb.append(component)
+        self._data_path.append(step)
     
     def _pop_breadcrumb(self):
         """Remove the last component from the breadcrumb."""
         if self.breadcrumb:
             self.breadcrumb.pop()
+            if self._data_path:
+                self._data_path.pop()
+
+    def _current_path(self) -> Tuple[Any, ...]:
+        """Map keys and array indexes from the root to the item being checked."""
+        return tuple(step for step in self._data_path if step is not _NO_STEP)
+
+    def _item_span(self, path: Tuple[Any, ...], key: Any = _NO_STEP) -> Optional[Tuple[int, int]]:
+        """Byte span of the item at *path* (or of its key *key*) in the CBOR input."""
+        if self._embedded_depth:
+            # Items of embedded CBOR have no offsets in the input; point at the byte string
+            return self._embedded_span
+        if not self.cbor_bytes:
+            return None
+        if self._locations is None and not self._locations_tried:
+            self._locations_tried = True
+            try:
+                self._locations = CBOR.loads_with_locations(self.cbor_bytes)[1]
+            except (CBORDecodeError, TypeError):
+                self._locations = None
+        if self._locations is None:
+            return None
+        if key is not _NO_STEP:
+            return self._locations.key_span(path, key)
+        return self._locations.span(path)
+
+    @contextlib.contextmanager
+    def _inside_embedded_cbor(self):
+        """Report offsets of the byte string while checking the CBOR inside it."""
+        if not self._embedded_depth:
+            self._embedded_span = self._item_span(self._current_path())
+        self._embedded_depth += 1
+        try:
+            yield
+        finally:
+            self._embedded_depth -= 1
+
+    def _report(self, message: str, category: Optional[str] = None, *,
+                expected: Optional[str] = None, actual: Optional[str] = None,
+                rule: Optional[str] = None, at_parent: bool = False,
+                extra_path: Tuple[Any, ...] = (), key: Any = _NO_STEP) -> None:
+        """Record a validation error as a message with its structured diagnostic.
+
+        The message is appended to :attr:`validation_errors` unchanged; the
+        diagnostic holds the data path, the schema path and rule, the byte
+        offset and bytes of the item, and what was expected and found.
+
+        Args:
+            message:   The error text.
+            category:  A category from :data:`_diagnostics.CATEGORIES`;
+                       guessed from the message when omitted.
+            expected:  What the schema asks for; read from an "expected X,
+                       got Y" message when omitted.
+            actual:    What the data has.
+            rule:      The rule being checked; defaults to the innermost one.
+            at_parent: Point at the container of the current item (a member
+                       that is missing has no item of its own).
+            extra_path: Steps below the current item.
+            key:       Point at this key of the map at the current item.
+        """
+        path = self._current_path()
+        if at_parent and path:
+            path = path[:-1]
+        path = path + tuple(extra_path)
+        if category is None:
+            category = classify_message(message)
+        if expected is None and actual is None:
+            expected, actual = expected_and_found(message)
+        span = self._item_span(path, key)
+        offset = end = hex_text = None
+        truncated = False
+        if span is not None:
+            offset, end = span
+            if self.cbor_bytes:
+                excerpt = self.cbor_bytes[offset:min(end, offset + MAX_HEX_BYTES)]
+                hex_text = excerpt.hex(' ')
+                truncated = end - offset > MAX_HEX_BYTES
+        rule_name = rule if rule is not None else (self._rules[-1] if self._rules else None)
+        diagnostic = Diagnostic(
+            message=message, code="validation", severity="error", offset=offset,
+            category=category, path=path, schema_path=tuple(self.breadcrumb),
+            rule=rule_name,
+            schema_location=self.cddl.rule_location(rule_name) if rule_name else None,
+            expected=expected, actual=actual, end_offset=end, hex=hex_text,
+            hex_truncated=truncated)
+        self.validation_errors.append(_Finding(message, diagnostic))
     
     def _get_breadcrumb(self) -> str:
         """Get the current CDDL path as a string."""
@@ -968,7 +1136,7 @@ class CBORAnalyzer:
                 # '$s /= uint', '$s /= tstr': checked like a socket field
                 errors = self._check_value(value, name)
                 for error in errors:
-                    self.validation_errors.append(f"Value does not match type '{type_name}': {error}")
+                    self._report(f"Value does not match type '{type_name}': {error}")
                 return not errors
             if name in self.cddl.types:
                 return None
@@ -977,14 +1145,16 @@ class CBORAnalyzer:
                 expected_tag, name = tag_info[0], tag_info[1].strip()
                 if not (isinstance(value, tuple) and len(value) == 2
                         and isinstance(value[0], int)):
-                    self.validation_errors.append(
+                    self._report(
                         f"Type '{type_name}' requires CBOR tag {expected_tag}, "
-                        f"but the data is not tagged")
+                        f"but the data is not tagged", 'tag', expected=f"tag {expected_tag}",
+                        actual=_describe_value(value), rule=type_name)
                     return False
                 if value[0] != expected_tag:
-                    self.validation_errors.append(
+                    self._report(
                         f"Type '{type_name}' requires CBOR tag {expected_tag}, "
-                        f"got tag {value[0]}")
+                        f"got tag {value[0]}", 'tag', expected=f"tag {expected_tag}",
+                        actual=f"tag {value[0]}", rule=type_name)
                     return False
                 value = value[1]
                 continue
@@ -997,7 +1167,7 @@ class CBORAnalyzer:
                     or self._literal_errors(value, stripped) is not None):
                 errors = self._check_value(value, stripped)
                 for error in errors:
-                    self.validation_errors.append(f"Value does not match type '{type_name}': {error}")
+                    self._report(f"Value does not match type '{type_name}': {error}")
                 return not errors
             next_name = self.cddl.type_aliases.get(name)
             if next_name is None or next_name == name:
@@ -1021,7 +1191,7 @@ class CBORAnalyzer:
         """
         type_def = self.cddl.get_type(type_name, data)
         if not type_def:
-            self.validation_errors.append(f"Type '{type_name}' not found in CDDL")
+            self._report(f"Type '{type_name}' not found in CDDL")
             return False
         self._push_breadcrumb(type_name)
         result = self._validate_type(data, type_def, type_name)
@@ -1060,7 +1230,13 @@ class CBORAnalyzer:
         """
         self.validation_errors = []
         self.breadcrumb = []  # Reset breadcrumb
+        self._data_path = []
+        self._rules = [type_name] if type_name else []
         self.cbor_bytes = cbor_bytes  # Store for offset tracking
+        self._locations = None
+        self._locations_tried = False
+        self._embedded_depth = 0
+        self._embedded_span = None
         
         logger.info("=" * 60)
         logger.info("VALIDATION STARTED")
@@ -1106,18 +1282,18 @@ class CBORAnalyzer:
                             logger.info(f"{Colors.MATCH}Auto-selected: {selected}{Colors.RESET}")
                             return self._validate_root(data, selected)
                         
-                        self.validation_errors.append(
+                        self._report(
                             f"Type '{type_name}' resolves to type choice '{resolved}' with alternatives: {', '.join(choices)}. "
                             f"Could not auto-resolve. Please specify one of the concrete types."
                         )
                     else:
                         logger.warning(f"'{resolved}' is not a concrete type definition")
-                        self.validation_errors.append(
+                        self._report(
                             f"Type '{type_name}' resolves to '{resolved}' which is not a concrete type definition"
                         )
                 else:
                     logger.error(f"Type '{type_name}' not found in CDDL schema")
-                    self.validation_errors.append(f"Type '{type_name}' not found in CDDL")
+                    self._report(f"Type '{type_name}' not found in CDDL")
                 return False
             
             logger.info(f"Type definition found: {type_name} ({type_def['type']})")
@@ -1151,6 +1327,15 @@ class CBORAnalyzer:
                 and isinstance(data[0], int) and not isinstance(data[0], bool))
 
     def _validate_type(self, data: Any, type_def: Dict, type_name: str, cbor_offset: int = None) -> bool:
+        """Validate data against a specific type definition (see :meth:`_validate_type_checked`)."""
+        self._rules.append(type_name)
+        try:
+            return self._validate_type_checked(data, type_def, type_name, cbor_offset)
+        finally:
+            self._rules.pop()
+
+    def _validate_type_checked(self, data: Any, type_def: Dict, type_name: str,
+                               cbor_offset: int = None) -> bool:
         """Validate data against a specific type definition.
         
         Args:
@@ -1169,13 +1354,15 @@ class CBORAnalyzer:
                 error_msg = (f"Type '{type_name}' requires CBOR tag {expected_tag}, "
                              f"but the data is not tagged")
                 logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
-                self.validation_errors.append(error_msg)
+                self._report(error_msg, 'tag', expected=f"tag {expected_tag}",
+                             actual=_describe_value(data))
                 return False
             if data[0] != expected_tag:
                 error_msg = (f"Type '{type_name}' requires CBOR tag {expected_tag}, "
                              f"got tag {data[0]}")
                 logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
-                self.validation_errors.append(error_msg)
+                self._report(error_msg, 'tag', expected=f"tag {expected_tag}",
+                             actual=f"tag {data[0]}")
                 return False
             data = data[1]
             logger.debug(f"{Colors.CBOR}[{breadcrumb}] Unwrapped expected CBOR tag {expected_tag}{Colors.RESET}")
@@ -1183,7 +1370,8 @@ class CBORAnalyzer:
             error_msg = (f"Type '{type_name}' expects an untagged {type_def.get('type', 'value')}, "
                          f"but the data has CBOR tag {data[0]}")
             logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
-            self.validation_errors.append(error_msg)
+            self._report(error_msg, 'tag', expected=f"untagged {type_def.get('type', 'value')}",
+                         actual=f"tag {data[0]}")
             return False
         
         logger.debug(f"{offset_str}{Colors.CDDL}[{breadcrumb}]{Colors.RESET} Validating type '{type_name}'")
@@ -1195,7 +1383,7 @@ class CBORAnalyzer:
             for error in self._check_value(data, constraint):
                 error_msg = f"Type '{type_name}' does not satisfy its control operand '{constraint}': {error}"
                 logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
-                self.validation_errors.append(error_msg)
+                self._report(error_msg)
         
         # Check if this is a .cbor control type (bytes containing CBOR)
         if type_def.get('cbor_inner_type'):
@@ -1205,7 +1393,7 @@ class CBORAnalyzer:
             if not isinstance(data, bytes):
                 error_msg = f"Expected bytes (for .cbor control) for type '{type_name}', got {type(data).__name__}"
                 logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
-                self.validation_errors.append(error_msg)
+                self._report(error_msg)
                 return False
             
             # Decode the nested CBOR
@@ -1220,7 +1408,8 @@ class CBORAnalyzer:
                 if nested_type_def:
                     logger.debug(f"{Colors.CDDL}[{breadcrumb}]{Colors.RESET} Validating nested CBOR against: {inner_type}")
                     self._push_breadcrumb("cbor")
-                    self._validate_type(nested_data, nested_type_def, inner_type)
+                    with self._inside_embedded_cbor():
+                        self._validate_type(nested_data, nested_type_def, inner_type)
                     self._pop_breadcrumb()
                 else:
                     logger.warning(f"{Colors.WARNING}[{breadcrumb}]{Colors.RESET} Could not find type definition for: {inner_type}")
@@ -1230,14 +1419,14 @@ class CBORAnalyzer:
             except Exception as e:
                 error_msg = f"Failed to decode nested CBOR in type '{type_name}': {e}"
                 logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
-                self.validation_errors.append(error_msg)
+                self._report(error_msg)
                 return False
         
         if type_def['type'] == 'map':
             if not isinstance(data, dict):
                 error_msg = f"Expected map for type '{type_name}', got {type(data).__name__}"
                 logger.error(f"{Colors.MISMATCH}[{breadcrumb}] TYPE MISMATCH:{Colors.RESET} {error_msg}")
-                self.validation_errors.append(error_msg)
+                self._report(error_msg, 'type', expected='map', actual=_describe_value(data))
                 return False
             
             logger.debug(f"{Colors.CDDL}[{breadcrumb}]{Colors.RESET} Checking {len(type_def['fields'])} field definitions")
@@ -1249,7 +1438,7 @@ class CBORAnalyzer:
                 field_type = field_info.get('type', 'unknown')
                 
                 # Push field to breadcrumb
-                self._push_breadcrumb(field_name)
+                self._push_breadcrumb(field_name, step=key)
                 field_breadcrumb = self._get_breadcrumb()
                 
                 if key in data:
@@ -1274,7 +1463,7 @@ class CBORAnalyzer:
                         if not isinstance(value, bytes):
                             type_mismatch = True
                             logger.error(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Expected bytes (for .cbor), got {type(value).__name__}")
-                            self.validation_errors.append(f"Field '{field_name}' should be bytes containing CBOR data")
+                            self._report(f"Field '{field_name}' should be bytes containing CBOR data")
                         else:
                             # Decode the nested CBOR and validate it
                             try:
@@ -1287,21 +1476,22 @@ class CBORAnalyzer:
                                 nested_type_def = self.cddl.get_type(inner_type, nested_data)
                                 if nested_type_def:
                                     logger.debug(f"{Colors.CDDL}[{field_breadcrumb}]{Colors.RESET} Validating nested CBOR against: {inner_type}")
-                                    self._validate_type(nested_data, nested_type_def, inner_type)
+                                    with self._inside_embedded_cbor():
+                                        self._validate_type(nested_data, nested_type_def, inner_type)
                                 else:
                                     # A primitive or other expression ('bstr .cbor uint')
                                     for error in self._check_value(nested_data, inner_type):
-                                        self.validation_errors.append(
+                                        self._report(
                                             f"Embedded CBOR in field '{field_name}' of '{type_name}' "
                                             f"does not match '{inner_type}': {error}")
                             except Exception as e:
                                 logger.error(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Failed to decode nested CBOR: {e}")
-                                self.validation_errors.append(f"Failed to decode nested CBOR in field '{field_name}': {e}")
+                                self._report(f"Failed to decode nested CBOR in field '{field_name}': {e}")
                     
                     # Tagged primitive (``x: #6.1(uint)``): check the tag, then the value inside
                     field_type, value, tag_error = self._peel_tagged_primitive(field_type, value)
                     if tag_error:
-                        self.validation_errors.append(f"Field '{field_name}' in '{type_name}' {tag_error}")
+                        self._report(f"Field '{field_name}' in '{type_name}' {tag_error}")
                         self._pop_breadcrumb()
                         continue
 
@@ -1313,7 +1503,7 @@ class CBORAnalyzer:
                     # (or a parenthesized type, whose controls apply to each alternative)
                     if self._checked_as_whole(_resolved):
                         for choice_error in self._check_value(value, _resolved):
-                            self.validation_errors.append(
+                            self._report(
                                 f"Field '{field_name}' in '{type_name}' {choice_error}")
                         self._pop_breadcrumb()
                         continue
@@ -1386,7 +1576,7 @@ class CBORAnalyzer:
                                     type_mismatch = True
                                     err_msg = f"Invalid .regexp pattern /{pattern}/ for field '{field_name}': {exc}"
                                     logger.error(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} {err_msg}")
-                                    self.validation_errors.append(err_msg)
+                                    self._report(err_msg)
                     elif field_type == 'bstr' or _base_type == 'bstr':
                         if not isinstance(value, bytes):
                             type_mismatch = True
@@ -1405,13 +1595,15 @@ class CBORAnalyzer:
                                 logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected array, got {type(value).__name__}")
                     
                     if type_mismatch:
-                        self.validation_errors.append(f"Type mismatch for field '{field_name}' in '{type_name}'")
+                        self._report(f"Type mismatch for field '{field_name}' in '{type_name}'",
+                                     _mismatch_category(_base_type, value),
+                                     expected=field_type, actual=_describe_value(value))
                     elif _base_type in self._ROOT_PRIMITIVES and _base_type != 'any':
                         size_error = self.cddl.size_violation(
                             value, _base_type, self.cddl.extract_size_constraint(_resolved))
                         if size_error:
                             logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} .size: {size_error}")
-                            self.validation_errors.append(
+                            self._report(
                                 f"Field '{field_name}' in '{type_name}' violates .size: {size_error}")
                     
                     # Recursively validate nested structures
@@ -1431,17 +1623,17 @@ class CBORAnalyzer:
                             
                             if not isinstance(value, (list, tuple)):
                                 logger.error(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Expected array, got {type(value).__name__}")
-                                self.validation_errors.append(f"Expected array for field '{field_name}', got {type(value).__name__}")
+                                self._report(f"Expected array for field '{field_name}', got {type(value).__name__}")
                             else:
                                 # Validate array constraints
                                 if quantifier == '+' and len(value) == 0:
                                     logger.error(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Array must have at least one element")
-                                    self.validation_errors.append(f"Array field '{field_name}' must not be empty")
+                                    self._report(f"Array field '{field_name}' must not be empty")
                                 
                                 # Validate each array element
                                 logger.debug(f"{Colors.CDDL}[{field_breadcrumb}]{Colors.RESET} Validating {len(value)} array elements")
                                 for i, item in enumerate(value):
-                                    self._push_breadcrumb(f"[{i}]")
+                                    self._push_breadcrumb(f"[{i}]", step=i)
                                     item_breadcrumb = self._get_breadcrumb()
                                     item_repr = self._format_value_for_log(item)
                                     logger.debug(f"{Colors.CDDL}[{item_breadcrumb}]{Colors.RESET} Element: {item_repr}")
@@ -1465,27 +1657,27 @@ class CBORAnalyzer:
                                         resolved_elem = self.cddl.resolve_type_alias(element_type)
                                         if self._checked_as_whole(resolved_elem):
                                             for choice_error in self._check_value(item, resolved_elem):
-                                                self.validation_errors.append(
+                                                self._report(
                                                     f"Element [{i}] of field '{field_name}' {choice_error}")
                                             self._pop_breadcrumb()
                                             continue
                                         if self.cddl.extract_cbor_control(resolved_elem):
                                             for cbor_error in self._check_value(item, resolved_elem):
-                                                self.validation_errors.append(
+                                                self._report(
                                                     f"Element [{i}] of field '{field_name}' {cbor_error}")
                                             self._pop_breadcrumb()
                                             continue
                                         base_elem = query.head(resolved_elem) if resolved_elem else ''
                                         elem_valid = self._check_primitive_type(item, base_elem)
                                         if elem_valid is False:
-                                            self.validation_errors.append(
+                                            self._report(
                                                 f"Element [{i}] of field '{field_name}' has wrong type: "
                                                 f"expected {base_elem}, got {type(item).__name__}")
                                         elif elem_valid is True:
                                             size_error = self.cddl.size_violation(
                                                 item, base_elem, self.cddl.extract_size_constraint(resolved_elem))
                                             if size_error:
-                                                self.validation_errors.append(
+                                                self._report(
                                                     f"Element [{i}] of field '{field_name}' violates .size: {size_error}")
                                         else:
                                             nested_type_def = self.cddl.get_type(element_type)
@@ -1521,7 +1713,8 @@ class CBORAnalyzer:
                 elif not is_optional:
                     error_msg = f"Missing required field '{field_name}' (key {key}) in type '{type_name}'"
                     logger.error(f"{Colors.MISMATCH}[{field_breadcrumb}] [X] MISSING:{Colors.RESET} {error_msg}")
-                    self.validation_errors.append(error_msg)
+                    self._report(error_msg, 'missing', at_parent=True,
+                                 expected=f"member '{field_name}' (key {key})", actual='absent')
                 else:
                     logger.debug(f"{Colors.DEBUG}[{field_breadcrumb}] [.]{Colors.RESET} Optional field not present")
                 
@@ -1541,7 +1734,7 @@ class CBORAnalyzer:
                     computed_counts[index] = computed_counts.get(index, 0) + 1
                     extra_keys.discard(key)
                     for error in self._check_value(data[key], computed['type']):
-                        self.validation_errors.append(
+                        self._report(
                             f"Value for key {key!r} in type '{type_name}' "
                             f"does not match '{computed['type']}': {error}")
                     break
@@ -1557,17 +1750,20 @@ class CBORAnalyzer:
                                  f"{'entry' if computed['max'] is None and computed['min'] == 1 else 'entries'} "
                                  f"with key '{computed['key']}', found {count}")
                     logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
-                    self.validation_errors.append(error_msg)
+                    self._report(error_msg)
             if extra_keys:
                 error_msg = f"Unknown fields not in schema for type '{type_name}': {extra_keys}"
                 logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
-                self.validation_errors.append(error_msg)
+                unknown = sorted(extra_keys, key=repr)
+                self._report(error_msg, 'unknown', key=unknown[0],
+                             expected='only the members the schema defines',
+                             actual=f"unknown key(s) {', '.join(repr(k) for k in unknown)}")
         
         elif type_def['type'] == 'array':
             if not isinstance(data, (list, tuple)):
                 error_msg = f"Expected array for type '{type_name}', got {type(data).__name__}"
                 logger.error(f"{Colors.MISMATCH}[{breadcrumb}] TYPE MISMATCH:{Colors.RESET} {error_msg}")
-                self.validation_errors.append(error_msg)
+                self._report(error_msg, 'type', expected='array', actual=_describe_value(data))
                 return False
             
             logger.debug(f"{Colors.CDDL}[{breadcrumb}]{Colors.RESET} Array has {len(data)} elements")
@@ -1579,7 +1775,7 @@ class CBORAnalyzer:
                 error_msg = self._match_array(data, sequence, type_name)
                 if error_msg:
                     logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
-                    self.validation_errors.append(error_msg)
+                    self._report(error_msg)
                 return len(self.validation_errors) == 0
 
             # Enforce the number of elements the entries' occurrences allow
@@ -1597,11 +1793,11 @@ class CBORAnalyzer:
                                  f"expected at most {high} element(s), got {len(data)}")
                 if error_msg:
                     logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
-                    self.validation_errors.append(error_msg)
+                    self._report(error_msg)
             elif type_def.get('occurrence', '') == '+' and len(data) == 0:
                 error_msg = f"Array type '{type_name}' requires at least one element (+ occurrence)"
                 logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
-                self.validation_errors.append(error_msg)
+                self._report(error_msg)
 
             # Validate element types
             element_types = type_def.get('element_types', {})
@@ -1615,7 +1811,7 @@ class CBORAnalyzer:
             repeating_type = element_types.get(repeat) if repeat is not None else None
 
             for i, item in enumerate(data):
-                self._push_breadcrumb(f"[{i}]")
+                self._push_breadcrumb(f"[{i}]", step=i)
                 item_breadcrumb = self._get_breadcrumb()
                 item_repr = self._format_value_for_log(item)
                 logger.debug(f"{Colors.CDDL}[{item_breadcrumb}]{Colors.RESET} Element: {item_repr}")
@@ -1625,21 +1821,21 @@ class CBORAnalyzer:
                 if elem_type:
                     elem_type, item, tag_error = self._peel_tagged_primitive(elem_type, item)
                     if tag_error:
-                        self.validation_errors.append(f"Array element [{i}] of '{type_name}' {tag_error}")
+                        self._report(f"Array element [{i}] of '{type_name}' {tag_error}")
                         self._pop_breadcrumb()
                         continue
                     # Resolve user alias first
                     resolved_elem = self.cddl.resolve_type_alias(elem_type) if elem_type else elem_type
                     if self._checked_as_whole(resolved_elem):
                         for choice_error in self._check_value(item, resolved_elem):
-                            self.validation_errors.append(
+                            self._report(
                                 f"Array element [{i}] of '{type_name}' {choice_error}")
                         self._pop_breadcrumb()
                         continue
                     if resolved_elem and self.cddl.extract_cbor_control(resolved_elem):
                         # 'bstr .cbor T': decode the bytes and check the item inside
                         for cbor_error in self._check_value(item, resolved_elem):
-                            self.validation_errors.append(
+                            self._report(
                                 f"Array element [{i}] of '{type_name}' {cbor_error}")
                         self._pop_breadcrumb()
                         continue
@@ -1655,14 +1851,14 @@ class CBORAnalyzer:
                             f"expected {base_elem_type}, got {type(item).__name__}"
                         )
                         logger.error(f"{Colors.MISMATCH}[{item_breadcrumb}]{Colors.RESET} {error_msg}")
-                        self.validation_errors.append(error_msg)
+                        self._report(error_msg)
                     # Enforce size constraint if primitive check passed
                     elif elem_valid is True and size_constraint:
                         size_error = self.cddl.size_violation(item, base_elem_type, size_constraint)
                         if size_error:
                             error_msg = f"Array element [{i}] of '{type_name}' violates .size: {size_error}"
                             logger.error(f"{Colors.MISMATCH}[{item_breadcrumb}]{Colors.RESET} {error_msg}")
-                            self.validation_errors.append(error_msg)
+                            self._report(error_msg)
                     # elem_valid is None → structured type (map, array, choice)
                     elif elem_valid is None:
                         # Look up the rule by name first: a tagged rule resolves
@@ -1903,12 +2099,14 @@ class CBORAnalyzer:
     def _sandboxed_validate(self, value: Any, type_def: Dict, type_name: str) -> List[str]:
         """Run :meth:`_validate_type` and return its errors without keeping them."""
         saved_errors, saved_breadcrumb = self.validation_errors, list(self.breadcrumb)
+        saved_path, saved_rules = list(self._data_path), list(self._rules)
         self.validation_errors = []
         try:
             self._validate_type(value, type_def, type_name)
             return self.validation_errors
         finally:
             self.validation_errors, self.breadcrumb = saved_errors, saved_breadcrumb
+            self._data_path, self._rules = saved_path, saved_rules
 
     def _check_value(self, value: Any, expr: str, _depth: int = 0,
                      strict: bool = False) -> List[str]:
@@ -2246,6 +2444,14 @@ class CBORAnalyzer:
         reset at the start of every :meth:`validate` call.
         """
         return self.validation_errors
+
+    def get_diagnostics(self) -> Tuple[Diagnostic, ...]:
+        """Return the structured diagnostics of the last :meth:`validate` call.
+
+        One per message of :meth:`get_errors`, in the same order. Empty when
+        the last call succeeded.
+        """
+        return tuple(diagnostic_of(error) for error in self.validation_errors)
 
 
 class EDNGenerator:
