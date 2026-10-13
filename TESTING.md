@@ -12,6 +12,7 @@ and the standard-library **unittest** runner with no code changes required.
 | `tests/test_cddl_parser.py` | CDDL lexer, AST and parser: node shapes, spans, syntax errors, printer round trip, bundled schemas, strict parsing through the API and CLI |
 | `tests/test_resolve.py` | `_cddl/resolve.py`: semantic errors with positions (undefined and duplicate names, sockets, type/group misuse, generic arity, controls, ranges, occurrences, alias loops), imports, the resolved model, generic instantiation in the tables (#70) |
 | `tests/test_type_query.py` | `_cddl/query.py`: questions about type text answered from the AST (#111); dotted names, decoded `.regexp`, byte literals, controls on literals, parenthesized types (#118), choices from groups (#119) |
+| `tests/test_typetext.py` | `TypeText` (type text that carries its node) and `query` on nodes (#175): every table text over the bundled schemas and the conformance probes is its node's text and parses back to the node; the same answers for a node and its text; `resolve_alias`, `alias_node`, prelude renaming |
 | `tests/test_legacy_tables.py` | `CDDLParser` tables built from the AST; inline maps (#100), inline arrays (#133) and `key => type` members (#104) |
 | `tests/test_simple_cbor.py` | CBOR encode/decode, diagnostics, round-trips |
 | `tests/test_cbor_builder.py` | Iterative construction, nested access, merge |

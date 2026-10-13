@@ -5,8 +5,9 @@ parser used to produce (``types``, ``type_aliases``, ``type_choices``,
 ``socket_extensions``, ``groups``, ``registered_params``,
 ``first_definition``). This module builds them from a parsed ``Schema`` so
 those consumers keep working while they move to reading nodes (Phase C,
-#111). Type expressions are written with :func:`format_node`, so consumers
-always see canonical text.
+#111; #115). Type expressions are written with :func:`format_node`, so
+consumers always see canonical text; the text is a :class:`TypeText`, which
+also holds the node it was made from (#175).
 
 Two things the validator cannot read from text get a table entry instead:
 
@@ -41,6 +42,7 @@ from .ast import (Array, BytesLit, Control, FloatLit, Group, GroupRef, GroupRule
                   entry_type, registered_label, walk)
 from .parser import MAX_DEPTH
 from .printer import format_node
+from .typetext import TypeText
 
 #: How many generic instances may be expanding inside each other. Past it,
 #: a reference is kept as text, so 'g<T> = { n: g<[T]> }' terminates.
@@ -629,9 +631,12 @@ class LegacyTables:
 
     # --------------------------------------------------------------- text
 
-    def _text(self, ty: Type, path: str) -> str:
-        """Canonical text for *ty*, with inline maps replaced by synthetic names."""
-        return format_node(self._lift(ty, path))
+    def _text(self, ty: Type, path: str) -> TypeText:
+        """Canonical text for *ty*, with inline maps replaced by synthetic names.
+
+        The :class:`TypeText` also holds the lifted node the text is made from (#175).
+        """
+        return TypeText(self._lift(ty, path))
 
     def _lift(self, node, path: str):
         if isinstance(node, Type):
@@ -713,7 +718,8 @@ class LegacyTables:
                 # '[ int, tstr ]': a structure of its own, so its elements are
                 # counted and checked by position (#133)
                 return Name(self._synthetic(node, path))
-            return Array(_map_group(node.group, lambda v, i: self._lift(v, f'{path}@{i}')))
+            return Array(_canonical_entries(
+                _map_group(node.group, lambda v, i: self._lift(v, f'{path}@{i}'))))
         return node
 
     def _uniform(self, array: Array) -> bool:
@@ -883,6 +889,29 @@ def _map_group(group, fn):
                                entry.comment, span=entry.span)
             entries.append(entry)
             index += 1
+        choices.append(GroupChoice(tuple(entries), span=choice.span))
+    return Group(tuple(choices), span=group.span)
+
+
+def _canonical_entries(group):
+    """*group* with a keyless member that is just a name written as the parser reads it.
+
+    ``[ + evs@series@0 ]`` parses with a ``GroupRef`` entry; lifting a map out
+    of ``[ + { ... } ]`` leaves a ``Member`` whose value is the new name. They
+    print the same, so make the node the one the text parses to (#175).
+    """
+    from .ast import Group, GroupChoice
+    choices = []
+    for choice in group.choices:
+        entries = []
+        for entry in choice.entries:
+            if isinstance(entry, Member) and entry.key is None \
+                    and len(entry.value.alternatives) == 1 \
+                    and isinstance(entry.value.alternatives[0], Name):
+                name = entry.value.alternatives[0]
+                entry = GroupRef(entry.occurrence, name.name, name.args,
+                                 entry.comment, span=entry.span)
+            entries.append(entry)
         choices.append(GroupChoice(tuple(entries), span=choice.span))
     return Group(tuple(choices), span=group.span)
 

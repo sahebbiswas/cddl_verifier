@@ -491,7 +491,22 @@ As implemented in #111, in two steps by agreement:
   `["[a / b]", "c"]`). `_analyzer.py` has no regex or character scan over type
   text left; the only regex matches data against a `.regexp` pattern.
 - **#115 (after #70).** Remove the text from the tables and pass nodes through
-  every function.
+  every function. It is an epic with three parts, one pull request each, so
+  that no diff has to move the whole validator at once:
+  1. **#175 (done).** The tables hold `TypeText` (`_cddl/typetext.py`): a `str`
+     that is the canonical text and also has the `node` it was made from, so
+     the two cannot differ, and everything that reads text is unchanged.
+     `query` takes a node as well as text; for a node it returns nodes
+     (`alternatives`, the inside of a tag, `.cbor` or a parenthesized type)
+     instead of slices of text. `CDDLParser.alias_node` and `resolve_alias`
+     answer alias lookups with nodes. The expression checker (`_check_value`
+     and the methods it uses) reads nodes and builds nodes (`Control`, `Type`)
+     where it used to build text; `as_type` at its entry still accepts text
+     for the callers that have not moved.
+  2. **#176.** The structure validator (`_validate_type_checked`) and name
+     lookup (`get_type`) read nodes.
+  3. **#177.** The EDN generator reads nodes; `TypeText`, the text tables and
+     the `query` text path are removed.
 
 Behaviour that changed because the grammar now decides (see PR #116):
 names may contain dots (`coswid.tag-id` was cut at the dot, and `lo..hi` is
