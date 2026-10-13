@@ -50,6 +50,8 @@ cddl-verify --version
 | `-t / --type TYPE` | Root CDDL type name; validation failures are fatal |
 | `--no-annotate` | Suppress field-name comments in EDN output |
 | `--edn-format {keyindex,keyname,both}` | EDN key format (default: `keyindex`) |
+| `-M DIR`, `--module-path DIR` | Directory searched for imported CDDL modules (`<name>.cddl`); repeatable. The schema file's own directory is always searched, last |
+| `--module NAME=FILE` | CDDL file for the imported module `NAME`; repeatable |
 | `--show-types` | Print all parsed CDDL types and exit |
 | `--verbose` | Enable detailed logging of validation and type resolution |
 | `--version` | Print the version and exit |
@@ -60,6 +62,22 @@ decoded, or validation against an explicit `--type` fails.
 When `--type` is omitted, the first type defined in the CDDL file is used as the
 root. Validation errors are then reported as warnings and unannotated EDN is
 printed instead of exiting.
+
+### Imported modules
+
+A schema can import other CDDL files with the comment syntax of the CDDL
+modules draft (draft-ietf-cbor-cddl-modules):
+
+```cddl
+;# import rfc9393 as coswid
+r = { tag: coswid.tag-id }
+```
+
+`cddl-verify` looks for `rfc9393.cddl` in each `--module-path` directory and
+then next to the schema file, unless `--module rfc9393=path/to/file.cddl` names
+it. The module's rules are checked and become `coswid.<rule>`. A module that
+is not found prints a `Warning:` line on stderr and the names used from it
+match any value.
 
 ### Input requirements
 

@@ -269,6 +269,8 @@ class LegacyTables:
             return None if partials is None else _occurs(partials, entry.occurrence)
         if not isinstance(entry, GroupRef) or self.resolved is None:
             return None
+        if entry.name in self.resolved.external:
+            return _occurs([self._unknown_group()], entry.occurrence)
         if self.resolved.kind(entry.name) != 'group':
             return None
         key = (entry.name, entry.args)
@@ -283,7 +285,14 @@ class LegacyTables:
         partials = self._group_partials(group, f'{owner}', expanding + (key,))
         return None if partials is None else _occurs(partials, entry.occurrence)
 
+    @staticmethod
+    def _unknown_group():
+        """What a group from a module that was not loaded may add: any entries (#121)."""
+        return {}, [{'key': 'any', 'type': 'any', 'min': 0, 'max': None}]
+
     def _unwrap_partials(self, node: Unwrap, entry, owner: str, expanding: tuple):
+        if self.resolved is not None and node.name in self.resolved.external:
+            return _occurs([self._unknown_group()], entry.occurrence)
         target = self._unwrap_target(node)
         if not isinstance(target, Map):
             return None
@@ -625,6 +634,9 @@ class LegacyTables:
                 lifted = self._lift(inner, path)
                 return lifted.alternatives[0] if len(lifted.alternatives) == 1 else Paren(lifted)
             return node
+        if isinstance(node, Name) and self.resolved is not None \
+                and node.name in self.resolved.external:
+            return Name('any')  # from a module that was not loaded (#121)
         if isinstance(node, Name) and node.args:
             if _deeper_than(node, MAX_DEPTH):
                 # arguments that grow at each level ('g<T> = { n: g<[[T]]> }')

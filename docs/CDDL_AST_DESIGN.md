@@ -358,8 +358,11 @@ As implemented in #70 (`_cddl/resolve.py`):
   prelude's major types; a mismatch is reported only when every alternative's
   kind is known, so `int .size 1` (partly `uint`) and sockets pass.
 - **Imports.** The modules draft's `;# import X as P` and `;# include X`
-  comments make undefined names from that module acceptable; they are listed
-  in `ResolvedSchema.external`.
+  comments are linked before resolution (`_cddl/modules.py`): a
+  `ModuleLoader` finds each module, which is parsed, linked and resolved on its
+  own, and its rules are renamed (`P.name`, references included) and appended
+  to the schema. Undefined names from a module that was not found are
+  acceptable and listed in `ResolvedSchema.external`.
 - **Tables.** `LegacyTables` takes the model: a `maybe_group` rule goes into
   `groups` only when it is a group, and a reference to a generic rule is
   replaced by its instance, so `pair<uint, tstr>` gets a synthetic structure

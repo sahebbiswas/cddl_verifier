@@ -24,6 +24,7 @@ from ._cddl.ast import (BytesLit, FloatLit, GroupRef, InlineGroup, IntLit, Membe
                         Range, TextLit, walk)
 from ._cddl.printer import format_node
 from ._cddl.legacy import LegacyTables
+from ._cddl.modules import ModuleLoader, link, unloaded_warnings
 from ._cddl.resolve import resolve
 from ._version import __version__
 
@@ -177,13 +178,16 @@ class CDDLParser:
         (``_cddl/legacy.py``); the validator reads only the tables until #111.
     """
     
-    def __init__(self, cddl_content: str, source_name: Optional[str] = None):
+    def __init__(self, cddl_content: str, source_name: Optional[str] = None,
+                 loader: Optional[ModuleLoader] = None):
         """Initialise the parser and immediately parse *cddl_content*.
 
         Args:
             cddl_content: Raw CDDL schema text.  May be empty (``""``), in
                 which case only the built-in primitive aliases are available.
             source_name: File name used in syntax error messages.
+            loader: Finds the modules the schema imports (``;# import X as P``);
+                without one, imported modules are not loaded (#121).
 
         Raises:
             CDDLSyntaxError: (a ``SchemaError``) when *cddl_content* is not
@@ -194,6 +198,8 @@ class CDDLParser:
         """
         self.content = cddl_content
         self.source_name = source_name
+        self.loader = loader
+        self.warnings: List[str] = []  # imports whose module was not found (#121)
         self.types: Dict[str, Dict] = {}
         self.groups: Dict[str, List] = {}  # Store group definitions
         self.type_choices: Dict[str, List] = {}  # Store type choice alternatives
@@ -285,8 +291,11 @@ class CDDLParser:
             CDDLSemanticError: (a ``SchemaError``) when it parses but does
                 not make sense, such as an undefined name (#70).
         """
-        self.ast = parse_cddl(self.content, source_name=self.source_name)
-        self.resolved = resolve(self.ast)
+        linked = link(parse_cddl(self.content, source_name=self.source_name), self.loader)
+        self.ast = linked.schema
+        self._origins = linked.origins
+        self.resolved = resolve(self.ast, linked.imports)
+        self.warnings = unloaded_warnings(linked, self.resolved.external)
         tables = LegacyTables(self.ast, self.resolved)
         self.types = tables.types
         self.groups = tables.groups
@@ -314,8 +323,9 @@ class CDDLParser:
             return None
         for rule in ast.rules:
             if rule.name == name:
-                line, column = ast.source.line_col(rule.span.start)
-                return f"{ast.source.name or '<schema>'}:{line}:{column}"
+                source = self._origins.get(name, ast.source)
+                line, column = source.line_col(rule.span.start)
+                return f"{source.name or '<schema>'}:{line}:{column}"
         return None
 
     def resolve_type_alias(self, type_name: str, max_depth: int = 10) -> str:
@@ -3004,11 +3014,13 @@ class EDNGenerator:
         return f"h'{hex_str}'"
 
 
-def load_cddl(filepath: Path) -> CDDLParser:
+def load_cddl(filepath: Path, loader: Optional[ModuleLoader] = None) -> CDDLParser:
     """Load a CDDL schema file from *filepath* and return a :class:`CDDLParser`.
 
     Args:
         filepath: Path to the ``.cddl`` file.
+        loader: Finds the modules the schema imports. By default modules are
+            looked up next to the schema file.
 
     Returns:
         A fully parsed :class:`CDDLParser` instance ready for validation or
@@ -3019,7 +3031,9 @@ def load_cddl(filepath: Path) -> CDDLParser:
     """
     try:
         content = filepath.read_text(encoding='utf-8')
-        return CDDLParser(content, source_name=str(filepath))
+        if loader is None:
+            loader = ModuleLoader(path=[filepath.parent])
+        return CDDLParser(content, source_name=str(filepath), loader=loader)
     except Exception as e:
         print(f"Error loading CDDL file: {e}")
         sys.exit(1)
@@ -3102,6 +3116,13 @@ Examples:
                         help='Suppress field-name comments in EDN output')
     parser.add_argument('--edn-format', choices=['keyindex', 'keyname', 'both'], default='keyindex',
                         help='EDN key format: keyindex (0: val / name /), keyname ("name": val), both (0 / name /: val)')
+    parser.add_argument('-M', '--module-path', action='append', default=[], metavar='DIR',
+                        type=Path,
+                        help='Directory searched for imported CDDL modules (<name>.cddl); '
+                             'repeatable. The schema file\'s own directory is searched last')
+    parser.add_argument('--module', action='append', default=[], metavar='NAME=FILE',
+                        help='CDDL file for the imported module NAME (;# import NAME as P); '
+                             'repeatable')
     parser.add_argument('--verbose', action='store_true',
                         help='Enable verbose logging of validation and type resolution')
     parser.add_argument('--show-types', action='store_true', 
@@ -3125,7 +3146,16 @@ Examples:
     
     # Load CDDL schema
     print(f"Loading CDDL schema: {args.cddl_file}", file=sys.stderr)
-    cddl = load_cddl(args.cddl_file)
+    modules = {}
+    for item in args.module:
+        name, sep, file = item.partition('=')
+        if not sep or not name or not file:
+            parser.error(f"--module expects NAME=FILE, not {item!r}")
+        modules[name] = Path(file)
+    loader = ModuleLoader(modules, [*args.module_path, args.cddl_file.parent])
+    cddl = load_cddl(args.cddl_file, loader)
+    for message in cddl.warnings:
+        print(f"Warning: {message}", file=sys.stderr)
     
     # Show types if requested
     if args.show_types:
