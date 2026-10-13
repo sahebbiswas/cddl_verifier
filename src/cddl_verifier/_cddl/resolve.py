@@ -536,10 +536,12 @@ class _Resolver:
                     self.check_type2(entry.key.value, scope)
                 elif entry.key.kind == 'type':
                     self.check_type1(entry.key.type, scope)
-            elif in_map:
+            elif in_map and not _is_unwrap(entry.value):
                 raise self.error("a map entry needs a key: write 'key: type' or "
                                  "'key-type => type'", entry.span)
             self.check_type(entry.value, scope)
+            if in_map and entry.key is None:
+                self.check_map_splice(entry.value.alternatives[0])
         elif isinstance(entry, GroupRef):
             rule = self.reference(entry.name, entry.args, entry.span, scope, GROUP)
             self.check_args(entry.args, scope)
@@ -557,6 +559,28 @@ class _Resolver:
             raise self.error(f"occurrence '{occurrence.text}' allows no entries: "
                              f"{occurrence.min} is more than {occurrence.max}",
                              occurrence.span)
+
+    def check_map_splice(self, node: Unwrap):
+        """``~name`` as a map entry splices the members of a map (#158)."""
+        rule = self.rules.get(node.name)
+        seen: Set[str] = set()
+        while rule is not None and rule.name not in seen and not rule.params \
+                and rule.kind == TYPE:
+            seen.add(rule.name)
+            alternatives = rule.type().alternatives
+            if len(alternatives) != 1:
+                return
+            head = _strip_parens(alternatives[0])
+            if isinstance(head, Tag):
+                inner = head.type.alternatives
+                head = _strip_parens(inner[0]) if len(inner) == 1 else None
+            if isinstance(head, Array):
+                raise self.error(f"'~{node.name}' is an array, so it cannot be spliced "
+                                 f"into a map", node.span)
+            if isinstance(head, Name) and not head.args:
+                rule = self.rules.get(head.name)
+                continue
+            return
 
     def check_unwrap(self, node: Unwrap, rule: RuleDef):
         if rule.kind == GROUP:
@@ -792,6 +816,11 @@ def _literal(rules: Dict[str, RuleDef], node):
             node = alternatives[0]
             continue
         return None
+
+
+def _is_unwrap(type_node) -> bool:
+    """Whether *type_node* is just ``~name``."""
+    return len(type_node.alternatives) == 1 and isinstance(type_node.alternatives[0], Unwrap)
 
 
 def _strip_parens(node):

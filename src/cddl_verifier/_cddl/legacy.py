@@ -37,14 +37,20 @@ from typing import Any, Dict, List, Optional
 
 from .._cbor import map_key
 from .ast import (Array, BytesLit, Control, FloatLit, Group, GroupRef, GroupRule, InlineGroup,
-                  IntLit, Map, Member, Name, Paren, Tag, TextLit, Type, TypeRule, entry_type,
-                  registered_label, walk)
+                  IntLit, Map, Member, Name, Paren, Tag, TextLit, Type, TypeRule, Unwrap,
+                  entry_type, registered_label, walk)
 from .parser import MAX_DEPTH
 from .printer import format_node
 
 #: How many generic instances may be expanding inside each other. Past it,
 #: a reference is kept as text, so 'g<T> = { n: g<[T]> }' terminates.
 _MAX_INSTANCE_DEPTH = 16
+#: Most ways a map's group choices and optional groups may combine (#72).
+_MAX_MAP_ALTERNATIVES = 1024
+
+
+class _TooManyAlternatives(Exception):
+    """A map's group choices multiply past ``_MAX_MAP_ALTERNATIVES``."""
 # Controls whose argument is a type that data is checked against (RFC 8610 §3.8)
 _TYPE_ARG_CONTROLS = frozenset({'cbor', 'cborseq'})
 
@@ -70,6 +76,8 @@ class LegacyTables:
         # Generic instances (name, args): the synthetic type built for each,
         # and those being expanded now, so recursive generics terminate.
         self._instance_names: Dict[tuple, str] = {}
+        self._building: Dict[int, str] = {}
+        self._computed = 0
         self._expanding: set = set()
         # Array lengths of group references (name, args), worked out once.
         self._ref_lengths: Dict[tuple, Optional[tuple]] = {}
@@ -165,35 +173,199 @@ class LegacyTables:
         return self._array(node.group, owner)
 
     def _map(self, group, owner: str) -> Dict:
-        type_def = {'fields': {}, 'type': 'map'}
-        self._collect_fields(group, owner, type_def, False)
+        """The table entry of a map: its members, and group choices as alternatives.
+
+        Group references, inline groups with their occurrences, group choices
+        (``//``), group sockets and unwrapped maps (``~m``) are expanded into
+        the alternatives a map can take (#72). Each alternative lists the
+        members with fixed keys (``fields``) and those with a computed key
+        (``computed_keys``, with the number of entries each takes). A map
+        with one alternative is a plain ``fields`` table; with several it
+        also has ``alternatives``, and ``fields`` holds the members of all
+        of them, for naming only.
+        """
+        outer, self._computed = self._computed, 0
+        try:
+            return self._map_def(group, owner)
+        finally:
+            self._computed = outer
+
+    def _map_def(self, group, owner: str) -> Dict:
+        try:
+            alternatives = self._group_partials(group, owner, ())
+        except _TooManyAlternatives:
+            # Matching fewer alternatives would accept or reject wrongly, so a
+            # map like this is reported, not guessed at.
+            return {'fields': {}, 'type': 'map', 'unsupported':
+                    f"its group choices and optional groups combine into more than "
+                    f"{_MAX_MAP_ALTERNATIVES} alternatives"}
+        if alternatives is None:
+            alternatives = [self._flat_partial(group, owner)]
+        defs = [self._partial_def(fields, computed) for fields, computed in alternatives]
+        if len(defs) == 1:
+            return defs[0]
+        union: Dict[Any, Dict] = {}
+        for definition in defs:
+            for key, info in definition['fields'].items():
+                union.setdefault(key, info)
+        for key, info in union.items():
+            if not all(key in definition['fields'] for definition in defs):
+                union[key] = dict(info, optional=True)  # not part of every alternative
+        return {'fields': union, 'type': 'map', 'alternatives': defs}
+
+    @staticmethod
+    def _partial_def(fields: Dict, computed: List) -> Dict:
+        type_def = {'fields': dict(fields), 'type': 'map'}
+        if computed:
+            type_def['computed_keys'] = [dict(c) for c in computed]
         return type_def
 
-    def _collect_fields(self, group, owner: str, type_def: Dict, optional: bool):
+    def _flat_partial(self, group, owner: str):
+        """Members written directly in *group*, when it cannot be expanded."""
+        fields: Dict[Any, Dict] = {}
+        computed: List[Dict] = []
         for entry in _entries(group):
-            if isinstance(entry, InlineGroup):
-                # '? ( a, b )': the members of an optional group are optional
-                self._collect_fields(entry.group, owner, type_def,
-                                     optional or _is_optional(entry))
+            if isinstance(entry, Member):
+                for more_fields, more_computed in self._member_partials(entry, owner):
+                    fields.update(more_fields)
+                    computed.extend(more_computed)
+        return fields, computed
+
+    def _group_partials(self, group, owner: str, expanding: tuple):
+        """``[(fields, computed)]``, one per way *group* can match, or ``None``.
+
+        ``None`` when an entry cannot be expanded (an undefined name, a type
+        where a group is needed); the caller then keeps the members written
+        directly in the map. Raises ``_TooManyAlternatives`` when the choices
+        multiply past ``_MAX_MAP_ALTERNATIVES``.
+        """
+        result: List[tuple] = []
+        for choice in group.choices:
+            combined: List[tuple] = [({}, [])]
+            for entry in choice.entries:
+                options = self._entry_partials(entry, owner, expanding)
+                if options is None:
+                    return None
+                if len(combined) * len(options) > _MAX_MAP_ALTERNATIVES:
+                    raise _TooManyAlternatives
+                combined = [_merge_partials(left, right)
+                            for left in combined for right in options]
+            result.extend(combined)
+            if len(result) > _MAX_MAP_ALTERNATIVES:
+                raise _TooManyAlternatives
+        return result
+
+    def _entry_partials(self, entry, owner: str, expanding: tuple):
+        if isinstance(entry, Member):
+            if entry.key is not None:
+                return self._member_partials(entry, owner)
+            # '~hdr' in a map splices the members of the map 'hdr'
+            splice = _spliced(entry)
+            if splice is not None:
+                return self._unwrap_partials(splice, entry, owner, expanding)
+            return [({}, [])]
+        if isinstance(entry, InlineGroup):
+            partials = self._group_partials(entry.group, owner, expanding)
+            return None if partials is None else _occurs(partials, entry.occurrence)
+        if not isinstance(entry, GroupRef) or self.resolved is None:
+            return None
+        if self.resolved.kind(entry.name) != 'group':
+            return None
+        key = (entry.name, entry.args)
+        if key in expanding:
+            return [({}, [])]  # a group that refers to itself adds no new members
+        try:
+            group = self.resolved.instantiate(entry.name, entry.args)
+        except ValueError:
+            return None
+        if not isinstance(group, Group):
+            return None
+        partials = self._group_partials(group, f'{owner}', expanding + (key,))
+        return None if partials is None else _occurs(partials, entry.occurrence)
+
+    def _unwrap_partials(self, node: Unwrap, entry, owner: str, expanding: tuple):
+        target = self._unwrap_target(node)
+        if not isinstance(target, Map):
+            return None
+        key = ('~' + node.name, node.args)
+        if key in expanding:
+            return [({}, [])]
+        partials = self._group_partials(target.group, owner, expanding + (key,))
+        return None if partials is None else _occurs(partials, entry.occurrence)
+
+    def _unwrapped_tag_type(self, node: Unwrap):
+        """The type inside the tag ``~name`` unwraps, or ``None`` if it is not a tag."""
+        if self.resolved is None:
+            return None
+        name, args = node.name, node.args
+        for _ in range(_MAX_INSTANCE_DEPTH):
+            try:
+                ty = self.resolved.instantiate(name, args)
+            except ValueError:
+                return None
+            if not isinstance(ty, Type) or len(ty.alternatives) != 1:
+                return None
+            head = ty.alternatives[0]
+            while isinstance(head, Paren) and len(head.type.alternatives) == 1:
+                head = head.type.alternatives[0]
+            if isinstance(head, Tag):
+                return head.type
+            if isinstance(head, Name) and self.resolved.kind(head.name) == 'type':
+                name, args = head.name, head.args
                 continue
-            if not isinstance(entry, Member) or entry.key is None:
-                continue  # group references: not expanded yet (#72)
-            field = self._field(entry, owner, optional)
-            if field is not None:
-                key, info = field
-                type_def['fields'][key] = info
-            elif entry.key.kind == 'type':
-                # '* label => value': extra keys matching 'label' are allowed (#104)
-                computed = {
-                    'key': self._text(Type((entry.key.type,)), f'{owner}@key'),
-                    'type': self._text(entry.value, f'{owner}@value'),
-                }
-                if entry.occurrence is not None and entry.occurrence.min > 0 and not optional:
-                    # '+ K => V', '2*3 K => V': how many entries must match (#120).
-                    # Upper bounds alone ('? K => V') are not enforced yet.
-                    computed['min'] = entry.occurrence.min
-                    computed['max'] = entry.occurrence.max
-                type_def.setdefault('computed_keys', []).append(computed)
+            return None
+        return None
+
+    def _unwrap_target(self, node: Unwrap):
+        """The map, array or other node ``~name`` stands for, tags looked through."""
+        if self.resolved is None:
+            return None
+        name, args = node.name, node.args
+        for _ in range(_MAX_INSTANCE_DEPTH):
+            try:
+                ty = self.resolved.instantiate(name, args)
+            except ValueError:
+                return None
+            if not isinstance(ty, Type) or len(ty.alternatives) != 1:
+                return None
+            head = ty.alternatives[0]
+            while isinstance(head, Paren) and len(head.type.alternatives) == 1:
+                head = head.type.alternatives[0]
+            if isinstance(head, Tag):
+                inner = head.type
+                if len(inner.alternatives) != 1:
+                    return None
+                head = inner.alternatives[0]
+                while isinstance(head, Paren) and len(head.type.alternatives) == 1:
+                    head = head.type.alternatives[0]
+            if isinstance(head, Name) and self.resolved.kind(head.name) == 'type':
+                name, args = head.name, head.args
+                continue
+            return head
+        return None
+
+    def _member_partials(self, member: Member, owner: str):
+        """The partial for a member with a key: a fixed field or a computed key."""
+        field = self._field(member, owner)
+        if field is not None:
+            key, info = field
+            return [({key: info}, [])]
+        if member.key is not None and member.key.kind == 'type':
+            # '* label => value': extra keys matching 'label' are allowed (#104).
+            # The occurrence says how many entries match (#120, #151): none
+            # means exactly one, '?' at most one, '+' at least one.
+            occurrence = member.occurrence
+            low, high = (1, 1) if occurrence is None else (occurrence.min, occurrence.max)
+            self._computed += 1
+            computed = {
+                'key': self._text(Type((member.key.type,)), f'{owner}@key{self._computed}'),
+                'type': self._text(member.value, f'{owner}@value{self._computed}'),
+                'min': low, 'max': high,
+            }
+            if member.key.cut:
+                computed['cut'] = True
+            return [({}, [computed])]
+        return [({}, [])]
 
     def _field(self, member: Member, owner: str, optional: bool = False):
         """``(key, field-info)`` for a member with a fixed key, else ``None``."""
@@ -294,6 +466,15 @@ class LegacyTables:
         return choices
 
     def _sequence_unit(self, entry, path: str, expanding: tuple, text: Optional[str]):
+        if isinstance(entry, Member) and _spliced(entry) is not None:
+            # '~hdr': the entries of the array 'hdr', in place (#158)
+            splice = _spliced(entry)
+            target = self._unwrap_target(splice)
+            key = ('~' + splice.name, splice.args)
+            if not isinstance(target, (Array, Map)) or key in expanding:
+                return None
+            group = self._sequence(target.group, path, expanding + (key,))
+            return None if group is None else {'group': group}
         if isinstance(entry, Member):
             if text is None:
                 text = self._text(entry.value, path)
@@ -369,6 +550,14 @@ class LegacyTables:
     def _entry_length(self, entry, expanding: tuple):
         if isinstance(entry, Member):
             inner = (1, 1)
+            splice = _spliced(entry)
+            if splice is not None:
+                # '~hdr' in an array stands for the entries of the array 'hdr' (#158)
+                target = self._unwrap_target(splice)
+                key = ('~' + splice.name, splice.args)
+                if not isinstance(target, (Array, Map)) or key in expanding:
+                    return None
+                inner = self._group_length(target.group, expanding + (key,))
         elif isinstance(entry, InlineGroup):
             inner = self._group_length(entry.group, expanding)
         elif isinstance(entry, GroupRef):
@@ -429,6 +618,13 @@ class LegacyTables:
             return Type(tuple(lifted))
         if isinstance(node, Map):
             return Name(self._synthetic(node, path))
+        if isinstance(node, Unwrap) and not node.args:
+            # '~t' with 't = #6.5(int)' is the type inside the tag, 'int' (#158)
+            inner = self._unwrapped_tag_type(node)
+            if inner is not None:
+                lifted = self._lift(inner, path)
+                return lifted.alternatives[0] if len(lifted.alternatives) == 1 else Paren(lifted)
+            return node
         if isinstance(node, Name) and node.args:
             if _deeper_than(node, MAX_DEPTH):
                 # arguments that grow at each level ('g<T> = { n: g<[[T]]> }')
@@ -502,6 +698,8 @@ class LegacyTables:
         return isinstance(entry, Member)
 
     def _synthetic(self, structure, path: str, instance: Optional[tuple] = None) -> str:
+        if instance is None and isinstance(structure, Map) and id(structure) in self._building:
+            return self._building[id(structure)]
         # The validator splits type text on '.' and whitespace: keep them out.
         path = re.sub(r'[^A-Za-z0-9_@$-]', '_', path)
         if path.endswith('-'):
@@ -514,7 +712,13 @@ class LegacyTables:
         self.types[name] = {}  # reserve the name before recursing
         if instance is not None:
             self._instance_names[instance] = name
-        self.types[name] = self._structure_def(structure, name)
+        # A map that reaches itself through a group it uses ('g = (n: {g})')
+        # names the structure being built instead of building it again.
+        self._building[id(structure)] = name
+        try:
+            self.types[name] = self._structure_def(structure, name)
+        finally:
+            self._building.pop(id(structure), None)
         return name
 
     def _add_constraints(self, type_def: Dict, expanded: Type, owner: str):
@@ -587,6 +791,8 @@ def _positional(group, entries, element_types, resolved) -> bool:
         if isinstance(entry, GroupRef) and (resolved is None or resolved.kind(entry.name) != 'type'):
             return False
         if not isinstance(entry, (Member, GroupRef)):
+            return False
+        if isinstance(entry, Member) and _spliced(entry) is not None:
             return False
         occurrence = entry.occurrence
         if occurrence is None:
@@ -671,6 +877,44 @@ def _structure(ty, instance: bool = False):
         else:
             break
     return node if isinstance(node, (Map, Array)) else None
+
+
+def _spliced(entry):
+    """The ``Unwrap`` of a group entry that is just ``~name``, else ``None``."""
+    if isinstance(entry, Member) and entry.key is None:
+        alternatives = entry.value.alternatives
+        if len(alternatives) == 1 and isinstance(alternatives[0], Unwrap):
+            return alternatives[0]
+    return None
+
+
+def _merge_partials(left, right):
+    """The members of two partial maps together; a key written twice keeps the first."""
+    fields = dict(left[0])
+    for key, info in right[0].items():
+        fields.setdefault(key, info)
+    return fields, left[1] + right[1]
+
+
+def _occurs(partials, occurrence):
+    """*partials* of a group used *occurrence* times (``None`` is once).
+
+    Optional (``?``, ``*``) adds the way of taking none. A group used more
+    than once multiplies how many entries its computed-key members take.
+    """
+    if occurrence is None:
+        return partials
+    low, high = occurrence.min, occurrence.max
+    result = []
+    for fields, computed in partials:
+        if high is None or high > 1 or low > 1:
+            computed = [dict(c, min=c['min'] * low,
+                             max=None if c['max'] is None or high is None else c['max'] * high)
+                        for c in computed]
+        result.append((fields, computed))
+    if low == 0:
+        result.append(({}, []))
+    return result
 
 
 def _literal_key(node, rule_names=()):

@@ -1434,7 +1434,26 @@ class CBORAnalyzer:
                 logger.error(f"{Colors.MISMATCH}[{breadcrumb}] TYPE MISMATCH:{Colors.RESET} {error_msg}")
                 self._report(error_msg, 'type', expected='map', actual=_describe_value(data))
                 return False
-            
+
+            if type_def.get('unsupported'):
+                error_msg = f"Cannot check type '{type_name}': {type_def['unsupported']}"
+                logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
+                self._report(error_msg)
+                return False
+
+            alternatives = type_def.get('alternatives')
+            if alternatives:
+                # Group choices, optional groups: the map must match one of the
+                # alternatives (#72). If none does, report the closest one.
+                closest = None
+                for alternative in alternatives:
+                    errors = self._sandboxed_validate(data, alternative, type_name)
+                    if not errors:
+                        return True
+                    if closest is None or len(errors) < closest[0]:
+                        closest = (len(errors), alternative)
+                return self._validate_type_checked(data, closest[1], type_name, cbor_offset)
+
             logger.debug(f"{Colors.CDDL}[{breadcrumb}]{Colors.RESET} Checking {len(type_def['fields'])} field definitions")
             
             # Check required fields
@@ -1731,29 +1750,50 @@ class CBORAnalyzer:
             actual_keys = set(data.keys())
             extra_keys = actual_keys - defined_keys
             # Keys allowed by computed-key members ('* label => value', #104)
+            computed_keys = type_def.get('computed_keys', ())
             computed_counts = {}
             for key in sorted(extra_keys, key=repr):
                 key_value = key.value if isinstance(key, CBORKey) else key
-                for index, computed in enumerate(type_def.get('computed_keys', ())):
+                candidates = []
+                for index, computed in enumerate(computed_keys):
                     if self._check_value(key_value, computed['key'], strict=True):
                         continue
-                    computed_counts[index] = computed_counts.get(index, 0) + 1
-                    extra_keys.discard(key)
-                    for error in self._check_value(data[key], computed['type']):
+                    candidates.append(index)
+                    if computed.get('cut'):
+                        break  # 'K ^=> V': later members are not tried for this key
+                if not candidates:
+                    continue
+                # The member the entry belongs to: one whose value matches
+                # and that has room left, else any whose value matches.
+                matching = [i for i in candidates
+                            if not self._check_value(data[key], computed_keys[i]['type'])]
+                with_room = [i for i in matching
+                             if computed_keys[i]['max'] is None
+                             or computed_counts.get(i, 0) < computed_keys[i]['max']]
+                chosen = (with_room or matching or candidates)[0]
+                computed_counts[chosen] = computed_counts.get(chosen, 0) + 1
+                extra_keys.discard(key)
+                if chosen not in matching:
+                    for error in self._check_value(data[key], computed_keys[chosen]['type']):
                         self._report(
                             f"Value for key {key!r} in type '{type_name}' "
-                            f"does not match '{computed['type']}': {error}")
-                    break
-            # Occurrence of computed-key members ('+ K => V', '2*3 K => V', #120)
-            for index, computed in enumerate(type_def.get('computed_keys', ())):
-                if 'min' not in computed:
-                    continue
+                            f"does not match '{computed_keys[chosen]['type']}': {error}")
+            # How many entries each computed-key member took ('+ K => V', '? K => V',
+            # 'K => V' takes exactly one, #120, #151)
+            for index, computed in enumerate(computed_keys):
                 count = computed_counts.get(index, 0)
-                if count < computed['min'] or (computed['max'] is not None and count > computed['max']):
-                    wanted = (f"at least {computed['min']}" if computed['max'] is None
-                              else f"{computed['min']} to {computed['max']}")
+                low, high = computed['min'], computed['max']
+                if count < low or (high is not None and count > high):
+                    if high is None:
+                        wanted = f"at least {low}"
+                    elif low == high:
+                        wanted = f"exactly {low}"
+                    elif low == 0:
+                        wanted = f"at most {high}"
+                    else:
+                        wanted = f"{low} to {high}"
                     error_msg = (f"Type '{type_name}' needs {wanted} "
-                                 f"{'entry' if computed['max'] is None and computed['min'] == 1 else 'entries'} "
+                                 f"{'entry' if (high or low) == 1 and (high == 1 or low == 1) else 'entries'} "
                                  f"with key '{computed['key']}', found {count}")
                     logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
                     self._report(error_msg)
@@ -2208,11 +2248,12 @@ class CBORAnalyzer:
             return [f"type socket {expr} has no alternatives, so no value matches it"]
 
         if expr.startswith('~'):
-            # Unwrapping ('~m') is not checked yet (#72). Accepting the value
-            # would let one such alternative make a whole choice accept
-            # everything (#106), so it matches nothing and the error says why.
-            return [f"cannot check '{expr}': unwrapping (~) is not supported here, "
-                    f"so no value matches it"]
+            # '~t' with a tag is the type inside it and is resolved when the
+            # tables are built (#158). What is left unwraps a map or array,
+            # which gives a group, not a type, so no value matches it. It must
+            # not make a whole choice accept everything (#106).
+            return [f"cannot check '{expr}': unwrapping a map or array gives a group, "
+                    f"which is not a type, so no value matches it"]
 
         tag_info = self.cddl.extract_cbor_tag(expr)
         if tag_info:

@@ -399,7 +399,7 @@ class TestUncheckableAlternatives(ChoiceTestCase):
     def test_unwrap_error_says_it_is_unsupported(self):
         result = validate(self.UNWRAP, {"x": 1.5})
         self.assertFalse(result.valid)
-        self.assertIn("unwrapping (~) is not supported", result.errors[0])
+        self.assertIn("unwrapping a map or array gives a group", result.errors[0])
         result = validate("r = {x: ~m}\nm = {a: int}", {"x": 1.5})
         self.assertIn("cannot check '~m'", result.errors[0])
 
