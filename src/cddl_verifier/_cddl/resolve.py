@@ -47,6 +47,7 @@ from .ast import (AnyItem, Array, BytesLit, ChoiceFrom, Control, FloatLit, Group
                   GroupChoice, GroupRef, GroupRule, InlineGroup, IntLit, Major, Map,
                   Member, Name, Occurrence, Paren, Range, Schema, Span, Tag, TextLit,
                   Type, TypeRule, Unwrap, walk)
+from . import xsd_regex
 from .errors import CDDLSemanticError
 from .prelude import parse_prelude
 
@@ -209,6 +210,16 @@ class ResolvedSchema:
             cached = substitute(body, dict(zip(rule.params, args))) if args else body
             self._instances[key] = cached
         return cached
+
+    def bits(self, node) -> Optional[int]:
+        """The bit positions the argument *node* of ``.bits`` names, as a mask.
+
+        ``None`` when they are not evident (see ``bit_mask``).
+        """
+        try:
+            return bit_mask(self.rules, node)
+        except ValueError:
+            return None
 
     def literal(self, node):
         """The numeric, text or byte literal *node* stands for, following names.
@@ -699,6 +710,20 @@ class _Resolver:
             raise self.error(f"the argument of '.{op}' must be one value (a number, a string, "
                              f"true, false, null or undefined, or a rule that is one), "
                              f"not a type that matches several", node.arg.span)
+        if op == 'regexp':
+            pattern = self.literal(node.arg)
+            if isinstance(pattern, TextLit):
+                try:
+                    xsd_regex.translate(pattern.value)
+                except xsd_regex.XsdRegexError as exc:
+                    raise self.error(f"the argument of '.regexp' is not a valid XSD regular "
+                                     f"expression: {exc}", node.arg.span)
+        if op == 'bits':
+            try:
+                bit_mask(self.rules, node.arg, scope)
+            except ValueError as exc:
+                raise self.error(f"the argument of '.bits' must be bit positions "
+                                 f"(a uint, a range or a choice of them): {exc}", node.arg.span)
         if allowed_target is not None:
             kinds = self.kinds(node.target, scope)
             if kinds is not None and not kinds & allowed_target:
@@ -900,6 +925,88 @@ def _kind(rules: Dict[str, RuleDef], name: str) -> Optional[str]:
         return GROUP  # an empty group socket
     if name.startswith('$'):
         return TYPE  # an empty type socket
+    return None
+
+
+_MAX_BIT = 1 << 16  # the highest bit position `.bits` accepts
+
+
+def bit_mask(rules: Dict[str, RuleDef], node, scope=frozenset(), seen: Optional[Set[str]] = None):
+    """The bit positions *node* names, as an integer with those bits set.
+
+    This is the argument of ``.bits`` (RFC 8610 section 3.8): an unsigned integer
+    is one position, a range ``a..b`` is every position in it, and a choice or
+    an enumeration (``&(a: 0, b: 2)``) is the union of its members. A rule
+    that stands for one of these is followed. Returns ``None`` when this is not
+    evident (a generic parameter, an unknown name) and raises ``ValueError``
+    naming the problem when *node* is not a set of positions.
+    """
+    seen = set() if seen is None else seen
+    if isinstance(node, Type):
+        mask = 0
+        for alternative in node.alternatives:
+            part = bit_mask(rules, alternative, scope, seen)
+            if part is None:
+                return None
+            mask |= part
+        return mask
+    if isinstance(node, IntLit):
+        if node.value < 0 or node.value >= _MAX_BIT:
+            raise ValueError(f"bit position {node.text} is not between 0 and {_MAX_BIT - 1}")
+        return 1 << node.value
+    if isinstance(node, Range):
+        low, high = _strip_parens(node.low), _strip_parens(node.high)
+        if not isinstance(low, IntLit) or not isinstance(high, IntLit):
+            return None
+        last = high.value if node.inclusive else high.value - 1
+        if low.value < 0 or last >= _MAX_BIT:
+            raise ValueError(f"bit positions {low.text}{'..' if node.inclusive else '...'}"
+                             f"{high.text} are not between 0 and {_MAX_BIT - 1}")
+        return ((1 << (last + 1)) - 1) & ~((1 << low.value) - 1) if last >= low.value else 0
+    if isinstance(node, Paren):
+        return bit_mask(rules, node.type, scope, seen)
+    if isinstance(node, ChoiceFrom) and node.group is not None:
+        return _group_bit_mask(rules, node.group, scope, seen)
+    if isinstance(node, (Name, ChoiceFrom)):
+        name = node.name
+        if node.args or name in scope or name in seen or len(seen) >= _MAX_ALIAS_DEPTH:
+            return None
+        rule = rules.get(name)
+        if rule is None or rule.params:
+            return None
+        if isinstance(node, Name) and rule.kind != TYPE:
+            return None
+        seen.add(name)
+        try:
+            if isinstance(node, ChoiceFrom):  # '&name': the values of a group
+                return _group_bit_mask(rules, rule.group(), scope, seen)
+            return bit_mask(rules, rule.type(), scope, seen)
+        finally:
+            seen.discard(name)
+    what = {TextLit: 'a text string', BytesLit: 'a byte string', FloatLit: 'a float',
+            Map: 'a map', Array: 'an array', Tag: 'a tag', Control: 'a type with a control',
+            Major: 'a data item'}.get(type(node), 'this')
+    raise ValueError(f"{what} is not a bit position, a range or a choice of them")
+
+
+def _group_bit_mask(rules, group: Group, scope, seen):
+    mask = 0
+    for choice in group.choices:
+        for entry in choice.entries:
+            part = _entry_bit_mask(rules, entry, scope, seen)
+            if part is None:
+                return None
+            mask |= part
+    return mask
+
+
+def _entry_bit_mask(rules, entry, scope, seen):
+    if isinstance(entry, Member):
+        return bit_mask(rules, entry.value, scope, seen)
+    if isinstance(entry, InlineGroup):
+        return _group_bit_mask(rules, entry.group, scope, seen)
+    if isinstance(entry, GroupRef):
+        return bit_mask(rules, Name(entry.name, entry.args), scope, seen)
     return None
 
 

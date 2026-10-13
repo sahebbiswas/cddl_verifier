@@ -1433,7 +1433,7 @@ class TestCoverageGaps(unittest.TestCase):
         # Commas in text and byte strings do not split map members.
         cddl_text = '''
         record = {
-          &( name : 0 ) => tstr .regexp "a,b\\\\,c",
+          &( name : 0 ) => tstr .regexp "a,b\\\\.c",
           &( p1 : 1 ) => bstr .eq 'x,y\\\\,z',
         }
         '''

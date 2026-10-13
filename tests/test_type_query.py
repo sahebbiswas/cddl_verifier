@@ -126,10 +126,11 @@ class TestQuery(unittest.TestCase):
         self.assertEqual(query.names(T("#6.1(r@a) / [ + b ]")), {"r@a", "b"})
 
     def test_no_regex_over_type_text_in_analyzer(self):
-        # The only regular expression left matches data against a .regexp pattern.
+        # No regular expression is run over type text; .regexp patterns are
+        # matched by xsd_regex (#182).
         source = inspect.getsource(_analyzer)
         calls = re.findall(r"\bre\.(\w+)\(", source)
-        self.assertEqual(set(calls), {"fullmatch"})
+        self.assertEqual(set(calls), set())
 
 
 class TestBehaviour(unittest.TestCase):

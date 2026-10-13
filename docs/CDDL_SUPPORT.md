@@ -28,6 +28,24 @@ Names may contain dots and hyphens, as RFC 8610 allows (`coswid.tag-id`). So
 `.regexp` patterns are CDDL text strings, so their escapes are decoded first,
 as in RFC 8610's examples: `"a\\.b"` is the regular expression `a\.b`.
 
+The pattern is an XML Schema regular expression, which RFC 8610 names, and
+not a Python one (#182). It matches the whole text; `^` and `$` are ordinary
+characters; `\d` is any Unicode decimal digit; `\w` leaves out punctuation
+(so `_`), separators and "other" characters; `\s` is only space, tab, line feed
+and carriage return; `\i` and `\c` are XML name characters; `\p{Lu}`, `\P{Nd}` and
+`\p{IsGreek}` name Unicode categories and blocks; `[a-z-[aeiou]]` subtracts a
+class. Categories come from the running Python's Unicode database, and only
+the common blocks are known. XSD has no lazy quantifier, `(?:...)`,
+look-around or back reference: such a pattern, or an unknown category or
+block, is a schema error that names it.
+
+`.bits` allows only the bit positions its argument names (RFC 8610 §3.8): a
+`uint`, a range, a choice of them, or a rule or `&(...)` that is one. For a
+`uint` position `n` is the bit worth `2**n`; for a `bstr` the first byte is
+the least significant, so position 8 is the lowest bit of the second byte.
+The error names the bit that is set. An argument that is not bit positions is
+a schema error.
+
 One non-standard form is accepted: chained controls such as
 `uint .ge 0 .le 150`, read as `(uint .ge 0) .le 150`. RFC 8610 allows one
 control per type, but this form is common and its bounds are enforced. The

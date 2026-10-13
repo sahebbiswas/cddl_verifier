@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from ._cddl import parse_cddl, parse_prelude, query
+from ._cddl import parse_cddl, parse_prelude, query, xsd_regex
 from ._cddl.typeexpr import as_type, bare_name, rename
 from ._cddl.ast import (BytesLit, Control, FloatLit, GroupRef, InlineGroup, IntLit, Major, Member,
                         Name, Paren, Range, Tag, TextLit, Type, Unwrap, walk)
@@ -164,8 +164,9 @@ class CDDLParser:
     * The whole RFC 8610 grammar (as updated by RFC 9682) is parsed, and
       text that is not valid CDDL raises ``CDDLSyntaxError``. Validation
       covers a practical subset of what the grammar can express.
-    * ``.regexp`` patterns are matched with ``re.fullmatch``; Unicode locale
-      flags and CDDL-specific escapes are not interpreted.
+    * ``.regexp`` patterns are XSD regular expressions, as RFC 8610 says, and
+      match the whole text (``xsd_regex``, #182); a construct XSD lacks is a
+      schema error. ``.bits`` allows only the bit positions of its argument.
     * Ranges (``0..10``, ``0.0...1.0``) and the comparison controls
       (``.ge``, ``.gt``, ``.le``, ``.lt``) are enforced on integers and
       floats (#71). ``.eq`` and ``.ne`` compare with one value and ``.and``
@@ -522,6 +523,49 @@ class CDDLParser:
                 result[control.op] = control.arg.value
                 found = True
         return result if found else None
+
+    def extract_bits(self, expr) -> Optional[int]:
+        """The bit positions allowed by a ``.bits`` control, as a mask; ``None`` without one.
+
+        Example::
+
+            'uint .bits &(a: 0, b: 2)' -> 0b101
+        """
+        for control in query.controls(expr):
+            if control.op == 'bits':
+                return self.resolved.bits(control.arg) if self.resolved is not None else None
+        return None
+
+    @staticmethod
+    def bits_violation(value, mask: Optional[int]) -> Optional[str]:
+        """The error for a ``uint`` or ``bstr`` with a bit outside *mask*, or ``None``.
+
+        A ``bstr`` is read as an integer with its first byte least significant, so
+        bit 8 is the lowest bit of the second byte (RFC 8610 section 3.8).
+        """
+        if mask is None:
+            return None
+        number = int.from_bytes(value, 'little') if isinstance(value, bytes) else value
+        stray = number & ~mask
+        if not stray:
+            return None
+        bit = (stray & -stray).bit_length() - 1
+        allowed = [str(i) for i in range(mask.bit_length()) if mask >> i & 1]
+        shown = ', '.join(allowed[:16]) + (', ...' if len(allowed) > 16 else '') if allowed else 'none'
+        return f"bit {bit} is set, but .bits allows only the bits {shown}"
+
+    @staticmethod
+    def regexp_violation(pattern: str, value: str) -> Optional[str]:
+        """The error for *value* against the XSD *pattern* of ``.regexp``, or ``None``.
+
+        The pattern is read as XSD (RFC 8610 section 3.8), see ``xsd_regex``.
+        """
+        try:
+            if xsd_regex.fullmatch(pattern, value):
+                return None
+        except xsd_regex.XsdRegexError as exc:
+            return f"invalid .regexp pattern /{pattern}/: {exc}"
+        return f"{value!r} does not match .regexp /{pattern}/"
 
     def extract_regexp(self, expr) -> Optional[str]:
         """The pattern of a ``.regexp`` control, with string escapes decoded.
@@ -1558,15 +1602,12 @@ class CBORAnalyzer:
                             # Check .regexp constraint
                             pattern = self.cddl.extract_regexp(_resolved)
                             if pattern and not type_mismatch:
-                                try:
-                                    if not re.fullmatch(pattern, value):
-                                        type_mismatch = True
-                                        logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Regexp mismatch: {value!r} does not match /{pattern}/")
-                                except re.error as exc:
+                                regexp_error = self.cddl.regexp_violation(pattern, value)
+                                if regexp_error:
                                     type_mismatch = True
-                                    err_msg = f"Invalid .regexp pattern /{pattern}/ for field '{field_name}': {exc}"
-                                    logger.error(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} {err_msg}")
-                                    self._report(err_msg)
+                                    logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Regexp mismatch for field '{field_name}': {regexp_error}")
+                                    if regexp_error.startswith('invalid'):
+                                        self._report(f"{regexp_error} (field '{field_name}')")
                     elif bare_name(field_node) == 'bstr' or _base_type == 'bstr':
                         if not isinstance(value, bytes):
                             type_mismatch = True
@@ -2025,13 +2066,15 @@ class CBORAnalyzer:
                                  ('le', lambda v, b: v <= b), ('lt', lambda v, b: v < b)):
                     if vrange[op] is not None and not test(value, vrange[op]):
                         errors.append(f"{value} violates .{op} {vrange[op]}")
+        if isinstance(value, (int, bytes)) and not isinstance(value, bool):
+            bits_error = self.cddl.bits_violation(value, self.cddl.extract_bits(expr))
+            if bits_error:
+                errors.append(bits_error)
         pattern = self.cddl.extract_regexp(expr)
         if pattern is not None and isinstance(value, str):
-            try:
-                if not re.fullmatch(pattern, value):
-                    errors.append(f"{value!r} does not match .regexp /{pattern}/")
-            except re.error as exc:
-                errors.append(f"invalid .regexp pattern /{pattern}/: {exc}")
+            regexp_error = self.cddl.regexp_violation(pattern, value)
+            if regexp_error:
+                errors.append(regexp_error)
         return errors
 
     def _match_array(self, data: Sequence, sequence: List, type_name: str) -> Optional[str]:
@@ -2571,6 +2614,7 @@ class CBORAnalyzer:
                 or query.choice_from(expr) is not None
                 or query.range_of(expr) is not None
                 or self._is_compared_number(expr)
+                or any(control.op == 'bits' for control in query.controls(expr))
                 or self._paren_parts(expr) is not None)
 
     _NUMBER_TYPES = frozenset({'uint', 'int', 'float', 'float16', 'float32', 'float64',

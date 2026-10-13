@@ -19,7 +19,7 @@ Layers: the **parser** reads the syntax into the typed **AST**; the **resolver**
 | Area | ✅ supported | 🟡 partial | ❌ unsupported | Total |
 |------|-------------:|-----------:|---------------:|------:|
 | CDDL syntax and semantics | 29 | 0 | 0 | 29 |
-| Control operators | 12 | 1 | 21 | 34 |
+| Control operators | 14 | 0 | 20 | 34 |
 | Prelude types (RFC 8610 Appendix D) | 12 | 2 | 0 | 14 |
 | CBOR data model (RFC 8949) | 9 | 2 | 0 | 11 |
 
@@ -66,8 +66,8 @@ Every operator the resolver knows (RFC 8610, RFC 9165, RFC 9741). An operator th
 | Construct | Spec | Status | Parser | AST | Resolver | Validator | EDN | Notes | Tests |
 |---|---|---|:-:|:-:|:-:|:-:|:-:|---|---|
 | `.size` | RFC 8610 §3.8 | ✅ | ✅ | ✅ | ✅ | ✅ | – | Integers (number of bytes), byte and text strings (bytes of UTF-8), with a number or a range argument (#67). | `test_size_control.py` |
-| `.bits` | RFC 8610 §3.8 | ❌ | ✅ | ✅ | ✅ | ❌ | – | Parsed and checked for a fitting target and argument, but the validator accepts any value (#76). [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `test_resolve.py` |
-| `.regexp` | RFC 8610 §3.8 | 🟡 | ✅ | ✅ | ✅ | 🟡 | – | Matched with Python `re` (search from the start of the text), not the XSD dialect RFC 8610 names; a pattern that `re` rejects is reported (#76). [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `test_cbor_control_args.py` |
+| `.bits` | RFC 8610 §3.8 | ✅ | ✅ | ✅ | ✅ | ✅ | – | Only the bit positions the argument names may be set, for a `uint` and a `bstr` (the first byte is least significant: bit 8 is the lowest bit of the second byte). The argument is a uint, a range, a choice of them, or a rule or `&(...)` that is. Anything else is a schema error; the message names the stray bit. | `test_bits_regexp.py` |
+| `.regexp` | RFC 8610 §3.8 | ✅ | ✅ | ✅ | ✅ | ✅ | – | The pattern is an XSD regular expression, as RFC 8610 says, translated for Python: the whole text must match, `^` and `$` are ordinary characters, `\d`, `\w`, `\s`, `\i`, `\c`, `\p{...}` and `\P{...}` follow XSD, and a class can subtract another (`[a-z-[aeiou]]`). Unicode categories come from the running Python and only common blocks (`\p{IsGreek}`) are known. A pattern XSD does not have (lazy quantifier, `(?:`, back reference) or an unknown category or block is a schema error naming it. | `test_bits_regexp.py`, `test_cbor_control_args.py` |
 | `.cbor` | RFC 8610 §3.8 | ✅ | ✅ | ✅ | ✅ | ✅ | – | The byte string must hold one CBOR item matching the argument (named types, structures and generic instances, #127); errors inside it are offset-mapped to the outer bytes. | `test_cbor_control_args.py`, `test_cbor_control_args.py` |
 | `.cborseq` | RFC 8610 §3.8 | ❌ | ✅ | ✅ | ✅ | ❌ | – | Accepted without decoding the sequence; needs a sequence decoder (#77, #76). [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76), [#77](https://github.com/sahebbiswas/cddl_verifier/issues/77) | `test_resolve.py` |
 | `.within` | RFC 8610 §3.8 | ✅ | ✅ | ✅ | ✅ | ✅ | – | The data must match the target and the argument, for any target: a primitive, a choice, a rule, a tag, a map or an array (`non-empty<M>` is the generic case, #120). `.within` is checked as `.and`, since only values are validated. [#120](https://github.com/sahebbiswas/cddl_verifier/issues/120) | `test_set_controls.py`, `test_and_within.py` |
