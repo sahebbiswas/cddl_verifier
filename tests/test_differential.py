@@ -159,6 +159,19 @@ class Tools(Quiet):
             self.assertLess(seen, 50)
         self.assertEqual(value, {})
 
+    def test_malformed_worker_output_is_a_crash(self):
+        class Proc:
+            def __init__(self, stdout, returncode=0):
+                self.stdout, self.returncode = stdout, returncode
+        good = '{"results": [{"valid": true}]}'
+        self.assertEqual(tool._worker_outcome(Proc(good), 1), json.loads(good))
+        self.assertEqual(tool._worker_outcome(Proc("warning\n" + good), 1), json.loads(good))
+        self.assertEqual(tool._worker_outcome(Proc('{"parse_error": "x"}'), 3), {"parse_error": "x"})
+        for bad in (Proc("not json"), Proc(""), Proc("[]"), Proc(good, returncode=-11),
+                    Proc('{"results": []}')):
+            with self.subTest(stdout=bad.stdout, rc=bad.returncode):
+                self.assertIsNone(tool._worker_outcome(bad, 1))
+
     def test_corpus_covers_the_probes_and_has_no_duplicates(self):
         cases = tool.corpus()
         keys = [(c["schema"], c["data"]) for c in cases]

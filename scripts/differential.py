@@ -210,6 +210,24 @@ def run_ours(cases):
     return results
 
 
+def _worker_outcome(proc, expected):
+    """The worker's reply, or ``None`` when it is missing or malformed (a crash).
+
+    The reply is the last line of stdout, so a warning printed before it does
+    not hide it; a reply with a different number of results is malformed.
+    """
+    lines = proc.stdout.strip().splitlines() if proc.returncode == 0 else []
+    try:
+        outcome = json.loads(lines[-1]) if lines else None
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(outcome, dict):
+        return None
+    if "parse_error" not in outcome and len(outcome.get("results", ())) != expected:
+        return None
+    return outcome
+
+
 def run_theirs(cases):
     """Per case: ``"valid"``, ``"invalid"``, ``"parser"`` or ``"crash"``."""
     by_schema = {}
@@ -224,7 +242,7 @@ def run_theirs(cases):
         except subprocess.TimeoutExpired:
             outcome = None
         else:
-            outcome = json.loads(proc.stdout) if proc.returncode == 0 and proc.stdout else None
+            outcome = _worker_outcome(proc, len(indexes))
         for position, index in enumerate(indexes):
             if outcome is None:
                 results[index] = "crash"
