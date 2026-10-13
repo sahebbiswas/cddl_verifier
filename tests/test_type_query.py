@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Questions about type text answered from the AST (#111, Phase C of #69).
+Questions about type expressions answered from the AST (#111, #177).
 
-The validator and EDN generator still pass type expressions as text, but
-since #111 nothing in ``_analyzer.py`` picks that text apart with regular
-expressions: ``_cddl/query.py`` parses it with the real grammar. Also covers
+The validator and EDN generator hold type expressions as nodes, and nothing in
+``_analyzer.py`` picks type text apart with regular expressions:
+``_cddl/query.py`` answers from the node. Also covers
 the behaviour that came with it: dotted names, decoded ``.regexp`` strings,
 byte-string literals, controls on literals and choice-aware primitive checks.
 """
@@ -25,84 +25,105 @@ from cddl_verifier import SchemaError, validate
 from cddl_verifier import _analyzer
 from cddl_verifier._analyzer import CDDLParser
 from cddl_verifier._cddl import query
+from cddl_verifier._cddl.ast import Type
+from cddl_verifier._cddl.parser import parse_type_expr
+from cddl_verifier._cddl.printer import format_node
+
+
+def T(text):
+    """The node of *text*: query answers questions about nodes only (#177)."""
+    return parse_type_expr(text)
+
+
+def F(value):
+    """Canonical text of a node, or of each node in a list."""
+    if isinstance(value, list):
+        return [F(v) for v in value]
+    return format_node(value)
 
 
 class TestQuery(unittest.TestCase):
 
-    def test_alternatives_keep_their_spelling(self):
-        self.assertEqual(query.alternatives("[a / b] / c"), ["[a / b]", "c"])
-        self.assertEqual(query.alternatives('tstr .regexp "x/y"'), ['tstr .regexp "x/y"'])
-        self.assertEqual(query.alternatives("#6.1(a / b) / c"), ["#6.1(a / b)", "c"])
-        self.assertEqual(query.alternatives("a // b"), ["a // b"])  # not a type
+    def test_alternatives_are_nodes(self):
+        self.assertEqual(F(query.alternatives(T("[a / b] / c"))), ["[ a / b ]", "c"])
+        self.assertEqual(F(query.alternatives(T('tstr .regexp "x/y"'))), ['tstr .regexp "x/y"'])
+        self.assertEqual(F(query.alternatives(T("#6.1(a / b) / c"))), ["#6.1(a / b)", "c"])
+        self.assertEqual(F(query.alternatives(T("a"))), ["a"])
+        self.assertTrue(all(isinstance(a, Type) for a in query.alternatives(T("a / b"))))
+
+    def test_text_is_refused(self):
+        with self.assertRaises(TypeError):
+            query.alternatives("a / b")
 
     def test_head(self):
-        self.assertEqual(query.head("tstr .size 2"), "tstr")
-        self.assertEqual(query.head("uint .ge 0 .le 9"), "uint")
-        self.assertEqual(query.head("coswid.tag-id"), "coswid.tag-id")
-        self.assertEqual(query.head("coswid.tag-id .size 2"), "coswid.tag-id")
-        self.assertEqual(query.head("#6.1(x)"), "#6.1(x)")
-        self.assertEqual(query.head("not a type ("), "not a type (")
+        self.assertEqual(query.head(T("tstr .size 2")), "tstr")
+        self.assertEqual(query.head(T("uint .ge 0 .le 9")), "uint")
+        self.assertEqual(query.head(T("coswid.tag-id")), "coswid.tag-id")
+        self.assertEqual(query.head(T("coswid.tag-id .size 2")), "coswid.tag-id")
+        self.assertEqual(query.head(T("#6.1(x)")), "#6.1(x)")
+        self.assertEqual(query.head(T("a / b")), "a / b")
 
     def test_controls(self):
-        ops = query.controls("uint .ge 0 .le 150")
+        ops = query.controls(T("uint .ge 0 .le 150"))
         self.assertEqual([(c.op, c.arg_text) for c in ops], [("ge", "0"), ("le", "150")])
-        self.assertEqual(query.controls("uint / tstr .size 2"), [])
+        self.assertEqual(query.controls(T("uint / tstr .size 2")), [])
 
     def test_paren(self):
-        parts = query.paren("(uint / nil) .size 1")
-        self.assertEqual(parts.inner, ["uint", "nil"])
+        parts = query.paren(T("(uint / nil) .size 1"))
+        self.assertEqual(F(parts.inner), ["uint", "nil"])
         self.assertEqual([(c.op, c.arg_text) for c in parts.controls], [("size", "1")])
-        parts = query.paren('(tstr .size 3) .regexp "a+"')
-        self.assertEqual(parts.inner, ["tstr .size 3"])
+        parts = query.paren(T('(tstr .size 3) .regexp "a+"'))
+        self.assertEqual(F(parts.inner), ["tstr .size 3"])
         self.assertEqual([c.op for c in parts.controls], ["regexp"])
-        self.assertEqual(query.paren("(tstr)"), (["tstr"], []))
-        self.assertIsNone(query.paren("tstr .size 1"))
-        self.assertIsNone(query.paren("(a) / b"))
-        self.assertIsNone(query.paren("#6.1(a)"))
+        parts = query.paren(T("(tstr)"))
+        self.assertEqual((F(parts.inner), parts.controls), (["tstr"], []))
+        self.assertIsNone(query.paren(T("tstr .size 1")))
+        self.assertIsNone(query.paren(T("(a) / b")))
+        self.assertIsNone(query.paren(T("#6.1(a)")))
 
     def test_without_controls(self):
-        self.assertEqual(query.without_controls("tstr .size 3 .regexp \"a\""), "tstr")
-        self.assertEqual(query.without_controls("foo<uint>"), "foo<uint>")
-        self.assertEqual(query.without_controls("(uint) .le 3"), "(uint)")
-        self.assertIsNone(query.without_controls("1..5"))
-        self.assertIsNone(query.without_controls("a / b"))
+        self.assertEqual(F(query.without_controls(T("tstr .size 3 .regexp \"a\""))), "tstr")
+        self.assertEqual(F(query.without_controls(T("foo<uint>"))), "foo<uint>")
+        self.assertEqual(F(query.without_controls(T("(uint) .le 3"))), "(uint)")
+        self.assertIsNone(query.without_controls(T("1..5")))
+        self.assertIsNone(query.without_controls(T("a / b")))
 
     def test_choice_from(self):
-        self.assertIsNotNone(query.choice_from("&(a: 0, b: 1)").group)
-        self.assertEqual(query.choice_from("&colors").name, "colors")
-        self.assertIsNone(query.choice_from("&a / b"))
-        self.assertIsNone(query.choice_from("tstr"))
+        self.assertIsNotNone(query.choice_from(T("&(a: 0, b: 1)")).group)
+        self.assertEqual(query.choice_from(T("&colors")).name, "colors")
+        self.assertIsNone(query.choice_from(T("&a / b")))
+        self.assertIsNone(query.choice_from(T("tstr")))
 
     def test_tag_and_cbor(self):
-        self.assertEqual(query.tag("#6.1(#6.2(m))"), (1, "#6.2(m)"))
-        self.assertIsNone(query.tag("#6.<1..3>(m)"))
-        self.assertEqual(query.cbor_control("bstr .cbor x / y"), None)
-        self.assertEqual(query.cbor_control("bytes .cbor inner"), ("bytes", "inner"))
+        number, inner = query.tag(T("#6.1(#6.2(m))"))
+        self.assertEqual((number, F(inner)), (1, "#6.2(m)"))
+        self.assertIsNone(query.tag(T("#6.<1..3>(m)")))
+        self.assertIsNone(query.cbor_control(T("bstr .cbor x / y")))
+        base, inner = query.cbor_control(T("bytes .cbor inner"))
+        self.assertEqual((base, F(inner)), ("bytes", "inner"))
 
     def test_inline_array(self):
-        self.assertEqual(query.inline_array("[ + tstr ]"), ("+", "tstr"))
-        self.assertEqual(query.inline_array("[* tstr .size 2]"), ("*", "tstr .size 2"))
-        self.assertEqual(query.inline_array("[ int ]"), ("", "int"))
-        self.assertIsNone(query.inline_array("[ a, b ]"))
-        self.assertIsNone(query.inline_array("[ a: int ]"))
-        self.assertTrue(query.is_array("[ a, b ]"))
+        occurrence, element = query.inline_array(T("[ + tstr ]"))
+        self.assertEqual((occurrence, F(element)), ("+", "tstr"))
+        occurrence, element = query.inline_array(T("[* tstr .size 2]"))
+        self.assertEqual((occurrence, F(element)), ("*", "tstr .size 2"))
+        occurrence, element = query.inline_array(T("[ int ]"))
+        self.assertEqual((occurrence, F(element)), ("", "int"))
+        self.assertIsNone(query.inline_array(T("[ a, b ]")))
+        self.assertIsNone(query.inline_array(T("[ a: int ]")))
+        self.assertTrue(query.is_array(T("[ a, b ]")))
 
     def test_cbor_control_through_a_chain(self):
-        self.assertEqual(query.cbor_control("bstr .cbor uint .size 1"), ("bstr", "uint"))
-        self.assertEqual(query.cbor_control("bstr .size 1 .cbor uint"), ("bstr", "uint"))
-        self.assertIsNone(query.cbor_control("tstr .cbor uint"))
+        for text in ("bstr .cbor uint .size 1", "bstr .size 1 .cbor uint"):
+            base, inner = query.cbor_control(T(text))
+            self.assertEqual((base, F(inner)), ("bstr", "uint"))
+        self.assertIsNone(query.cbor_control(T("tstr .cbor uint")))
 
-    def test_long_text_is_not_cached(self):
-        long_text = "tstr / " * 300 + "uint"
-        query.parse(long_text)
-        cached = query._parse_cached.cache_info().currsize
-        query.parse(long_text)
-        self.assertEqual(query._parse_cached.cache_info().currsize, cached)
-        self.assertEqual(len(query.alternatives(long_text)), 301)
+    def test_long_choice(self):
+        self.assertEqual(len(query.alternatives(T("tstr / " * 300 + "uint"))), 301)
 
     def test_names(self):
-        self.assertEqual(query.names("#6.1(r@a) / [ + b ]"), {"r@a", "b"})
-        self.assertEqual(query.names("not ( a type"), set())
+        self.assertEqual(query.names(T("#6.1(r@a) / [ + b ]")), {"r@a", "b"})
 
     def test_no_regex_over_type_text_in_analyzer(self):
         # The only regular expression left matches data against a .regexp pattern.
@@ -124,7 +145,7 @@ class TestBehaviour(unittest.TestCase):
         schema = 'r = { a: tstr .regexp "a\\\\.b" }'
         self.assertTrue(validate(schema, {"a": "a.b"}).valid)
         self.assertFalse(validate(schema, {"a": "axb"}).valid)
-        self.assertEqual(CDDLParser("").extract_regexp('tstr .regexp "\\\\d+"'), "\\d+")
+        self.assertEqual(CDDLParser("").extract_regexp(T('tstr .regexp "\\\\d+"')), "\\d+")
 
     def test_byte_string_literals(self):
         schema = "r = { a: h'0102' / b64'AQI' / 'x' }"

@@ -17,6 +17,9 @@ import unittest
 
 from cddl_verifier import validate
 from cddl_verifier._analyzer import CDDLParser
+from cddl_verifier._cddl import query, CDDLSyntaxError
+from cddl_verifier._cddl.parser import parse_type_expr
+from cddl_verifier._cddl.printer import format_node
 
 M = "\nm = {a: uint}"
 T = "\nt = #6.7(m)"
@@ -136,19 +139,21 @@ class TestArrayAndChoiceTags(TagTestCase):
 class TestExtractCborTag(unittest.TestCase):
 
     def test_nested_parentheses(self):
-        cddl = CDDLParser("")
-        self.assertEqual(cddl.extract_cbor_tag("#6.1(#6.2(m))"), (1, "#6.2(m)"))
-        self.assertEqual(cddl.extract_cbor_tag("#6.501(unsigned-corim-map)"),
-                         (501, "unsigned-corim-map"))
-        self.assertEqual(cddl.extract_cbor_tag("#6.505(bytes .cbor x)"),
-                         (505, "bytes .cbor x"))
-        self.assertIsNone(cddl.extract_cbor_tag("#6.1()"))
-        self.assertIsNone(cddl.extract_cbor_tag("#6.1(m"))
-        self.assertIsNone(cddl.extract_cbor_tag("m"))
-        self.assertIsNone(cddl.extract_cbor_tag("#6.7(m) / tstr"))  # a choice, not a tag
-        self.assertEqual(cddl.extract_cbor_tag('#6.7(")")'), (7, '")"'))
-        self.assertEqual(cddl.extract_cbor_tag('#6.7("a\\"(")'), (7, '"a\\"("'))
-        self.assertIsNone(cddl.extract_cbor_tag('#6.7(")") / uint'))
+        def tag(text):
+            found = query.tag(parse_type_expr(text))
+            return None if found is None else (found[0], format_node(found[1]))
+
+        self.assertEqual(tag("#6.1(#6.2(m))"), (1, "#6.2(m)"))
+        self.assertEqual(tag("#6.501(unsigned-corim-map)"), (501, "unsigned-corim-map"))
+        self.assertEqual(tag("#6.505(bytes .cbor x)"), (505, "bytes .cbor x"))
+        self.assertIsNone(tag("m"))
+        self.assertIsNone(tag("#6.7(m) / tstr"))  # a choice, not a tag
+        self.assertEqual(tag('#6.7(")")'), (7, '")"'))
+        self.assertEqual(tag('#6.7("a\\"(")'), (7, '"a\\"("'))
+        self.assertIsNone(tag('#6.7(")") / uint'))
+        for broken in ("#6.1()", "#6.1(m"):  # not type expressions: there is no node to ask
+            with self.assertRaises(CDDLSyntaxError):
+                parse_type_expr(broken)
 
 
 if __name__ == "__main__":

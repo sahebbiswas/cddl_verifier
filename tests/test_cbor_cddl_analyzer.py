@@ -31,6 +31,9 @@ import struct
 
 from cddl_verifier._cddl import CDDLSyntaxError
 from cddl_verifier import SchemaError
+from cddl_verifier._cddl import query
+from cddl_verifier._cddl.parser import parse_type_expr
+from cddl_verifier._cddl.printer import format_node
 from cddl_verifier._analyzer import (
     CDDLParser, 
     CBORAnalyzer, 
@@ -89,19 +92,19 @@ class TestCDDLParsing(unittest.TestCase):
 
     def test_single_line_map_string_key(self):
         cddl = CDDLParser("single = { foo: tstr }")
-        self.assertEqual(cddl.types['single']['fields']['foo']['type'], 'tstr')
+        self.assertEqual(format_node(cddl.types['single']['fields']['foo']['type']), 'tstr')
     
     def test_cbor_tag_alias(self):
         """Test CBOR tag definition parsing"""
         cddl = CDDLParser("tagged-corim = #6.501(corim-map)\ncorim-map = {}")
         self.assertIn('tagged-corim', cddl.type_aliases)
-        self.assertEqual(cddl.type_aliases['tagged-corim'], '#6.501(corim-map)')
+        self.assertEqual(format_node(cddl.type_aliases['tagged-corim']), '#6.501(corim-map)')
         
         # Verify tag extraction works
-        tag_info = cddl.extract_cbor_tag('#6.501(corim-map)')
+        tag_info = query.tag(parse_type_expr('#6.501(corim-map)'))
         self.assertIsNotNone(tag_info)
         self.assertEqual(tag_info[0], 501)
-        self.assertEqual(tag_info[1], 'corim-map')
+        self.assertEqual(format_node(tag_info[1]), 'corim-map')
     
     def test_cbor_control_nested(self):
         """Test .cbor control operator parsing"""
@@ -111,10 +114,10 @@ class TestCDDLParsing(unittest.TestCase):
         self.assertIn('tagged-mid', cddl.type_aliases)
         
         # Verify .cbor extraction
-        cbor_control = cddl.extract_cbor_control('bytes .cbor concise-mid-tag')
+        cbor_control = query.cbor_control(parse_type_expr('bytes .cbor concise-mid-tag'))
         self.assertIsNotNone(cbor_control)
         self.assertEqual(cbor_control[0], 'bytes')
-        self.assertEqual(cbor_control[1], 'concise-mid-tag')
+        self.assertEqual(format_node(cbor_control[1]), 'concise-mid-tag')
     
     def test_type_choice(self):
         """Test type choice parsing"""
@@ -127,7 +130,7 @@ class TestCDDLParsing(unittest.TestCase):
         cddl = CDDLParser(cddl_text)
         
         self.assertIn('$my-choice', cddl.type_choices)
-        choices = cddl.type_choices['$my-choice']
+        choices = [format_node(c) for c in cddl.type_choices['$my-choice']]
         self.assertIn('option-a', choices)
         self.assertIn('option-b', choices)
     
@@ -172,7 +175,7 @@ class TestCDDLParsing(unittest.TestCase):
         """
         cddl = CDDLParser(cddl_text)
         
-        size = cddl.extract_size_constraint('bstr .size 16')
+        size = cddl.extract_size_constraint(parse_type_expr('bstr .size 16'))
         self.assertIsNotNone(size)
         self.assertEqual(size['exact'], 16)
         self.assertIsNone(size['min'])
@@ -183,18 +186,17 @@ class TestCDDLParsing(unittest.TestCase):
         cddl = CDDLParser("")
         
         # Range
-        size = cddl.extract_size_constraint('text .size (8..64)')
+        size = cddl.extract_size_constraint(parse_type_expr('text .size (8..64)'))
         self.assertEqual(size['min'], 8)
         self.assertEqual(size['max'], 64)
         self.assertIsNone(size['exact'])
         
         # Exclusive upper bound
-        size = cddl.extract_size_constraint('text .size (8...64)')
+        size = cddl.extract_size_constraint(parse_type_expr('text .size (8...64)'))
         self.assertEqual((size['min'], size['max']), (8, 63))
 
-        # Open-ended ranges are not CDDL: a range needs both bounds
+        # Open-ended ranges are not CDDL: a range needs both bounds, so there is no type to ask
         for text in ('bytes .size (16..)', 'tstr .size (..100)'):
-            self.assertIsNone(cddl.extract_size_constraint(text))
             with self.assertRaises(CDDLSyntaxError):
                 CDDLParser(f"a = {text}")
     
@@ -212,7 +214,7 @@ class TestCDDLParsing(unittest.TestCase):
         record_def = cddl.types['record']
         self.assertIn(0, record_def['fields'])
         self.assertEqual(record_def['fields'][0]['name'], 'long-field-name')
-        self.assertIn('[ + nested-type ]', record_def['fields'][0]['type'])
+        self.assertIn('[ + nested-type ]', format_node(record_def['fields'][0]['type']))
 
 
 class TestTypeResolution(unittest.TestCase):
@@ -221,7 +223,7 @@ class TestTypeResolution(unittest.TestCase):
     def test_simple_alias_resolution(self):
         """Test resolving simple alias"""
         cddl = CDDLParser("name = tstr")
-        resolved = cddl.resolve_type_alias('name')
+        resolved = format_node(cddl.resolve_alias('name'))
         self.assertEqual(resolved, 'tstr')
     
     def test_chained_alias_resolution(self):
@@ -233,7 +235,7 @@ class TestTypeResolution(unittest.TestCase):
         """
         cddl = CDDLParser(cddl_text)
         
-        resolved = cddl.resolve_type_alias('a')
+        resolved = format_node(cddl.resolve_alias('a'))
         self.assertEqual(resolved, 'tstr')
     
     def test_tag_inner_type_extraction(self):
@@ -247,13 +249,13 @@ class TestTypeResolution(unittest.TestCase):
         
         # Get tag info
         alias_value = cddl.type_aliases['tagged-corim']
-        tag_info = cddl.extract_cbor_tag(alias_value)
+        tag_info = query.tag(alias_value)
         
         self.assertEqual(tag_info[0], 501)
-        self.assertEqual(tag_info[1], 'unsigned-corim-map')
+        self.assertEqual(format_node(tag_info[1]), 'unsigned-corim-map')
         
         # Resolve inner type
-        resolved = cddl.resolve_type_alias('unsigned-corim-map')
+        resolved = format_node(cddl.resolve_alias('unsigned-corim-map'))
         self.assertEqual(resolved, 'corim-map')
 
 
@@ -566,17 +568,16 @@ class TestCoRIMSupport(unittest.TestCase):
         
         # Verify type choice
         self.assertIn('concise-rim-type-choice', cddl.type_choices)
-        self.assertIn('tagged-unsigned-corim-map', 
-                     cddl.type_choices['concise-rim-type-choice'])
+        self.assertIn('tagged-unsigned-corim-map',
+                      [format_node(c) for c in cddl.type_choices['concise-rim-type-choice']])
         
         # Verify tag definition
         self.assertIn('tagged-unsigned-corim-map', cddl.type_aliases)
-        tag_info = cddl.extract_cbor_tag(
-            cddl.type_aliases['tagged-unsigned-corim-map'])
+        tag_info = query.tag(cddl.type_aliases['tagged-unsigned-corim-map'])
         self.assertEqual(tag_info[0], 501)
         
         # Verify alias chain
-        resolved = cddl.resolve_type_alias('unsigned-corim-map')
+        resolved = format_node(cddl.resolve_alias('unsigned-corim-map'))
         self.assertEqual(resolved, 'corim-map')
     
     def test_corim_edn_output(self):
@@ -684,7 +685,7 @@ class TestEdgeCases(unittest.TestCase):
 
     def test_long_alias_chain_stops_at_max_depth(self):
         cddl = CDDLParser("a = b\nb = c\nc = d\nd = uint")
-        self.assertEqual(cddl.resolve_type_alias('a', max_depth=2), 'c')
+        self.assertEqual(format_node(cddl.resolve_alias('a', max_depth=2)), 'c')
 
 
 class TestIndentationAccuracy(unittest.TestCase):
@@ -1095,9 +1096,9 @@ class TestResolveTypeAliasFixed(unittest.TestCase):
         registers it as uint -> uint.  The loop should break immediately.
         """
         cddl = CDDLParser("")
-        # Calling resolve_type_alias must return instantly — no assertion about
+        # Calling resolve_alias must return instantly — no assertion about
         # the return value other than it being the same primitive.
-        result = cddl.resolve_type_alias('uint')
+        result = format_node(cddl.resolve_alias('uint'))
         self.assertEqual(result, 'uint')
 
     def test_all_builtin_primitives_resolve_cleanly(self):
@@ -1106,10 +1107,10 @@ class TestResolveTypeAliasFixed(unittest.TestCase):
         for name in ('uint', 'int', 'bool', 'tstr', 'bstr', 'float',
                      'nil', 'null', 'any', 'text', 'bytes', 'nint',
                      'float16', 'float32', 'float64', 'true', 'false'):
-            result = cddl.resolve_type_alias(name)
+            result = format_node(cddl.resolve_alias(name))
             # Must return without infinite loop; result must be a non-empty string
             self.assertIsInstance(result, str)
-            self.assertTrue(len(result) > 0, f"resolve_type_alias('{name}') returned empty string")
+            self.assertTrue(len(result) > 0, f"resolve_alias('{name}') returned empty string")
 
     def test_alias_chain_to_primitive_no_type_not_found(self):
         """Alias chains that resolve to a CDDL primitive must NOT log 'Type not found'.
@@ -1181,11 +1182,11 @@ class TestValueRangeValidation(unittest.TestCase):
 
     def test_extract_value_range_returns_none_for_plain_type(self):
         cddl = CDDLParser("")
-        self.assertIsNone(cddl.extract_value_range('uint'))
+        self.assertIsNone(cddl.extract_value_range(parse_type_expr('uint')))
 
     def test_extract_value_range_parses_correctly(self):
         cddl = CDDLParser("")
-        r = cddl.extract_value_range('uint .ge 1 .le 255')
+        r = cddl.extract_value_range(parse_type_expr('uint .ge 1 .le 255'))
         self.assertIsNotNone(r)
         self.assertEqual(r['ge'], 1)
         self.assertEqual(r['le'], 255)
@@ -1215,11 +1216,11 @@ class TestRegexpValidation(unittest.TestCase):
 
     def test_extract_regexp_returns_pattern(self):
         cddl = CDDLParser("")
-        self.assertEqual(cddl.extract_regexp('tstr .regexp "[A-Z]{3}"'), '[A-Z]{3}')
+        self.assertEqual(cddl.extract_regexp(parse_type_expr('tstr .regexp "[A-Z]{3}"')), '[A-Z]{3}')
 
     def test_extract_regexp_returns_none_without_annotation(self):
         cddl = CDDLParser("")
-        self.assertIsNone(cddl.extract_regexp('tstr'))
+        self.assertIsNone(cddl.extract_regexp(parse_type_expr('tstr')))
 
 
 class TestMissingRequiredField(unittest.TestCase):

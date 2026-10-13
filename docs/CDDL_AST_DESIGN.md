@@ -470,52 +470,54 @@ in the same commit:
 | `.size` | `extract_size_constraint`, `_size_bound` | `Control(op="size")` with an `IntLit`, `Range` or `Name` argument |
 | `.ge/.gt/.le/.lt` | `extract_value_range` | `Control(op=...)` |
 | `.regexp` | `extract_regexp` | `Control(op="regexp", arg=TextLit)` |
-| `.cbor` | `extract_cbor_control` | `Control(op="cbor")` |
-| tags | `extract_cbor_tag`, `_peel_tagged_primitive`, string parts of `_with_tag` | `Tag` |
-| choices | `_split_choice`, string parts of `_check_value` | `Type.alternatives` |
+| `.cbor` | `extract_cbor_control` (now `query.cbor_control`) | `Control(op="cbor")` |
+| tags | `extract_cbor_tag`, `_peel_tagged_primitive`, string parts of `_with_tag` (now `query.tag`) | `Tag` |
+| choices | `_split_choice`, string parts of `_check_value` (now `query.alternatives`) | `Type.alternatives` |
 | EDN inline arrays and tags | the `[ + T ]` regex in `_generate_array`, `extract_cbor_tag` in `_generate_value` | `Array`, `Tag` |
 
 When Phase C ends, the `type` strings are gone and #69 is done. Name lookup
-(`resolve_type_alias`, `get_type`) still goes by name. #70 builds the resolved
-model and the tables from it; moving name lookup onto it is #115.
+goes by name where a rule is referred to by name, and by node where a type
+expression is. #70 builds the resolved model and the tables from it; moving
+name lookup onto it was #115.
 
-As implemented in #111, in two steps by agreement:
+As implemented, in two steps by agreement:
 
-- **#111 (done).** The tables keep canonical type text, but only as a
-  handle. `_cddl/query.py` parses the text with the real grammar
-  (`parse_type_expr`, cached per string) and answers every question the
-  validator and EDN generator ask: `alternatives`, `head` (the base of a
-  control chain), `controls`, `tag`, `cbor_control`, `literal`,
-  `inline_array`, `is_array`, `names`. Pieces it returns are slices of the
-  original text, so spelling is kept (`_split_choice("[a / b] / c")` is still
-  `["[a / b]", "c"]`). `_analyzer.py` has no regex or character scan over type
-  text left; the only regex matches data against a `.regexp` pattern.
-- **#115 (after #70).** Remove the text from the tables and pass nodes through
-  every function. It is an epic with three parts, one pull request each, so
-  that no diff has to move the whole validator at once:
-  1. **#175 (done).** The tables hold `TypeText` (`_cddl/typetext.py`): a `str`
-     that is the canonical text and also has the `node` it was made from, so
-     the two cannot differ, and everything that reads text is unchanged.
-     `query` takes a node as well as text; for a node it returns nodes
-     (`alternatives`, the inside of a tag, `.cbor` or a parenthesized type)
-     instead of slices of text. `CDDLParser.alias_node` and `resolve_alias`
-     answer alias lookups with nodes. The expression checker (`_check_value`
-     and the methods it uses) reads nodes and builds nodes (`Control`, `Type`)
-     where it used to build text; `as_type` at its entry still accepts text
-     for the callers that have not moved.
-  2. **#176 (done).** The structure validator and name lookup read nodes.
-     `get_type` takes a rule name or a type expression, as text or as a
-     `Type`, and the tag and `.cbor` cases come from `query.tag` and
-     `query.cbor_control`; `cbor_inner_type` is a `Type`. The field,
-     inline-array and array-element paths of `_validate_type_checked`, the
-     root path (`_validate_root_expression`, `validate`), `_peel_tagged_primitive`
-     and `_match_array` read the node a `TypeText` carries, and rule names
-     passed to `_validate_type` are still strings (`format_node` for an
-     expression). The three element paths keep their own messages and log
-     lines, so they are not merged. `CBORAnalyzer` no longer tests a type with
-     `startswith`, `==` or `in` on text.
-  3. **#177.** The EDN generator reads nodes; `TypeText`, the text tables and
-     the `query` text path are removed.
+- **#111 (done).** `_cddl/query.py` answers every question the validator and
+  EDN generator ask about a type expression: `alternatives`, `head` (the base
+  of a control chain), `controls`, `tag`, `cbor_control`, `literal`,
+  `inline_array`, `is_array`, `names`. `_analyzer.py` has no regex or character
+  scan over type text; the only regex matches data against a `.regexp` pattern.
+- **#115 (done).** The text is removed from the tables and nodes are passed
+  through every function. It was an epic with three parts, one pull request
+  each, so that no diff had to move the whole validator at once:
+  1. **#175.** A transitional `str` subclass (the canonical text
+     with the `node` it was made from) let consumers move one at a
+     time. `query` took a node as well as text. `CDDLParser.alias_node` and
+     `resolve_alias` answer alias lookups with nodes. The expression checker
+     (`_check_value` and the methods it uses) reads nodes and builds nodes
+     (`Control`, `Type`) where it used to build text.
+  2. **#176.** The structure validator and name lookup read nodes. `get_type`
+     takes a rule name or a type expression, as text or as a `Type`; the tag
+     and `.cbor` cases come from `query.tag` and `query.cbor_control`, and
+     `cbor_inner_type` is a `Type`. The field, inline-array and array-element
+     paths of `_validate_type_checked`, the root path, `_peel_tagged_primitive`
+     and `_match_array` read nodes. The three element paths keep their own
+     messages and log lines, so they are not merged.
+  3. **#177.** The EDN generator reads nodes, and that transitional type is gone. Every
+     type expression in the tables (`type_aliases`, `type_choices`, the `type`
+     of a field, `element_types`, `computed_keys`, `constraints`, `sequence`
+     entries) is a `Type`. `query` takes nodes only and gives nodes for
+     pieces; `head` and `ControlOp.arg_text` give canonical text for messages.
+     Text enters the program only at the edge (`typeexpr.as_type`: a root
+     type name, a name given to `get_type`, or a test) and is written back
+     with `format_node` for a message or a rule name passed to
+     `_validate_type`. `resolve_type_alias`, `extract_cbor_tag`,
+     `extract_cbor_control` and `_split_choice` are removed;
+     `resolve_alias`, `query.tag`, `query.cbor_control` and
+     `query.alternatives` replace them, and `extract_size_constraint`,
+     `extract_value_range` and `extract_regexp` take a node. `groups` and
+     `socket_extensions` still hold the text of group entries, which are not
+     type expressions.
 
 Behaviour that changed because the grammar now decides (see PR #116):
 names may contain dots (`coswid.tag-id` was cut at the dot, and `lo..hi` is
@@ -552,7 +554,7 @@ for alt in field['node'].alternatives:
 ```
 
 The same change applies to tags. `_generate_value` currently looks up the
-alias text `#6.501(unsigned-corim-map)` and runs `extract_cbor_tag` on it.
+alias text `#6.501(unsigned-corim-map)` and runs `extract_cbor_tag` on it (that is how it read before #177).
 Instead it reads `Tag(tag=501, type=...)` from the rule's node and compares
 `tag` with the decoded tag number.
 

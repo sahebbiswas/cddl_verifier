@@ -22,12 +22,13 @@ import unittest
 
 from cddl_verifier import validate
 from cddl_verifier._analyzer import CDDLParser
+from ._tables import as_text
 
 
 class TestSequenceTable(unittest.TestCase):
 
     def sequence(self, schema):
-        return CDDLParser(schema).types['r'].get('sequence')
+        return as_text(CDDLParser(schema).types['r'].get('sequence'))
 
     def test_positional_arrays_have_no_sequence(self):
         for schema in ('r = [int, tstr]', 'r = [int, * tstr]', 'r = [int, ? tstr]',

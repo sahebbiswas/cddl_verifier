@@ -1,14 +1,10 @@
-"""Type text that carries the node it was made from (#175, Part 1 of #115).
+"""Helpers for type expressions held as ``Type`` nodes (#175, #177).
 
-The ``CDDLParser`` tables still hold type expressions as text (``'tstr .size
-(1..64)'``, ``'#6.501(m)'``), because the EDN generator and the public
-``extract_*`` helpers read text. :class:`TypeText` is such a text that also has
-the node it was written from, after inline maps, tags and generic instances were
-lifted to synthetic names. The text *is* ``format_node(node)``, so the two
-cannot differ, and everything that reads the text keeps working. Consumers that
-have moved to nodes read :attr:`TypeText.node` through :func:`as_type`.
-
-:class:`TypeText` goes away when the last text consumer has moved (#177).
+The ``CDDLParser`` tables hold type expressions as nodes. Text enters the
+program in two places, a rule name or expression the caller gives
+(``validate(data, "root")``, ``get_type("#6.7(m)")``) and the text of a test,
+and :func:`as_type` parses it there, once. Everything after that works on the
+node and writes it with ``format_node`` only for a message.
 """
 
 from dataclasses import fields, replace
@@ -18,27 +14,6 @@ from typing import Optional
 from .ast import Name, Type
 from .errors import CDDLSyntaxError
 from .parser import parse_type_expr
-from .printer import format_node
-
-
-class TypeText(str):
-    """The canonical text of a ``Type`` node, and the node."""
-
-    node: Type
-
-    def __new__(cls, node: Type):
-        text = super().__new__(cls, format_node(node))
-        text.node = node
-        return text
-
-    def __reduce__(self):
-        return TypeText, (self.node,)
-
-    def __deepcopy__(self, memo):
-        return self  # immutable, like the node it holds
-
-    def __copy__(self):
-        return self
 
 
 @lru_cache(maxsize=4096)
@@ -50,7 +25,7 @@ def _parse(text: str) -> Optional[Type]:
 
 
 def as_type(expr) -> Type:
-    """The ``Type`` node for *expr*: a node, a :class:`TypeText`, or text.
+    """The ``Type`` node for *expr*: a node, or text.
 
     Text that is not one type expression (a name the caller made up, a group
     fragment) becomes a single ``Name`` with that text, so it is opaque to
@@ -59,8 +34,6 @@ def as_type(expr) -> Type:
     """
     if expr.__class__ is Type:
         return expr
-    if isinstance(expr, TypeText):
-        return expr.node
     if isinstance(expr, str):
         text = expr.strip()
         node = _parse(text) if len(text) <= 1024 else _parse.__wrapped__(text)

@@ -17,6 +17,7 @@ import unittest
 from cddl_verifier import SchemaError, validate
 from cddl_verifier._analyzer import CDDLParser
 from cddl_verifier.cbor import encode
+from cddl_verifier._cddl.parser import parse_type_expr as T
 
 
 class SizeTestCase(unittest.TestCase):
@@ -136,16 +137,16 @@ class TestSizeArguments(SizeTestCase):
 
     def test_extract_size_constraint(self):
         cddl = CDDLParser("lim = 4\nrg = 1..4\n")
-        self.assertEqual(cddl.extract_size_constraint("tstr .size (1...4)"),
+        self.assertEqual(cddl.extract_size_constraint(T("tstr .size (1...4)")),
                          {"exact": None, "min": 1, "max": 3})
-        self.assertEqual(cddl.extract_size_constraint("bstr .size 0x10"),
+        self.assertEqual(cddl.extract_size_constraint(T("bstr .size 0x10")),
                          {"exact": 16, "min": None, "max": None})
-        self.assertEqual(cddl.extract_size_constraint("tstr .size lim"),
+        self.assertEqual(cddl.extract_size_constraint(T("tstr .size lim")),
                          {"exact": 4, "min": None, "max": None})
-        self.assertEqual(cddl.extract_size_constraint("tstr .size rg"),
+        self.assertEqual(cddl.extract_size_constraint(T("tstr .size rg")),
                          {"exact": None, "min": 1, "max": 4})
-        self.assertIsNone(cddl.extract_size_constraint("tstr"))
-        self.assertIn("error", cddl.extract_size_constraint("tstr .size nope"))
+        self.assertIsNone(cddl.extract_size_constraint(T("tstr")))
+        self.assertIn("error", cddl.extract_size_constraint(T("tstr .size nope")))
 
 
 class TestSizeContexts(SizeTestCase):

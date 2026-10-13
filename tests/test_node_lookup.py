@@ -23,9 +23,9 @@ except ImportError:
 from cddl_verifier._analyzer import CBORAnalyzer, CDDLParser  # noqa: E402
 from cddl_verifier._cddl.ast import Type  # noqa: E402
 from cddl_verifier._cddl.printer import format_node  # noqa: E402
-from cddl_verifier._cddl.typetext import as_type  # noqa: E402
+from cddl_verifier._cddl.typeexpr import as_type  # noqa: E402
 
-from .test_typetext import schemas  # noqa: E402
+from .test_type_nodes import schemas  # noqa: E402
 
 SCHEMA = """
 root = #6.7(inner)
@@ -92,9 +92,11 @@ class GetTypeOnNodes(Quiet):
     def test_choice_alternatives_for_names_and_nodes(self):
         p = parser()
         self.assertEqual(p.choice_alternatives("$s"), p.choice_alternatives(as_type("$s")))
-        self.assertEqual(p.choice_alternatives("m1 / m2"), ["m1", "m2"])
+        self.assertEqual([format_node(a) for a in p.choice_alternatives("m1 / m2")], ["m1", "m2"])
         self.assertEqual([format_node(a) for a in p.choice_alternatives(as_type("m1 / m2"))],
                          ["m1", "m2"])
+        self.assertEqual([format_node(a) for a in p.choice_alternatives(as_type("$s"))],
+                         ["inner", "tstr"])
         self.assertIsNone(p.choice_alternatives(as_type("m1")))
 
 

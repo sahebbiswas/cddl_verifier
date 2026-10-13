@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from ._cddl import parse_cddl, parse_prelude, query
-from ._cddl.typetext import TypeText, as_type, bare_name, rename
+from ._cddl.typeexpr import as_type, bare_name, rename
 from ._cddl.ast import (BytesLit, Control, FloatLit, GroupRef, InlineGroup, IntLit, Major, Member,
                         Name, Paren, Range, Tag, TextLit, Type, Unwrap, walk)
 from ._cddl.printer import format_node
@@ -208,10 +208,10 @@ class CDDLParser:
         self.warnings: List[str] = []  # imports whose module was not found (#121)
         self.types: Dict[str, Dict] = {}
         self.groups: Dict[str, List] = {}  # Store group definitions
-        self.type_choices: Dict[str, List] = {}  # Store type choice alternatives
+        self.type_choices: Dict[str, List[Type]] = {}  # type choice alternatives, as nodes
         self.socket_extensions: Dict[str, List] = {}  # Store socket extension points
         self.registered_params: Dict[int, str] = {}  # Maps keyindex to keyname
-        self.type_aliases: Dict[str, str] = {}  # Store simple type aliases (name = other_name)
+        self.type_aliases: Dict[str, Type] = {}  # what each alias rule stands for, as a node
         self.first_definition: Optional[str] = None  # First name defined in source order
         self.synthetic_types: set = set()  # names given to inline maps (r@a)
         self.ast = None
@@ -259,26 +259,26 @@ class CDDLParser:
 
         for builtin_name, internal_type in builtin_primitives.items():
             if not defined(builtin_name):  # the schema's own rule wins
-                self.type_aliases[builtin_name] = internal_type
+                self.type_aliases[builtin_name] = as_type(internal_type)
                 logger.debug(f"Added built-in type: {builtin_name} -> {internal_type}")
 
         # The other prelude rules (RFC 8610 Appendix D) as the tables build
         # them from the prelude text (#130): 'uri' is '#6.32(tstr)', 'number'
         # is 'int / float', 'decfrac' is a tag around an array type.
         prelude = _prelude_tables()
-        for name, text in prelude.type_aliases.items():
+        for name, alias in prelude.type_aliases.items():
             # 'tstr = #3', 'float16 = #7.25': primitives the validator knows by name
-            bare_major_type = text.startswith('#') and not text.startswith('#6.')
+            bare_major_type = query.item_ref(alias) is not None
             if name not in builtin_primitives and not bare_major_type and not defined(name):
-                self.type_aliases[name] = text
+                self.type_aliases[name] = alias
         # The array inside 'decfrac' / 'bigfloat' gets a table entry
         # ('decfrac@tag'), added only when the schema uses the rule.
         # A bare name in an array ('[* decfrac]') parses as a GroupRef.
         used = {node.name for node in walk(self.ast) if isinstance(node, (Name, GroupRef))}
         for name, type_def in prelude.types.items():
             owner = name.split('@', 1)[0]
-            prelude_text = prelude.type_aliases.get(owner)
-            if owner not in used or self.type_aliases.get(owner) != prelude_text:
+            prelude_alias = prelude.type_aliases.get(owner)
+            if owner not in used or self.type_aliases.get(owner) != prelude_alias:
                 continue
             # A schema may have its own rule with that name ('@' is allowed
             # in CDDL names): pick another one rather than replace it.
@@ -286,7 +286,7 @@ class CDDLParser:
             while defined(table_name):
                 table_name += '@prelude'
             if table_name != name:
-                self.type_aliases[owner] = TypeText(rename(as_type(prelude_text), name, table_name))
+                self.type_aliases[owner] = rename(prelude_alias, name, table_name)
             self.types[table_name] = copy.deepcopy(type_def)
             self.synthetic_types.add(table_name)
     
@@ -336,68 +336,33 @@ class CDDLParser:
                 return f"{source.name or '<schema>'}:{line}:{column}"
         return None
 
-    def resolve_type_alias(self, type_name: str, max_depth: int = 10) -> str:
-        """Follow the alias chain for *type_name* and return the terminal type.
-
-        Stops after *max_depth* hops to prevent infinite loops on circular
-        definitions.  If the chain cannot be fully resolved within *max_depth*
-        steps, the last successfully resolved name is returned.
-
-        Args:
-            type_name:  The name to resolve (e.g., ``"unsigned-corim-map"``).
-            max_depth:  Maximum alias hops before giving up (default 10).
-
-        Returns:
-            The terminal type name after alias resolution, or *type_name*
-            itself if it is not an alias.
-
-        Example::
-
-            cddl = CDDLParser("a = b\nb = tstr")
-            cddl.resolve_type_alias("a")  # → "tstr"
-        """
-        resolved = type_name
-        depth = 0
-        logger.debug(f"Resolving type alias: {type_name}")
-        while resolved in self.type_aliases and depth < max_depth:
-            next_resolved = self.type_aliases[resolved]
-            if next_resolved == resolved:
-                break  # Self-referential alias (e.g. builtin primitive): stop immediately
-            logger.debug(f"  {resolved} -> {next_resolved}")
-            resolved = next_resolved
-            depth += 1
-        logger.debug(f"  Final resolution: {resolved}")
-        return resolved
-    
     def alias_node(self, name: str) -> Optional[Type]:
         """The type the alias *name* stands for, as a node, or ``None`` if it is no alias (#175)."""
-        alias = self.type_aliases.get(name)
-        return None if alias is None else as_type(alias)
+        return self.type_aliases.get(name)
 
     def resolve_alias(self, expr, max_depth: int = 10) -> Type:
         """Follow the alias chain of *expr* and return the terminal type as a node.
 
-        Same walk as :meth:`resolve_type_alias`, on nodes: only an expression
-        that is exactly one name is followed, at most *max_depth* hops, and a
-        name that is its own alias (a built-in primitive) stops the walk.
+        *expr* is a ``Type`` or a rule name. Only an expression that is
+        exactly one name is followed, at most *max_depth* hops, so a circular
+        definition ends; a name that is its own alias (a built-in primitive)
+        stops the walk. A name that is no alias is its own terminal type.
+
+        Example::
+
+            cddl = CDDLParser("a = b\nb = tstr")
+            cddl.resolve_alias("a")  # → the node for tstr
         """
         node = as_type(expr)
         name = bare_name(node)
         depth = 0
         while name is not None and name in self.type_aliases and depth < max_depth:
-            following = as_type(self.type_aliases[name])
+            following = self.type_aliases[name]
             if following == node:
                 break
             node, name = following, bare_name(following)
             depth += 1
         return node
-
-    def extract_cbor_control(self, type_string: str) -> Optional[Tuple[str, str]]:
-        """``(base, inner)`` for ``bstr .cbor inner`` / ``bytes .cbor inner``.
-
-        E.g., 'bytes .cbor concise-mid-tag' -> ('bytes', 'concise-mid-tag')
-        """
-        return query.cbor_control(type_string)
 
     def _size_bound(self, node, seen=None) -> Optional[Tuple[Optional[int], Optional[int]]]:
         """``(min, max)`` byte counts for a ``.size`` argument node.
@@ -429,8 +394,8 @@ class CDDLParser:
             return None
         return bound[0]
 
-    def extract_size_constraint(self, type_string: str) -> Optional[dict]:
-        """Extract the ``.size`` control (RFC 8610 §3.8.1) from a type string.
+    def extract_size_constraint(self, expr) -> Optional[dict]:
+        """Extract the ``.size`` control (RFC 8610 §3.8.1) from a type node.
 
         The argument may be a non-negative integer (decimal, ``0x`` or ``0b``),
         a range ``(M..N)`` or ``(M...N)`` (upper bound exclusive), or a named
@@ -446,14 +411,14 @@ class CDDLParser:
         - 'text .size (8..64)' -> {'exact': None, 'min': 8, 'max': 64}
         - 'text .size (8...64)' -> {'exact': None, 'min': 8, 'max': 63}
         """
-        size = next((c for c in query.controls(type_string) if c.op == 'size'), None)
+        size = next((c for c in query.controls(expr) if c.op == 'size'), None)
         if size is None:
             return None
         bound = self._size_bound(size.arg)
         if bound is None:
             message = (f"Invalid .size argument '{size.arg_text}': expected a non-negative "
                        f"integer, a range (M..N) / (M...N), or a constant naming one")
-            dotted = [n for n in query.names(size.arg_text)
+            dotted = [n for n in query.names(size.arg)
                       if '..' in n and n not in self.type_aliases]
             if dotted:
                 lo, _, hi = dotted[0].partition('..')
@@ -481,6 +446,11 @@ class CDDLParser:
                 return self._is_range(alias.alternatives[0], seen)
         return False
 
+    def _terminal_name(self, name: str) -> str:
+        """The name an alias chain starting at the name *name* ends at (the type's text if it is no name)."""
+        resolved = self.resolve_alias(_name_type(name))
+        return bare_name(resolved) or format_node(resolved)
+
     def size_violation(self, value: Any, base_type: str, constraint: Optional[dict]) -> Optional[str]:
         """Check *value* against a ``.size`` constraint (RFC 8610 §3.8.1).
 
@@ -497,14 +467,17 @@ class CDDLParser:
             return None
         if 'error' in constraint:
             return constraint['error']
-        base_type = self.resolve_type_alias(base_type)  # text -> tstr, bytes -> bstr
-        alternatives = query.alternatives(base_type)
-        if len(alternatives) > 1:
+        resolved = self.resolve_alias(_name_type(base_type))  # text -> tstr, bytes -> bstr
+        alternatives = query.alternatives(resolved)
+        if len(alternatives) == 1:
+            base_type = bare_name(resolved) or format_node(resolved)
+        else:
+            base_type = format_node(resolved)
             # 'm .size 2' with 'm = bstr / tstr': measure as the alternative
             # whose type the value has (the caller has checked that it fits).
             wanted = ('tstr' if isinstance(value, str) else 'bstr' if isinstance(value, bytes)
                       else 'uint' if isinstance(value, int) and not isinstance(value, bool) else None)
-            if wanted in {self.resolve_type_alias(query.head(a)) for a in alternatives}:
+            if wanted in {self._terminal_name(query.head(a)) for a in alternatives}:
                 base_type = wanted
         exact, lo, hi = constraint.get('exact'), constraint.get('min'), constraint.get('max')
         if base_type == 'uint':
@@ -526,8 +499,8 @@ class CDDLParser:
             return f"expected at most {hi} {unit}, got {length}"
         return None
 
-    def extract_value_range(self, type_string: str) -> Optional[dict]:
-        """Extract numeric value-range predicates from a CDDL type string.
+    def extract_value_range(self, expr) -> Optional[dict]:
+        """Extract numeric value-range predicates from a type node.
 
         Supports ``.ge``, ``.gt``, ``.le``, ``.lt`` (RFC 8610 §3.8.1) with a
         numeric literal argument, including chained controls (the parser's
@@ -542,57 +515,49 @@ class CDDLParser:
         """
         result = {'ge': None, 'gt': None, 'le': None, 'lt': None}
         found = False
-        for control in query.controls(type_string):
+        for control in query.controls(expr):
             if control.op in result and isinstance(control.arg, (IntLit, FloatLit)):
                 result[control.op] = control.arg.value
                 found = True
         return result if found else None
 
-    def extract_regexp(self, type_string: str) -> Optional[str]:
+    def extract_regexp(self, expr) -> Optional[str]:
         """The pattern of a ``.regexp`` control, with string escapes decoded.
 
         Example::
 
             'tstr .regexp "[a-z]+"' -> '[a-z]+'
         """
-        for control in query.controls(type_string):
+        for control in query.controls(expr):
             if control.op == 'regexp' and isinstance(control.arg, TextLit):
                 return control.arg.value
         return None
 
-    def extract_cbor_tag(self, type_string: str) -> Optional[Tuple[int, str]]:
-        """``(tag, inner)`` when the whole expression is ``#6.N(inner)``.
-
-        E.g., '#6.501(unsigned-corim-map)' -> (501, 'unsigned-corim-map');
-        '#6.1(#6.2(m))' -> (1, '#6.2(m)'); '#6.7(m) / tstr' -> None (a choice).
-        """
-        return query.tag(type_string)
-
-    def choice_alternatives(self, expr) -> Optional[list]:
+    def choice_alternatives(self, expr) -> Optional[List[Type]]:
         """The alternatives *expr* chooses between, or ``None`` if it is not a choice.
 
         *expr* is the name of a type choice (``$socket``) or an inline choice
-        (``m1 / m2``), as text or as a node. The alternatives of a named
-        choice are as the schema wrote them; those of an inline choice are
-        text for text and ``Type`` nodes for a node.
+        (``m1 / m2``) as a node. The alternatives are ``Type`` nodes.
         """
-        name = expr if isinstance(expr, str) else bare_name(as_type(expr))
-        alternatives = self.type_choices.get(name)
+        if not expr:
+            return None
+        node = as_type(expr)
+        alternatives = self.type_choices.get(bare_name(node))
         if alternatives is not None:
             return alternatives
-        parts = query.alternatives(expr) if expr else []
+        parts = query.alternatives(node)
         return parts if len(parts) > 1 else None
 
-    def choice_matches(self, choice_name: str, cbor_data: Any) -> List[str]:
-        """The alternatives of type choice *choice_name* that *cbor_data* matches.
+    def choice_matches(self, choice, cbor_data: Any) -> List[Type]:
+        """The alternatives of type choice *choice* that *cbor_data* matches.
 
         Each alternative is checked completely (tag numbers, fields, controls),
         so an alternative matches only if the data is valid for it. The result
-        is in schema order: empty when nothing matches, one name when the
-        choice is decided, several when the data fits more than one
+        is in schema order: empty when nothing matches, one alternative when
+        the choice is decided, several when the data fits more than one
         alternative (#74).
         """
-        alternatives = self.choice_alternatives(choice_name)
+        alternatives = self.choice_alternatives(choice)
         if not alternatives:
             return []
         checker = self._choice_checker
@@ -600,27 +565,27 @@ class CDDLParser:
             checker = self._choice_checker = CBORAnalyzer(self)
         return [alt for alt in alternatives if not checker._check_value(cbor_data, alt)]
 
-    def resolve_type_choice_for_data(self, choice_name: str, cbor_data: Any,
-                                     validator=None) -> Optional[str]:
-        """The alternative of type choice *choice_name* that *cbor_data* matches.
+    def resolve_type_choice_for_data(self, choice, cbor_data: Any,
+                                     validator=None) -> Optional[Type]:
+        """The alternative of type choice *choice* that *cbor_data* matches.
 
         When several alternatives match, the first in schema order is
         returned (see :meth:`choice_matches` for all of them). When none
         does, the result is ``None``: no alternative is assumed.
 
         Args:
-            choice_name: Name of the type choice.
+            choice: The type choice: its name, or an inline choice as a node.
             cbor_data: The decoded CBOR item (a tag is ``(number, value)``).
             validator: Unused; kept for callers written before choices were
                 resolved by matching alone.
         """
-        matches = self.choice_matches(choice_name, cbor_data)
+        matches = self.choice_matches(choice, cbor_data)
         if not matches:
-            logger.debug(f"  No alternative of {choice_name} matches")
+            logger.debug(f"  No alternative of {_label(choice)} matches")
             return None
         if len(matches) > 1:
-            logger.debug(f"  {len(matches)} alternatives of {choice_name} match "
-                         f"({', '.join(matches)}); using the first")
+            logger.debug(f"  {len(matches)} alternatives of {_label(choice)} match "
+                         f"({', '.join(format_node(m) for m in matches)}); using the first")
         return matches[0]
 
     def get_type(self, type_name, cbor_data: Any = None) -> Optional[Dict]:
@@ -639,7 +604,7 @@ class CDDLParser:
 
         node = as_type(type_name)
         name = bare_name(node)
-        label = type_name if isinstance(type_name, str) else format_node(node)
+        label = _label(type_name)
         logger.debug(f"Getting type: {label}")
 
         # First try direct lookup
@@ -665,7 +630,7 @@ class CDDLParser:
                 if cbor_data is not None:
                     selected = self.resolve_type_choice_for_data(resolved_name, cbor_data)
                     if selected:
-                        logger.debug(f"  Resolved type choice to: {selected}")
+                        logger.debug(f"  Resolved type choice to: {format_node(selected)}")
                         # Recursively get the selected type
                         return self.get_type(selected, cbor_data)
                 # A choice has no single definition: without data to choose by,
@@ -743,7 +708,7 @@ class CDDLParser:
             return field_info['name']
         return None
     
-    def get_type_choices(self, choice_name: str) -> Optional[List[str]]:
+    def get_type_choices(self, choice_name: str) -> Optional[List[Type]]:
         """Get all type alternatives for a type choice."""
         return self.type_choices.get(choice_name)
     
@@ -756,10 +721,29 @@ class CDDLParser:
         return self.socket_extensions.get(socket_name)
 
 
+def _label(expr) -> str:
+    """*expr*, a rule name or a type node, as text for a message."""
+    return expr if isinstance(expr, str) else format_node(expr)
+
+
+def _text_of(expr) -> Optional[str]:
+    """The canonical text of the type node *expr* (``None`` for no type), for a message."""
+    return None if expr is None else format_node(expr)
+
+
+def _is_dollar_type(expr) -> bool:
+    """True for a type whose text starts with a ``$name`` (a socket or type choice), controls included."""
+    base = query.base(query.alternatives(expr)[0])
+    return isinstance(base, Name) and base.name.startswith('$')
+
+
 def _name_type(name: str) -> Type:
     """The type expression that is just the name *name*."""
     return Type((Name(name),))
 
+
+#: The type of a member whose type the tables do not record.
+_UNKNOWN_TYPE = Type((Name('unknown'),))
 
 #: Marks a breadcrumb component (a rule name) that is not a step in the data.
 _NO_STEP = object()
@@ -1143,7 +1127,7 @@ class CBORAnalyzer:
             # checked by the same code as map fields and array elements.
             first = query.head(node)
             if (self._checked_as_whole(node)
-                    or bare_name(self.cddl.resolve_alias(first)) in self._ROOT_PRIMITIVES
+                    or bare_name(self.cddl.resolve_alias(_name_type(first))) in self._ROOT_PRIMITIVES
                     or self._literal_errors(value, node) is not None):
                 errors = self._check_value(value, node)
                 for error in errors:
@@ -1254,7 +1238,8 @@ class CBORAnalyzer:
                     # It's an alias
                     choices = self.cddl.type_choices.get(bare_name(resolved_node))
                     if choices:
-                        logger.info(f"'{resolved}' is a type choice with alternatives: {choices}")
+                        logger.info(f"'{resolved}' is a type choice with alternatives: "
+                                    f"{[format_node(c) for c in choices]}")
                         logger.info("Attempting to auto-resolve type choice...")
                         
                         # Try to resolve automatically with validation
@@ -1360,7 +1345,7 @@ class CBORAnalyzer:
         # must match the other operand too (#120)
         for constraint in type_def.get('constraints', ()):
             for error in self._check_value(data, constraint):
-                error_msg = f"Type '{type_name}' does not satisfy its control operand '{constraint}': {error}"
+                error_msg = f"Type '{type_name}' does not satisfy its control operand '{format_node(constraint)}': {error}"
                 logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
                 self._report(error_msg)
         
@@ -1434,8 +1419,8 @@ class CBORAnalyzer:
             for key, field_info in type_def['fields'].items():
                 field_name = field_info['name']
                 is_optional = field_info.get('optional', False)
-                field_type = field_info.get('type', 'unknown')
-                field_node = as_type(field_type) if field_type else None
+                field_node = field_info.get('type') or _UNKNOWN_TYPE
+                field_type = format_node(field_node)
                 
                 # Push field to breadcrumb
                 self._push_breadcrumb(field_name, step=key)
@@ -1453,7 +1438,7 @@ class CBORAnalyzer:
                     
                     # Check for .cbor control operator (bytes containing CBOR data)
                     # An inline choice ('bstr .cbor m / tstr') is checked as a whole below
-                    cbor_control = query.cbor_control(field_node) if field_node else None
+                    cbor_control = query.cbor_control(field_node)
                     if cbor_control:
                         base_type, inner_node = cbor_control
                         inner_type = format_node(inner_node)
@@ -1492,8 +1477,8 @@ class CBORAnalyzer:
                     written_node = field_node
                     field_node, value, tag_error = self._peel_tagged_primitive(field_node, value)
                     # the type as text, for messages and for rule names
-                    field_type = (field_type if field_node is written_node
-                                  else format_node(field_node) if field_node else field_type)
+                    if field_node is not written_node:
+                        field_type = format_node(field_node)
                     if tag_error:
                         self._report(f"Field '{field_name}' in '{type_name}' {tag_error}")
                         self._pop_breadcrumb()
@@ -1501,7 +1486,7 @@ class CBORAnalyzer:
 
                     # field_type may contain user alias + annotation (e.g. 'my-text .size 16')
                     # Resolve alias first, then extract base type.
-                    _resolved = self.cddl.resolve_alias(field_node) if field_node else None
+                    _resolved = self.cddl.resolve_alias(field_node)
 
                     # Inline type choice ('c = uint / tstr', 'x: m / n'): any alternative may match
                     # (or a parenthesized type, whose controls apply to each alternative)
@@ -1563,7 +1548,7 @@ class CBORAnalyzer:
                         if not isinstance(value, float):
                             type_mismatch = True
                             logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected float, got {type(value).__name__}")
-                    elif (field_node and bare_name(field_node) == 'tstr') or _base_type == 'tstr':
+                    elif bare_name(field_node) == 'tstr' or _base_type == 'tstr':
                         if not isinstance(value, str):
                             type_mismatch = True
                             logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected tstr, got {type(value).__name__}")
@@ -1580,12 +1565,12 @@ class CBORAnalyzer:
                                     err_msg = f"Invalid .regexp pattern /{pattern}/ for field '{field_name}': {exc}"
                                     logger.error(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} {err_msg}")
                                     self._report(err_msg)
-                    elif (field_node and bare_name(field_node) == 'bstr') or _base_type == 'bstr':
+                    elif bare_name(field_node) == 'bstr' or _base_type == 'bstr':
                         if not isinstance(value, bytes):
                             type_mismatch = True
                             logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected bstr, got {type(value).__name__}")
 
-                    elif field_node and not self._is_dollar_type(field_node):
+                    elif not _is_dollar_type(field_node):
                         # It's a structured type - check basic structure
                         nested_type_def = self.cddl.get_type(field_node)
                         # Tagged rules are checked (tag, then structure) by _validate_type below
@@ -1610,7 +1595,7 @@ class CBORAnalyzer:
                                 f"Field '{field_name}' in '{type_name}' violates .size: {size_error}")
                     
                     # Recursively validate nested structures
-                    if field_node and bare_name(field_node) not in ('tstr', 'uint', 'int', 'bstr', 'bool', 'float', 'any'):
+                    if bare_name(field_node) not in ('tstr', 'uint', 'int', 'bstr', 'bool', 'float', 'any'):
                         # Check if field_type is an inline array definition: [ + type ] or [ * type ]
                         # Other inline arrays ('[ a, * b ]') are named types of
                         # their own (#133) and are checked as such.
@@ -1645,7 +1630,7 @@ class CBORAnalyzer:
                                         continue
 
                                     # Check if element type is a type choice
-                                    if self._is_dollar_type(element_type) and not self._checked_as_whole(element_type):
+                                    if _is_dollar_type(element_type) and not self._checked_as_whole(element_type):
                                         element_text = format_node(element_type)
                                         logger.debug(f"{Colors.CDDL}[{item_breadcrumb}]{Colors.RESET} Element type is a choice: {element_text}")
                                         selected_type = self.cddl.resolve_type_choice_for_data(element_text, item, validator=self)
@@ -1691,7 +1676,7 @@ class CBORAnalyzer:
                                     self._pop_breadcrumb()
                         
                         # Check if field_type is a type choice
-                        elif self._is_dollar_type(field_node):
+                        elif _is_dollar_type(field_node):
                             # It's a type choice - need to resolve it
                             choice_name = field_type
                             logger.debug(f"{Colors.CDDL}[{field_breadcrumb}]{Colors.RESET} Field type is a choice: {choice_name}")
@@ -1756,7 +1741,7 @@ class CBORAnalyzer:
                     for error in self._check_value(data[key], computed_keys[chosen]['type']):
                         self._report(
                             f"Value for key {key!r} in type '{type_name}' "
-                            f"does not match '{computed_keys[chosen]['type']}': {error}")
+                            f"does not match '{format_node(computed_keys[chosen]['type'])}': {error}")
             # How many entries each computed-key member took ('+ K => V', '? K => V',
             # 'K => V' takes exactly one, #120, #151)
             for index, computed in enumerate(computed_keys):
@@ -1773,7 +1758,7 @@ class CBORAnalyzer:
                         wanted = f"{low} to {high}"
                     error_msg = (f"Type '{type_name}' needs {wanted} "
                                  f"{'entry' if (high or low) == 1 and (high == 1 or low == 1) else 'entries'} "
-                                 f"with key '{computed['key']}', found {count}")
+                                 f"with key '{format_node(computed['key'])}', found {count}")
                     logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
                     self._report(error_msg)
             if extra_keys:
@@ -1844,7 +1829,7 @@ class CBORAnalyzer:
                 # Check element type: per-index pattern takes precedence over repeating
                 elem_type = element_types.get(i) if i in element_types else repeating_type
                 if elem_type:
-                    elem_node, item, tag_error = self._peel_tagged_primitive(as_type(elem_type), item)
+                    elem_node, item, tag_error = self._peel_tagged_primitive(elem_type, item)
                     if tag_error:
                         self._report(f"Array element [{i}] of '{type_name}' {tag_error}")
                         self._pop_breadcrumb()
@@ -1928,15 +1913,6 @@ class CBORAnalyzer:
                 return node, value, f"requires CBOR tag {expected_tag}, got tag {value[0]}"
             node, value = inner, value[1]
 
-    @staticmethod
-    def _split_choice(expr: str) -> List[str]:
-        """The top-level type choices in *expr* (``'a / b'`` gives ``['a', 'b']``).
-
-        Returns ``[expr]`` when there is no choice, or when *expr* is not a
-        type expression (a group choice ``a // b``).
-        """
-        return query.alternatives(expr)
-
     def _bound_literal(self, bound) -> Optional[Any]:
         """The ``IntLit``/``FloatLit`` a range bound stands for, following names."""
         lit = bound if isinstance(bound, (IntLit, FloatLit)) else (
@@ -1966,7 +1942,7 @@ class CBORAnalyzer:
         known = self._bound_literal(node.low) or self._bound_literal(node.high)
         if known is None:
             # bounds that are sockets or generic parameters: nothing to compare with
-            return [f"cannot check range '{format_node(as_type(expr))}'"] if strict else []
+            return [f"cannot check range '{format_node(expr)}'"] if strict else []
         if isinstance(known, IntLit):
             ok_type = (isinstance(value, int) and not isinstance(value, bool)
                        and -(1 << 64) <= value < (1 << 64))
@@ -1976,21 +1952,21 @@ class CBORAnalyzer:
             kind = 'a float'
         shown = self._format_value_for_log(value)
         if not ok_type:
-            return [f"expected {kind} in {format_node(as_type(expr))}, got {shown}"]
+            return [f"expected {kind} in {format_node(expr)}, got {shown}"]
         if bounds is None:
             if strict:
-                return [f"cannot check range '{format_node(as_type(expr))}'"]
+                return [f"cannot check range '{format_node(expr)}'"]
             # '$low .. 10' with an unknown '$low': the known bound still applies
             low, high = self._bound_literal(node.low), self._bound_literal(node.high)
             if low is not None and not value >= low.value:  # 'not >=' also rejects NaN
-                return [f"{shown} is outside {format_node(as_type(expr))}"]
+                return [f"{shown} is outside {format_node(expr)}"]
             if high is not None and not (value <= high.value if node.inclusive
                                          else value < high.value):
-                return [f"{shown} is outside {format_node(as_type(expr))}"]
+                return [f"{shown} is outside {format_node(expr)}"]
             return []
         low, high = bounds
         if not (low <= value and (value <= high if node.inclusive else value < high)):
-            return [f"{shown} is outside {format_node(as_type(expr))}"]
+            return [f"{shown} is outside {format_node(expr)}"]
         return []
 
     def _literal_errors(self, value: Any, expr) -> Optional[List[str]]:
@@ -2015,7 +1991,7 @@ class CBORAnalyzer:
         else:
             return None
         if not ok:
-            return [f"expected {format_node(as_type(expr))}, got {self._format_value_for_log(value)}"]
+            return [f"expected {format_node(expr)}, got {self._format_value_for_log(value)}"]
         if lit is None or not query.controls(expr):
             return []
         # '"t" .regexp "[a-c]+"', '1 .ge 0': the controls apply to the literal too
@@ -2315,7 +2291,7 @@ class CBORAnalyzer:
         if alias is not None and alias != expr:
             return self._check_value(value, alias, _depth + 1, strict)  # follow one alias step
 
-        base = bare_name(self.cddl.resolve_alias(head))
+        base = bare_name(self.cddl.resolve_alias(_name_type(head)))
         if base in self._ROOT_PRIMITIVES:
             return self._primitive_errors(value, base, expr)
 
@@ -2424,7 +2400,7 @@ class CBORAnalyzer:
             return query.ParenParts([Type((v,)) for v in values] if values else [base], controls)
         if base is not None and self._is_empty_socket(base):
             return query.ParenParts([base], controls)  # '$e .size 1': still matches nothing
-        resolved = self.cddl.resolve_alias(query.head(expr))
+        resolved = self.cddl.resolve_alias(_name_type(query.head(expr)))
         name = bare_name(resolved)
         choices = self.cddl.type_choices.get(name) if name is not None else None
         alternatives = ([as_type(alt) for alt in choices] if choices
@@ -2488,12 +2464,6 @@ class CBORAnalyzer:
         return True
 
     @staticmethod
-    def _is_dollar_type(expr) -> bool:
-        """True for a type built on a ``$name`` (a socket or type choice), controls included."""
-        base = query.base(expr)
-        return isinstance(base, Name) and base.name.startswith('$')
-
-    @staticmethod
     def _is_socket(expr) -> bool:
         """True for a bare type socket name (``$name``)."""
         name = bare_name(as_type(expr))
@@ -2535,7 +2505,7 @@ class CBORAnalyzer:
         return (len(expr.alternatives) > 1
                 or self._is_literal(expr)
                 or query.item_ref(expr) is not None
-                or bare_name(self.cddl.resolve_alias(query.head(expr))) in self._WHOLE_PRIMITIVES
+                or bare_name(self.cddl.resolve_alias(_name_type(query.head(expr)))) in self._WHOLE_PRIMITIVES
                 or (name is not None and name in self.cddl.type_choices)
                 or self._is_socket(expr)
                 or query.choice_from(expr) is not None
@@ -2552,7 +2522,7 @@ class CBORAnalyzer:
         :meth:`_check_value` checks those controls; the map-field and
         array-element paths would check only the type (#71).
         """
-        base = bare_name(self.cddl.resolve_alias(query.head(expr)))
+        base = bare_name(self.cddl.resolve_alias(_name_type(query.head(expr))))
         return base in self._NUMBER_TYPES and self.cddl.extract_value_range(expr) is not None
 
     def _check_primitive_type(self, value, type_name, _depth: int = 0):
@@ -2696,13 +2666,13 @@ class EDNGenerator:
         indent = self.indent_str
         return '\n'.join(indent + line if line.strip() else line for line in lines)
     
-    def _named(self, type_name: Optional[str]) -> bool:
-        """True if *type_name* is a rule the user wrote, not a synthetic name
+    def _named(self, type_node: Optional[Type]) -> bool:
+        """True if *type_node* is a rule the user wrote, not a synthetic name
         given to an inline map (``r@a``), so it is worth annotating."""
-        if not type_name:
+        if type_node is None:
             return False
         synthetic = self.cddl.synthetic_types
-        return not synthetic or not (synthetic & query.names(type_name))
+        return not synthetic or not (synthetic & query.names(type_node))
 
     @staticmethod
     def _edn_str(s: str) -> str:
@@ -2741,30 +2711,32 @@ class EDNGenerator:
         """
         self.indent_level = 0
         try:
-            return self._generate_value(data, type_name, annotate)
+            return self._generate_value(data, as_type(type_name) if type_name else None, annotate)
         finally:
             self.indent_level = 0  # always reset, even when an exception propagates
     
-    def _generate_value(self, value: Any, type_name: str = None, annotate: bool = True) -> str:
-        """Generate EDN for a value."""
-        logger.debug(f"EDN: _generate_value called with type_name='{type_name}'")
+    def _generate_value(self, value: Any, type_name: Optional[Type] = None,
+                        annotate: bool = True) -> str:
+        """Generate EDN for a value of type *type_name* (a ``Type`` node, or ``None``)."""
+        logger.debug(f"EDN: _generate_value called with type_name='{_text_of(type_name)}'")
         
         # Resolve type choice to actual matched type
-        if type_name and self.cddl.choice_alternatives(type_name) is not None:
+        if type_name is not None and self.cddl.choice_alternatives(type_name) is not None:
             # A choice ('$socket', 'm1 / m2'): the alternative the data matches,
             # or no type when it matches none (#74)
             resolved = self.cddl.resolve_type_choice_for_data(type_name, value)
-            logger.debug(f"EDN: Resolved type choice {type_name} -> {resolved}")
+            logger.debug(f"EDN: Resolved type choice {_text_of(type_name)} -> {_text_of(resolved)}")
             type_name = resolved
-        elif type_name:
+        elif type_name is not None:
             # Check if this type is an alias and resolve to final type
-            resolved = self.cddl.resolve_type_alias(type_name)
-            logger.debug(f"EDN: Checked alias for '{type_name}', got '{resolved}'")
-            if resolved != type_name and resolved in self.cddl.type_choices:
+            resolved = self.cddl.resolve_alias(type_name)
+            logger.debug(f"EDN: Checked alias for '{_text_of(type_name)}', got '{_text_of(resolved)}'")
+            if resolved != type_name and bare_name(resolved) in self.cddl.type_choices:
                 # It's an alias to a choice - resolve the choice
                 final_resolved = self.cddl.resolve_type_choice_for_data(resolved, value)
                 if final_resolved:
-                    logger.debug(f"EDN: Resolved alias+choice {type_name} -> {resolved} -> {final_resolved}")
+                    logger.debug(f"EDN: Resolved alias+choice {_text_of(type_name)} -> "
+                                 f"{_text_of(resolved)} -> {_text_of(final_resolved)}")
                     type_name = final_resolved
         
         # Handle CBOR tagged tuples (tag_num, value)
@@ -2777,38 +2749,36 @@ class EDNGenerator:
             tag_type_name = type_name
             inner_type_name = type_name
             
-            if type_name:
-                # Check if type_name is itself a tag definition (e.g., "tagged-unsigned-corim-map")
-                # We should look up its definition to find the inner type
-                type_def = self.cddl.get_type(type_name)
-                
+            if type_name is not None:
                 # Try to extract inner type from tag notation in aliases
                 # e.g., tagged-unsigned-corim-map = #6.501(unsigned-corim-map)
-                if type_name in self.cddl.type_aliases:
-                    alias_value = self.cddl.type_aliases[type_name]
-                    tag_info = self.cddl.extract_cbor_tag(alias_value)
+                alias_value = self.cddl.type_aliases.get(bare_name(type_name))
+                if alias_value is not None:
+                    tag_info = query.tag(alias_value)
                     if tag_info:
                         extracted_tag_num, extracted_inner = tag_info
                         if extracted_tag_num == tag_num:
                             # This is the right tag type
                             inner_type_name = extracted_inner
-                            logger.debug(f"EDN: Tag {tag_num}: outer type='{tag_type_name}', inner type='{inner_type_name}'")
+                            logger.debug(f"EDN: Tag {tag_num}: outer type='{_text_of(tag_type_name)}', "
+                                         f"inner type='{_text_of(inner_type_name)}'")
                             
                             # Further resolve the inner type if it's an alias
-                            resolved_inner = self.cddl.resolve_type_alias(inner_type_name)
+                            resolved_inner = self.cddl.resolve_alias(inner_type_name)
                             if resolved_inner != inner_type_name:
-                                logger.debug(f"EDN: Resolved inner type alias {inner_type_name} -> {resolved_inner}")
+                                logger.debug(f"EDN: Resolved inner type alias {_text_of(inner_type_name)} -> "
+                                             f"{_text_of(resolved_inner)}")
                                 inner_type_name = resolved_inner
             
             # Check if this type has .cbor control (nested CBOR in bytes)
-            if type_name:
+            if type_name is not None:
                 type_def = self.cddl.get_type(type_name, inner_value)
                 if type_def and type_def.get('cbor_inner_type'):
                     # Decode nested CBOR and generate EDN for it
-                    inner_type = format_node(type_def['cbor_inner_type'])
+                    inner_type = type_def['cbor_inner_type']
                     if isinstance(inner_value, bytes):
                         try:
-                            logger.debug(f"EDN: Decoding nested CBOR ({len(inner_value)} bytes) for type {inner_type}")
+                            logger.debug(f"EDN: Decoding nested CBOR ({len(inner_value)} bytes) for type {_text_of(inner_type)}")
                             nested_decoder = SimpleCBORDecoder(inner_value)
                             nested_data = nested_decoder.decode()
                             logger.debug(f"EDN: Successfully decoded nested CBOR")
@@ -2854,7 +2824,7 @@ class EDNGenerator:
                             # But all subsequent lines have full indentation
                             if annotate and self._named(tag_type_name):
                                 # Add type annotation comment showing the tagged type
-                                tag_comment = f"/ {tag_type_name} / "
+                                tag_comment = f"/ {_text_of(tag_type_name)} / "
                                 result = f"{tag_comment}{tag_num}(\n{bytes_content}\n{tag_indent})"
                                 return result
                             else:
@@ -2892,7 +2862,7 @@ class EDNGenerator:
                 # Build result - first line has no prefix (parent adds it)
                 # All subsequent lines have full absolute indentation
                 if annotate and self._named(tag_type_name):
-                    tag_annotation = f"/ {tag_type_name} / "
+                    tag_annotation = f"/ {_text_of(tag_type_name)} / "
                     result = f"{tag_annotation}{tag_num}(\n"
                 else:
                     result = f"{tag_num}(\n"
@@ -2903,7 +2873,7 @@ class EDNGenerator:
             else:
                 # Single-line content
                 if annotate and self._named(tag_type_name):
-                    tag_annotation = f"/ {tag_type_name} / "
+                    tag_annotation = f"/ {_text_of(tag_type_name)} / "
                     return f"{tag_annotation}{tag_num}({inner_edn})"
                 else:
                     return f"{tag_num}({inner_edn})"
@@ -2934,18 +2904,18 @@ class EDNGenerator:
             return self._generate_value(key)
         return ' '.join(line.strip() for line in self._generate_value(key, None, False).splitlines())
 
-    def _generate_map(self, data: Dict, type_name: str = None, annotate: bool = True) -> str:
+    def _generate_map(self, data: Dict, type_name: Optional[Type] = None, annotate: bool = True) -> str:
         """Generate EDN for a map/object."""
         if not data:
             return "{}"
         
-        type_def = self.cddl.get_type(type_name) if type_name else None
+        type_def = self.cddl.get_type(type_name) if type_name is not None else None
         
         # Add type name header if we have one and annotations are enabled
         # Format: / type / {
         type_header = ""
-        if annotate and self._named(type_name) and type_name not in ['map', 'dict']:
-            type_header = f"/ {type_name} / "
+        if annotate and self._named(type_name) and bare_name(type_name) not in ('map', 'dict'):
+            type_header = f"/ {_text_of(type_name)} / "
         
         lines = [type_header + "{"]
         self.indent_level += 1
@@ -2997,7 +2967,7 @@ class EDNGenerator:
         
         return "\n".join(lines)
     
-    def _generate_array(self, data: List, type_name: str = None, annotate: bool = True) -> str:
+    def _generate_array(self, data: List, type_name: Optional[Type] = None, annotate: bool = True) -> str:
         """Generate EDN for an array."""
         if not data:
             return "[]"
@@ -3007,16 +2977,17 @@ class EDNGenerator:
         element_types_by_index = {}  # For structured arrays like [type1, type2]
         repeat_index = None  # '[ int, * tstr ]': later elements repeat this entry's type
         
-        if type_name:
+        if type_name is not None:
+            type_text = _text_of(type_name)
             # Try inline array: [ + type ] or [ * type ]
             array_match = query.inline_array(type_name)
             if array_match:
                 element_type = array_match[1]
-                logger.debug(f"EDN: Inline array type detected, element type: {element_type}")
+                logger.debug(f"EDN: Inline array type detected, element type: {_text_of(element_type)}")
             else:
                 # Try to get array type definition for structured arrays
                 # e.g., reference-triple-record = [environment-map, [ + measurement-map ]]
-                logger.debug(f"EDN: Checking if '{type_name}' is a structured array type")
+                logger.debug(f"EDN: Checking if '{type_text}' is a structured array type")
                 type_def = self.cddl.get_type(type_name)
                 if type_def and type_def.get('type') == 'array':
                     # Check if it has element_types (structured array)
@@ -3025,18 +2996,19 @@ class EDNGenerator:
                         repeat_index = type_def.get('repeat')
                         if repeat_index is None and type_def.get('occurrence') in ('*', '+'):
                             repeat_index = 0  # '[* T]'
-                        logger.debug(f"EDN: Structured array type '{type_name}' with element types: {element_types_by_index}")
+                        logger.debug(f"EDN: Structured array type '{type_text}' with element types: "
+                                     f"{ {k: format_node(v) for k, v in element_types_by_index.items()} }")
                     else:
-                        logger.debug(f"EDN: Array type '{type_name}' has no element_types")
+                        logger.debug(f"EDN: Array type '{type_text}' has no element_types")
                 else:
-                    logger.debug(f"EDN: Type '{type_name}' is not an array type (type={type_def.get('type') if type_def else 'not found'})")
+                    logger.debug(f"EDN: Type '{type_text}' is not an array type (type={type_def.get('type') if type_def else 'not found'})")
         
         # Add type name header if we have a structured array type and annotations are enabled
         # Format: / type / [
         type_header = ""
         if annotate and self._named(type_name) and not query.is_array(type_name):
             # It's a named array type (not inline array syntax)
-            type_header = f"/ {type_name} / "
+            type_header = f"/ {_text_of(type_name)} / "
         
         lines = [type_header + "["]
         self.indent_level += 1
@@ -3050,16 +3022,16 @@ class EDNGenerator:
             # First check if we have a type for this specific index (structured arrays)
             if element_types_by_index and i in element_types_by_index:
                 resolved_element_type = element_types_by_index[i]
-                logger.debug(f"EDN: Array element [{i}] has indexed type: {resolved_element_type}")
+                logger.debug(f"EDN: Array element [{i}] has indexed type: {_text_of(resolved_element_type)}")
             elif repeat_index is not None and i > repeat_index:
                 resolved_element_type = element_types_by_index.get(repeat_index)
             elif element_type:
                 # For uniform arrays, all elements have the same type
                 resolved_element_type = element_type
-                logger.debug(f"EDN: Array element [{i}] using uniform type: {resolved_element_type}")
+                logger.debug(f"EDN: Array element [{i}] using uniform type: {_text_of(resolved_element_type)}")
             
             # For inline arrays with type choices, resolve the type for each element
-            if resolved_element_type and resolved_element_type.startswith('$'):
+            if resolved_element_type is not None and _is_dollar_type(resolved_element_type):
                 # It's a type choice - need to resolve it
                 # Unwrap tagged tuple for type resolution
                 resolution_data = value
@@ -3070,25 +3042,26 @@ class EDNGenerator:
                 resolved = self.cddl.resolve_type_choice_for_data(resolved_element_type, resolution_data)
                 if resolved:
                     resolved_element_type = resolved
-                    logger.debug(f"EDN: Resolved array element [{i}] type choice to: {resolved}")
-            elif resolved_element_type:
+                    logger.debug(f"EDN: Resolved array element [{i}] type choice to: {_text_of(resolved)}")
+            elif resolved_element_type is not None:
                 # Check if this type is itself a structured array
                 elem_type_def = self.cddl.get_type(resolved_element_type)
                 if elem_type_def and elem_type_def.get('type') == 'array' and isinstance(value, (list, tuple)):
                     # It's a structured array - pass the type so it can use element_types
-                    logger.debug(f"EDN: Array element [{i}] type '{resolved_element_type}' is a structured array")
+                    logger.debug(f"EDN: Array element [{i}] type '{_text_of(resolved_element_type)}' is a structured array")
                     # The type name stays as-is, _generate_value will handle it
-                elif resolved_element_type:
+                else:
                     # Not a type choice, but might be an alias - try to resolve
-                    resolved_alias = self.cddl.resolve_type_alias(resolved_element_type)
+                    resolved_alias = self.cddl.resolve_alias(resolved_element_type)
                     if resolved_alias != resolved_element_type:
-                        logger.debug(f"EDN: Resolved array element [{i}] type alias {resolved_element_type} -> {resolved_alias}")
+                        logger.debug(f"EDN: Resolved array element [{i}] type alias "
+                                     f"{_text_of(resolved_element_type)} -> {_text_of(resolved_alias)}")
                         resolved_element_type = resolved_alias
-                        # A generic instance the tables kept as text (one that is
+                        # A generic instance the tables kept inline (one that is
                         # not a map or array, #70) is annotated as its generic rule.
                         generic = query.head(resolved_alias)
-                        if generic != resolved_alias and self.cddl.get_type(generic):
-                            resolved_element_type = generic
+                        if generic != format_node(resolved_alias) and self.cddl.get_type(generic):
+                            resolved_element_type = _name_type(generic)
             
             value_str = self._generate_value(value, resolved_element_type, annotate)
             comma = "," if i < len(data) - 1 else ""
@@ -3261,7 +3234,7 @@ Examples:
             for key, field_info in type_def['fields'].items():
                 opt = " (optional)" if field_info.get('optional') else ""
                 registered = " [IANA registered]" if field_info.get('registered') else ""
-                print(f"  {key}: {field_info['name']} -> {field_info['type']}{opt}{registered}", 
+                print(f"  {key}: {field_info['name']} -> {format_node(field_info['type'])}{opt}{registered}", 
                       file=sys.stderr)
         
         # Show groups
@@ -3282,7 +3255,7 @@ Examples:
             for choice_name, alternatives in cddl.type_choices.items():
                 print(f"\n{choice_name}:", file=sys.stderr)
                 for alt in alternatives:
-                    print(f"  /= {alt}", file=sys.stderr)
+                    print(f"  /= {format_node(alt)}", file=sys.stderr)
         
         # Show socket extensions
         if cddl.socket_extensions:
