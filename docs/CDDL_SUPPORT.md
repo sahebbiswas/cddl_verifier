@@ -37,14 +37,19 @@ and carriage return; `\i` and `\c` are XML name characters; `\p{Lu}`, `\P{Nd}` a
 class. Categories come from the running Python's Unicode database, and only
 the common blocks are known. XSD has no lazy quantifier, `(?:...)`,
 look-around or back reference: such a pattern, or an unknown category or
-block, is a schema error that names it.
+block, is a schema error that names it. The argument is checked again
+once a generic's arguments are in (`g<"a+?">`). Matching uses Python's
+backtracking engine, so a pattern such as `(a+)+b` can take very long on a
+long text: do not use `.regexp` with schemas or data you do not trust
+([#185](https://github.com/sahebbiswas/cddl_verifier/issues/185)).
 
 `.bits` allows only the bit positions its argument names (RFC 8610 §3.8): a
 `uint`, a range, a choice of them, or a rule or `&(...)` that is one. For a
 `uint` position `n` is the bit worth `2**n`; for a `bstr` the first byte is
 the least significant, so position 8 is the lowest bit of the second byte.
 The error names the bit that is set. An argument that is not bit positions is
-a schema error.
+a schema error. A name from an import that is not loaded cannot be read, so it
+is not enforced; the unloaded-module warning says so.
 
 One non-standard form is accepted: chained controls such as
 `uint .ge 0 .le 150`, read as `(uint .ge 0) .le 150`. RFC 8610 allows one

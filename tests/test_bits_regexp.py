@@ -101,6 +101,19 @@ class TestBitsSchemaErrors(unittest.TestCase):
             validate('r = tstr .bits 1', 'a', root_type='r')
 
 
+class TestGenericArguments(unittest.TestCase):
+
+    def test_bits_and_regexp_arguments_are_checked_after_substitution(self):
+        self.assertTrue(ok('g<T> = uint .bits T\nr = g<3>', 8))
+        self.assertFalse(ok('g<T> = uint .bits T\nr = g<3>', 1))
+        self.assertTrue(ok('g<T> = tstr .regexp T\nr = g<"a+">', 'aa'))
+        self.assertFalse(ok('g<T> = tstr .regexp T\nr = g<"a+">', 'ab'))
+        for schema in ('g<T> = uint .bits T\nr = g<"x">',
+                       'g<T> = tstr .regexp T\nr = g<"a+?">'):
+            with self.assertRaises(SchemaError, msg=schema):
+                validate(schema, 1, root_type='r')
+
+
 class TestXsdRegexpMeaning(unittest.TestCase):
     """XSD says one thing, Python's ``re`` another."""
 

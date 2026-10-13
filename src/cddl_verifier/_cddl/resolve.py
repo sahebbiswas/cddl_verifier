@@ -681,7 +681,7 @@ class _Resolver:
         return _literal(self.rules, node)
 
     def check_instance_controls(self, node: Name, scope):
-        """Recheck the ``.eq`` / ``.ne`` arguments of ``node`` once its generic arguments are in.
+        """Recheck the ``.eq``, ``.ne``, ``.bits`` and ``.regexp`` arguments of ``node`` once its generic arguments are in.
 
         In the definition ``g<T> = uint .eq T`` the argument ``T`` is unknown, so
         ``g<(1 / 2)>`` passes there; here the substituted argument is checked.
@@ -692,12 +692,34 @@ class _Resolver:
             return
         body = substitute(rule.type(), dict(zip(rule.params, node.args)))
         for sub in walk(body):
-            if isinstance(sub, Control) and sub.op in ('eq', 'ne') \
-                    and self.one_value(sub.arg, scope) is False:
+            if not isinstance(sub, Control):
+                continue
+            if sub.op in ('eq', 'ne') and self.one_value(sub.arg, scope) is False:
                 raise self.error(f"the argument of '.{sub.op}' must be one value (a number, "
                                  f"a string, true, false, null or undefined, or a rule that is "
                                  f"one), not a type that matches several; '{node.name}' "
                                  f"passes one that matches several", node.span)
+            if sub.op in ('bits', 'regexp'):
+                problem = self.pattern_problem(sub, scope)
+                if problem:
+                    raise self.error(f"{problem}; '{node.name}' passes it", node.span)
+
+    def pattern_problem(self, node: Control, scope) -> Optional[str]:
+        """Why the argument of ``.regexp`` (an XSD pattern) or ``.bits`` (bit positions) is wrong."""
+        if node.op == 'regexp':
+            pattern = self.literal(node.arg)
+            if isinstance(pattern, TextLit):
+                try:
+                    xsd_regex.translate(pattern.value)
+                except xsd_regex.XsdRegexError as exc:
+                    return f"the argument of '.regexp' is not a valid XSD regular expression: {exc}"
+        elif node.op == 'bits':
+            try:
+                bit_mask(self.rules, node.arg, scope)
+            except ValueError as exc:
+                return (f"the argument of '.bits' must be bit positions "
+                        f"(a uint, a range or a choice of them): {exc}")
+        return None
 
     def check_control(self, node: Control, scope):
         op = node.op
@@ -710,20 +732,9 @@ class _Resolver:
             raise self.error(f"the argument of '.{op}' must be one value (a number, a string, "
                              f"true, false, null or undefined, or a rule that is one), "
                              f"not a type that matches several", node.arg.span)
-        if op == 'regexp':
-            pattern = self.literal(node.arg)
-            if isinstance(pattern, TextLit):
-                try:
-                    xsd_regex.translate(pattern.value)
-                except xsd_regex.XsdRegexError as exc:
-                    raise self.error(f"the argument of '.regexp' is not a valid XSD regular "
-                                     f"expression: {exc}", node.arg.span)
-        if op == 'bits':
-            try:
-                bit_mask(self.rules, node.arg, scope)
-            except ValueError as exc:
-                raise self.error(f"the argument of '.bits' must be bit positions "
-                                 f"(a uint, a range or a choice of them): {exc}", node.arg.span)
+        problem = self.pattern_problem(node, scope)
+        if problem:
+            raise self.error(problem, node.arg.span)
         if allowed_target is not None:
             kinds = self.kinds(node.target, scope)
             if kinds is not None and not kinds & allowed_target:
