@@ -142,9 +142,19 @@ person = {
 | `nint` | `int < 0` | Major type 1 only: −2⁶⁴ … −1 |
 | `int` | `int` | `bool` rejected |
 | `bool` | `bool` | `int` rejected |
-| `float` / `float16` / `float32` / `float64` | `float` | `int` rejected |
+| `float` | `float` | Any width; `int` rejected |
+| `float16` / `float32` / `float64` | `float` | The width the float was written in (see below); `int` rejected |
 | `null` / `nil` | `None` | |
+| `undefined` | `UNDEFINED` | The CBOR `undefined` item, not `null` |
 | `any` | anything | No type check performed |
+
+**Float widths.** Data decoded from CBOR bytes keeps how each float was
+written, so `float16` rejects a float written as a double: `fb 3ff8000000000000`
+(1.5 as a double) is `float64`, and only `f9 3e00` is `float16`. `float` and the
+choices `float16-32`, `float32-64` accept the widths they name. A float given as
+a Python value was never written, so it matches every width it fits without
+loss: `1.5` is `float16`, `float32` and `float64`, `1.1` only `float64`,
+`1e300` only `float64`.
 
 ### Other prelude types
 
@@ -309,14 +319,19 @@ at the root, in map fields, in array elements and in choices (`#1 / tstr`):
 | `#0.5`, `#1.0` | the integer 5, the integer -1 |
 | `#2.2`, `#3.1`, `#4.2`, `#5.1` | a string, array or map of that length (below 24) |
 | `#7.20`, `#7.21`, `#7.22` | `false`, `true`, `null` |
-| `#7.25` to `#7.27` | a float (the decoder does not keep the width, so all three match any float, as `float16`, `float32` and `float64` do) |
-| `#7.<type>` | the simple value whose number the type allows |
+| `#7.23` | `undefined` |
+| `#7.25`, `#7.26`, `#7.27` | a float written as a half, single or double (as `float16`, `float32`, `float64`) |
+| `#7.N` for any other `N` | the simple value `N` (`#7.16` is `simple(16)`); 24 to 31 are not simple value numbers and match nothing |
+| `#7.<type>` | whichever of the above the type's numbers (0 to 255) allow |
 
-The encoded width cannot be checked: `#0.26` (a number from 24 to 27 after the
-dot) is checked as `#0`, and a warning says so
-([#171](https://github.com/sahebbiswas/cddl_verifier/issues/171)). `undefined`
-and unassigned simple values are not decoded, so `#7.23` matches nothing
-([#168](https://github.com/sahebbiswas/cddl_verifier/issues/168)).
+For majors 0 to 5 the number is the additional information of the item's
+head: below 24 it is the value or length itself, 24 to 27 mean the argument is
+written in 1, 2, 4 or 8 bytes, and 31 means an indefinite length. So `#0.24`
+matches `1805` (5 written with a one-byte argument) and not `05`, `#0.5`
+matches `05` and not `1805`, and `#4.31` matches `9f01ff` and not `8101`.
+This needs how the item was written, which the validator has for CBOR bytes.
+Data given as Python values is taken to be written the preferred way (the
+shortest head): `5` is `#0.5`, `200` is `#0.24`, a three-element list is `#4.3`.
 
 ## Nested CBOR (`.cbor` control operator)
 

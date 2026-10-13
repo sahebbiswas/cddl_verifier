@@ -107,7 +107,8 @@ def render(matrix: dict) -> str:
         "data: `valid` must be accepted, `invalid` rejected. `accepted_but_invalid` and `rejected_but_valid` "
         "record a known gap, and the test fails when the code stops behaving that way, so a fix cannot "
         "leave the row behind. Data is JSON, with `{\"$bytes\": hex}`, `{\"$tag\": n, \"$value\": v}`, "
-        "`{\"$map\": [[k, v], ...]}` and `{\"$float\": \"nan\"}` for what JSON cannot write.",
+        "`{\"$map\": [[k, v], ...]}`, `{\"$float\": \"nan\"}`, `{\"$undefined\": true}` and "
+        "`{\"$simple\": n}` for what JSON cannot write.",
         "- `schema_errors` are schemas that must raise `SchemaError`.",
         "- `cbor` items (CBOR rows) give the hex input, whether it decodes, and whether it round-trips through the "
         "encoder, the canonical encoder and typed JSON.",

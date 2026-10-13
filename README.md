@@ -123,19 +123,16 @@ of the problem. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/b
   Validation covers a practical subset of what the grammar can express: the
   control operators `.bits`, `.cborseq`, `.eq`, `.ne`, `.abnf`, `.abnfb` and the
   RFC 9741 conversions are parsed but not enforced
-  ([#76](https://github.com/sahebbiswas/cddl_verifier/issues/76)), and the encoded
-  width in a major-type reference such as `#0.26` is not checked
-  ([#171](https://github.com/sahebbiswas/cddl_verifier/issues/171)). The
+  ([#76](https://github.com/sahebbiswas/cddl_verifier/issues/76)). The
   [conformance matrix](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CONFORMANCE.md)
   has the full list.
 - **Canonical encoding**: implements the RFC 8949 §4.2.1 core deterministic
   profile (see [CANONICAL_AND_JSON.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CANONICAL_AND_JSON.md)).
   The optional §4.2.2 reduction of integral floats to integers is not applied,
   and non-canonical mode still writes floats as 8-byte doubles.
-- **CBOR**: indefinite-length items, `undefined` and other simple values are not
-  supported (`CBORUnsupportedError`,
-  [#168](https://github.com/sahebbiswas/cddl_verifier/issues/168)). CBOR
-  sequences are rejected; a sequence API is not available yet.
+- **CBOR**: indefinite-length items, `undefined` and the other simple values
+  decode; the encoder writes definite-length items. CBOR sequences are
+  rejected; a sequence API is not available yet.
 - **Value types**: tags decode to `(tag, value)` tuples. This is provisional
   and expected to change
   ([#78](https://github.com/sahebbiswas/cddl_verifier/issues/78)). Map keys
