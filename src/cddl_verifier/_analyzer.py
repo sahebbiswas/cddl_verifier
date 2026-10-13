@@ -20,8 +20,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from ._cddl import parse_cddl, parse_prelude, query
-from ._cddl.ast import (BytesLit, FloatLit, GroupRef, InlineGroup, IntLit, Major, Member, Name,
-                        Paren, Range, Tag, TextLit, walk)
+from ._cddl.typetext import TypeText, as_type, bare_name, rename
+from ._cddl.ast import (BytesLit, Control, FloatLit, GroupRef, InlineGroup, IntLit, Major, Member,
+                        Name, Paren, Range, Tag, TextLit, Type, Unwrap, walk)
 from ._cddl.printer import format_node
 from ._cddl.legacy import LegacyTables
 from ._cddl.items import float_width_fits, major_error, tag_parts
@@ -285,7 +286,7 @@ class CDDLParser:
             while defined(table_name):
                 table_name += '@prelude'
             if table_name != name:
-                self.type_aliases[owner] = prelude_text.replace(name, table_name)
+                self.type_aliases[owner] = TypeText(rename(as_type(prelude_text), name, table_name))
             self.types[table_name] = copy.deepcopy(type_def)
             self.synthetic_types.add(table_name)
     
@@ -368,6 +369,29 @@ class CDDLParser:
         logger.debug(f"  Final resolution: {resolved}")
         return resolved
     
+    def alias_node(self, name: str) -> Optional[Type]:
+        """The type the alias *name* stands for, as a node, or ``None`` if it is no alias (#175)."""
+        alias = self.type_aliases.get(name)
+        return None if alias is None else as_type(alias)
+
+    def resolve_alias(self, expr, max_depth: int = 10) -> Type:
+        """Follow the alias chain of *expr* and return the terminal type as a node.
+
+        Same walk as :meth:`resolve_type_alias`, on nodes: only an expression
+        that is exactly one name is followed, at most *max_depth* hops, and a
+        name that is its own alias (a built-in primitive) stops the walk.
+        """
+        node = as_type(expr)
+        name = bare_name(node)
+        depth = 0
+        while name is not None and name in self.type_aliases and depth < max_depth:
+            following = as_type(self.type_aliases[name])
+            if following == node:
+                break
+            node, name = following, bare_name(following)
+            depth += 1
+        return node
+
     def extract_cbor_control(self, type_string: str) -> Optional[Tuple[str, str]]:
         """``(base, inner)`` for ``bstr .cbor inner`` / ``bytes .cbor inner``.
 
@@ -394,10 +418,9 @@ class CDDLParser:
             return lo, hi if node.inclusive else hi - 1
         if isinstance(node, Name) and node.name not in seen:
             seen.add(node.name)
-            alias = self.type_aliases.get(node.name)
-            parsed = query.parse(alias) if alias is not None else None
-            if parsed is not None and len(parsed.node.alternatives) == 1:
-                return self._size_bound(parsed.node.alternatives[0], seen)
+            alias = self.alias_node(node.name)
+            if alias is not None and len(alias.alternatives) == 1:
+                return self._size_bound(alias.alternatives[0], seen)
         return None
 
     def _size_int(self, node, seen) -> Optional[int]:
@@ -453,10 +476,9 @@ class CDDLParser:
             return True
         if isinstance(node, Name) and node.name not in seen:
             seen.add(node.name)
-            alias = self.type_aliases.get(node.name)
-            parsed = query.parse(alias) if alias is not None else None
-            if parsed is not None and len(parsed.node.alternatives) == 1:
-                return self._is_range(parsed.node.alternatives[0], seen)
+            alias = self.alias_node(node.name)
+            if alias is not None and len(alias.alternatives) == 1:
+                return self._is_range(alias.alternatives[0], seen)
         return False
 
     def size_violation(self, value: Any, base_type: str, constraint: Optional[dict]) -> Optional[str]:
@@ -734,6 +756,11 @@ class CDDLParser:
     def get_socket_extensions(self, socket_name: str) -> Optional[List[str]]:
         """Get all extensions for a socket."""
         return self.socket_extensions.get(socket_name)
+
+
+def _name_type(name: str) -> Type:
+    """The type expression that is just the name *name*."""
+    return Type((Name(name),))
 
 
 #: Marks a breadcrumb component (a rule name) that is not a step in the data.
@@ -1915,7 +1942,7 @@ class CBORAnalyzer:
             return None
         return low.value, high.value
 
-    def _range_errors(self, value: Any, expr: str, strict: bool = False) -> Optional[List[str]]:
+    def _range_errors(self, value: Any, expr, strict: bool = False) -> Optional[List[str]]:
         """Check *value* against a range type (``0..10``, ``0.0...1.0``, ``lo .. hi``, #71).
 
         An integer range matches CBOR integers (major types 0 and 1, so not a
@@ -1931,7 +1958,7 @@ class CBORAnalyzer:
         known = self._bound_literal(node.low) or self._bound_literal(node.high)
         if known is None:
             # bounds that are sockets or generic parameters: nothing to compare with
-            return [f"cannot check range '{expr}'"] if strict else []
+            return [f"cannot check range '{format_node(as_type(expr))}'"] if strict else []
         if isinstance(known, IntLit):
             ok_type = (isinstance(value, int) and not isinstance(value, bool)
                        and -(1 << 64) <= value < (1 << 64))
@@ -1941,24 +1968,24 @@ class CBORAnalyzer:
             kind = 'a float'
         shown = self._format_value_for_log(value)
         if not ok_type:
-            return [f"expected {kind} in {expr}, got {shown}"]
+            return [f"expected {kind} in {format_node(as_type(expr))}, got {shown}"]
         if bounds is None:
             if strict:
-                return [f"cannot check range '{expr}'"]
+                return [f"cannot check range '{format_node(as_type(expr))}'"]
             # '$low .. 10' with an unknown '$low': the known bound still applies
             low, high = self._bound_literal(node.low), self._bound_literal(node.high)
             if low is not None and not value >= low.value:  # 'not >=' also rejects NaN
-                return [f"{shown} is outside {expr}"]
+                return [f"{shown} is outside {format_node(as_type(expr))}"]
             if high is not None and not (value <= high.value if node.inclusive
                                          else value < high.value):
-                return [f"{shown} is outside {expr}"]
+                return [f"{shown} is outside {format_node(as_type(expr))}"]
             return []
         low, high = bounds
         if not (low <= value and (value <= high if node.inclusive else value < high)):
-            return [f"{shown} is outside {expr}"]
+            return [f"{shown} is outside {format_node(as_type(expr))}"]
         return []
 
-    def _literal_errors(self, value: Any, expr: str) -> Optional[List[str]]:
+    def _literal_errors(self, value: Any, expr) -> Optional[List[str]]:
         """Check *value* against a literal type (``1``, ``1.5``, ``"x"``, ``h'01'``, ``true``).
 
         Returns ``None`` when *expr* is not a literal.
@@ -1976,11 +2003,11 @@ class CBORAnalyzer:
             ok = isinstance(value, bytes) and value == lit.value
         elif self._is_literal(expr):
             # 'true' / 'false', unless the schema redefines them
-            ok = value is (expr == 'true')
+            ok = value is (bare_name(as_type(expr)) == 'true')
         else:
             return None
         if not ok:
-            return [f"expected {expr}, got {self._format_value_for_log(value)}"]
+            return [f"expected {format_node(as_type(expr))}, got {self._format_value_for_log(value)}"]
         if lit is None or not query.controls(expr):
             return []
         # '"t" .regexp "[a-c]+"', '1 .ge 0': the controls apply to the literal too
@@ -1988,7 +2015,7 @@ class CBORAnalyzer:
             type(lit), 'uint' if isinstance(lit, IntLit) and lit.value >= 0 else 'int')
         return self._primitive_errors(value, base, expr)
 
-    def _primitive_errors(self, value: Any, base: str, expr: str) -> List[str]:
+    def _primitive_errors(self, value: Any, base: str, expr) -> List[str]:
         """Check *value* against primitive *base* and the controls in *expr*."""
         if base == 'any':
             return []
@@ -2153,18 +2180,23 @@ class CBORAnalyzer:
             self.validation_errors, self.breadcrumb = saved_errors, saved_breadcrumb
             self._data_path, self._rules = saved_path, saved_rules
 
-    def _is_structured(self, alt: str) -> bool:
+    def _is_structured(self, alt) -> bool:
         """Whether choice alternative *alt* is a map, array or tag, by name or in full."""
-        resolved = self.cddl.resolve_type_alias(alt.strip())
+        resolved = self.cddl.resolve_alias(alt)
         item = query.item_ref(resolved)
-        return (resolved in self.cddl.types or query.tag(resolved) is not None
+        name = bare_name(resolved)
+        return ((name is not None and name in self.cddl.types)
+                or query.tag(resolved) is not None
                 or query.is_array(resolved)
                 or (item is not None and (isinstance(item.node, Tag)
                                           or getattr(item.node, 'major', 0) in (4, 5, 6))))
 
-    def _check_value(self, value: Any, expr: str, _depth: int = 0,
+    def _check_value(self, value: Any, expr, _depth: int = 0,
                      strict: bool = False) -> List[str]:
         """Validate *value* against a CDDL type expression; return the errors.
+
+        *expr* is a ``Type`` node (text is parsed, for the callers that have
+        not moved to nodes yet, #176).
 
         Handles type choices (inline ``a / b`` and ``$socket`` choices), tags,
         literals, primitives with ``.size``/``.regexp``/``.ge``-style controls
@@ -2175,12 +2207,14 @@ class CBORAnalyzer:
         keys use *strict*, so a key type that cannot be checked does not
         allow every extra key.
         """
-        expr = expr.strip()
+        expr = as_type(expr)
         if _depth > 32:
-            return [f"cannot check '{expr}'"] if strict else []  # alias cycle
-        alternatives = self._split_choice(expr)
-        if len(alternatives) == 1 and expr in self.cddl.type_choices:
-            alternatives = self.cddl.type_choices[expr]  # '$socket', even with one alternative
+            return [f"cannot check '{format_node(expr)}'"] if strict else []  # alias cycle
+        alternatives = query.alternatives(expr)
+        name = bare_name(expr)
+        if len(alternatives) == 1 and name is not None and name in self.cddl.type_choices:
+            # '$socket', even with one alternative
+            alternatives = [as_type(alt) for alt in self.cddl.type_choices[name]]
             if len(alternatives) == 1:
                 return self._check_value(value, alternatives[0], _depth + 1, strict)
         if len(alternatives) > 1:
@@ -2193,17 +2227,19 @@ class CBORAnalyzer:
                         return []
                     matched.append(alt)
                 else:
-                    failures.append(f"{alt}: {alt_errors[0]}")
+                    failures.append(f"{format_node(alt)}: {alt_errors[0]}")
             if matched:
                 # Overlapping primitives ('uint / int') are ordinary; two
                 # structures that both fit are an ambiguous reading (#74).
                 structured = [alt for alt in matched if self._is_structured(alt)]
                 if len(structured) > 1:
+                    shown = format_node(expr)
                     return [f"matches more than one alternative of "
-                            f"{expr if len(expr) < 60 else 'the choice'}: "
-                            f"{', '.join(structured)}"]
+                            f"{shown if len(shown) < 60 else 'the choice'}: "
+                            f"{', '.join(format_node(alt) for alt in structured)}"]
                 return []
-            return [f"matches none of {' / '.join(alternatives)} ({'; '.join(failures)})"]
+            return [f"matches none of {' / '.join(format_node(alt) for alt in alternatives)} "
+                    f"({'; '.join(failures)})"]
 
         paren = self._paren_parts(expr)
         if paren is not None:
@@ -2212,23 +2248,23 @@ class CBORAnalyzer:
         if query.choice_from(expr) is not None:  # '&(a: 0, b: 1)' is the choice '0 / 1'
             values = self._choice_from_values(expr)
             if values is None:
-                return [f"cannot check {expr}: its group could not be expanded"]
+                return [f"cannot check {format_node(expr)}: its group could not be expanded"]
             if not values:
-                return [f"{expr} has no values to choose from"]
-            return self._check_value(value, ' / '.join(values), _depth + 1, strict)
+                return [f"{format_node(expr)} has no values to choose from"]
+            return self._check_value(value, Type(tuple(values)), _depth + 1, strict)
 
         if self._is_empty_socket(expr):
-            return [f"type socket {expr} has no alternatives, so no value matches it"]
+            return [f"type socket {format_node(expr)} has no alternatives, so no value matches it"]
 
-        if expr.startswith('~'):
+        if isinstance(query.base(expr), Unwrap):
             # '~t' with a tag is the type inside it and is resolved when the
             # tables are built (#158). What is left unwraps a map or array,
             # which gives a group, not a type, so no value matches it. It must
             # not make a whole choice accept everything (#106).
-            return [f"cannot check '{expr}': unwrapping a map or array gives a group, "
+            return [f"cannot check '{format_node(expr)}': unwrapping a map or array gives a group, "
                     f"which is not a type, so no value matches it"]
 
-        tag_info = self.cddl.extract_cbor_tag(expr)
+        tag_info = query.tag(expr)
         if tag_info:
             expected_tag, inner = tag_info
             if not self._is_tagged(value):
@@ -2249,36 +2285,39 @@ class CBORAnalyzer:
         if literal is not None:
             return literal
 
-        cbor_control = self.cddl.extract_cbor_control(expr)
+        cbor_control = query.cbor_control(expr)
         if cbor_control:  # 'bstr .cbor inner': decode the bytes, check the item inside
             if not isinstance(value, bytes):
-                return [f"expected bstr (.cbor {cbor_control[1]}), got {type(value).__name__}"]
+                return [f"expected bstr (.cbor {format_node(cbor_control[1])}), "
+                        f"got {type(value).__name__}"]
             try:
                 nested = SimpleCBORDecoder(value).decode("cbor")
             except Exception as exc:
-                return [f"embedded CBOR (.cbor {cbor_control[1]}) does not decode: {exc}"]
+                return [f"embedded CBOR (.cbor {format_node(cbor_control[1])}) "
+                        f"does not decode: {exc}"]
             # 'bstr .cbor uint .size 1': the bytes' own controls apply too
             errors = self._primitive_errors(value, 'bstr', expr)
             return errors or self._check_value(nested, cbor_control[1], _depth + 1, strict)
 
-        if expr in self.cddl.types:
-            return self._sandboxed_validate(value, self.cddl.types[expr], expr)
+        if name is not None and name in self.cddl.types:
+            return self._sandboxed_validate(value, self.cddl.types[name], name)
 
-        name = query.head(expr)
-        alias = self.cddl.type_aliases.get(name)
-        if alias is not None and alias != name and name == expr:
+        head = query.head(expr)
+        alias = self.cddl.alias_node(name) if name is not None else None
+        if alias is not None and alias != expr:
             return self._check_value(value, alias, _depth + 1, strict)  # follow one alias step
 
-        base = self.cddl.resolve_type_alias(name)
+        base = bare_name(self.cddl.resolve_alias(head))
         if base in self._ROOT_PRIMITIVES:
             return self._primitive_errors(value, base, expr)
 
-        type_def = self.cddl.get_type(expr, value)
+        shown = format_node(expr)
+        type_def = self.cddl.get_type(shown, value)
         if type_def:
-            return self._sandboxed_validate(value, type_def, expr)
+            return self._sandboxed_validate(value, type_def, shown)
         if strict:
-            return [f"cannot check '{expr}'"]
-        logger.debug(f"Cannot check type expression '{expr}'; accepting value")
+            return [f"cannot check '{shown}'"]
+        logger.debug(f"Cannot check type expression '{shown}'; accepting value")
         return []
 
     def _item_errors(self, value: Any, item: 'query.ItemRef', _depth: int,
@@ -2294,14 +2333,15 @@ class CBORAnalyzer:
                 if parts is None:
                     return [f"expected a tag (#6), got {self._describe_item(value)}"]
                 errors = self._check_value(parts[0], item.tag_type, _depth + 1, True)
-                return [f"tag number {parts[0]} does not match {item.tag_type}: {errors[0]}"] \
-                    if errors else []
+                return [f"tag number {parts[0]} does not match "
+                        f"{format_node(item.tag_type)}: {errors[0]}"] if errors else []
             # '#7.<type>': the additional information is any number the type allows
             for info in range(256):
                 if not self._check_value(info, item.tag_type, _depth + 1, True) \
                         and not major_error(value, node.major, info):
                     return []
-            return [f"expected #{node.major}.<{item.tag_type}>, got {self._describe_item(value)}"]
+            return [f"expected #{node.major}.<{format_node(item.tag_type)}>, "
+                    f"got {self._describe_item(value)}"]
         if not isinstance(node, Tag):
             return []  # '#': any data item
         parts = tag_parts(value)
@@ -2310,7 +2350,8 @@ class CBORAnalyzer:
         if item.tag_type is not None:
             errors = self._check_value(parts[0], item.tag_type, _depth + 1, True)
             if errors:
-                return [f"tag number {parts[0]} does not match {item.tag_type}: {errors[0]}"]
+                return [f"tag number {parts[0]} does not match "
+                        f"{format_node(item.tag_type)}: {errors[0]}"]
         return self._check_value(parts[1], item.inner, _depth + 1, strict)
 
     @staticmethod
@@ -2318,7 +2359,7 @@ class CBORAnalyzer:
         return type(value).__name__ if not isinstance(value, (int, float, str, bool)) \
             else repr(value)
 
-    def _paren_errors(self, value: Any, expr: str, paren: 'query.ParenParts',
+    def _paren_errors(self, value: Any, expr: Type, paren: 'query.ParenParts',
                       _depth: int, strict: bool) -> List[str]:
         """Check *value* against a parenthesized type (``(T)``, ``(a / b) .ctl x``).
 
@@ -2337,11 +2378,13 @@ class CBORAnalyzer:
                 node = query.range_of(alt)
                 # either known bound gives the kind ('($low .. 10) .le 5')
                 known = self._bound_literal(node.low) or self._bound_literal(node.high)
-                base = None if known is None else ('int' if isinstance(known, IntLit) else 'float')
+                base = None if known is None else _name_type(
+                    'int' if isinstance(known, IntLit) else 'float')
             if not errors and base is not None:
                 for control in paren.controls:
-                    errors = self._check_value(value, f"{base} .{control.op} {control.arg_text}",
-                                               _depth + 1, strict)
+                    # 'uint .size 1' for the alternative 'uint'
+                    controlled = Type((Control(base.alternatives[0], control.op, control.arg),))
+                    errors = self._check_value(value, controlled, _depth + 1, strict)
                     if errors:
                         break
             if not errors:
@@ -2349,16 +2392,17 @@ class CBORAnalyzer:
             failures.append((alt, errors[0]))
         if len(failures) == 1:
             return [failures[0][1]]
-        return [f"matches none of {expr} ("
-                f"{'; '.join(f'{alt}: {error}' for alt, error in failures)})"]
+        return [f"matches none of {format_node(expr)} ("
+                f"{'; '.join(f'{format_node(alt)}: {error}' for alt, error in failures)})"]
 
-    def _paren_parts(self, expr: str) -> Optional['query.ParenParts']:
+    def _paren_parts(self, expr) -> Optional['query.ParenParts']:
         """*expr* as a parenthesized type, if it is one.
 
         A named choice under a control counts too: with ``m = uint / nil``,
         ``m .size 1`` is ``(uint / nil) .size 1``. So does a choice from a
         group: ``&(a: 0, b: 1) .le 0`` is ``(0 / 1) .le 0``.
         """
+        expr = as_type(expr)
         paren = query.paren(expr)
         if paren is not None:
             return paren
@@ -2368,23 +2412,28 @@ class CBORAnalyzer:
         base = query.without_controls(expr)
         if base is not None and query.choice_from(base) is not None:
             # '&colors .size 1': the controls apply to each value of the group
-            return query.ParenParts(self._choice_from_values(base) or [base], controls)
+            values = self._choice_from_values(base)
+            return query.ParenParts([Type((v,)) for v in values] if values else [base], controls)
         if base is not None and self._is_empty_socket(base):
             return query.ParenParts([base], controls)  # '$e .size 1': still matches nothing
-        resolved = self.cddl.resolve_type_alias(query.head(expr))
-        alternatives = self.cddl.type_choices.get(resolved) or self._split_choice(resolved)
-        if len(alternatives) < 2 and resolved not in self.cddl.type_choices:
+        resolved = self.cddl.resolve_alias(query.head(expr))
+        name = bare_name(resolved)
+        choices = self.cddl.type_choices.get(name) if name is not None else None
+        alternatives = ([as_type(alt) for alt in choices] if choices
+                        else query.alternatives(resolved))
+        if len(alternatives) < 2 and not (name is not None and name in self.cddl.type_choices):
             return None
         return query.ParenParts(list(alternatives), controls)
 
-    def _choice_from_values(self, expr: str) -> Optional[List[str]]:
-        """The values ``&( group )`` or ``&name`` chooses from.
+    def _choice_from_values(self, expr) -> Optional[list]:
+        """The values ``&( group )`` or ``&name`` chooses from, as type nodes.
 
         These are the types of the group's entries, keys dropped:
-        ``&(a: 0, ? b: 1)`` gives ``['0', '1']``. Entries that are groups
-        (``&(base, c: 2)``) contribute their own entries. ``None`` when *expr*
-        is not a choice from a group, or when the group cannot be expanded;
-        :meth:`_check_value` reports the latter rather than accepting the value.
+        ``&(a: 0, ? b: 1)`` gives the nodes ``0`` and ``1``. Entries that are
+        groups (``&(base, c: 2)``) contribute their own entries. ``None`` when
+        *expr* is not a choice from a group, or when the group cannot be
+        expanded; :meth:`_check_value` reports the latter rather than
+        accepting the value.
         """
         node = query.choice_from(expr)
         if node is None:
@@ -2395,12 +2444,12 @@ class CBORAnalyzer:
             group = resolved.instantiate(node.name, node.args) if resolved is not None else None
             if group is None or not hasattr(group, 'choices'):
                 return None
-        values: List[str] = []
+        values: list = []
         if not self._collect_group_values(group, values, set(), depth=0):
             return None
         return values
 
-    def _collect_group_values(self, group, values: List[str], seen: set, depth: int) -> bool:
+    def _collect_group_values(self, group, values: list, seen: set, depth: int) -> bool:
         """Add the entry types of *group* to *values*; False if one cannot be read.
 
         A group already being expanded (``g = (a: 1, ? g)``) adds nothing new
@@ -2411,7 +2460,7 @@ class CBORAnalyzer:
         for choice in group.choices:
             for entry in choice.entries:
                 if isinstance(entry, Member):
-                    values.extend(format_node(alt) for alt in entry.value.alternatives)
+                    values.extend(entry.value.alternatives)
                 elif isinstance(entry, InlineGroup):
                     if not self._collect_group_values(entry.group, values, seen, depth + 1):
                         return False
@@ -2431,52 +2480,65 @@ class CBORAnalyzer:
         return True
 
     @staticmethod
-    def _is_socket(expr: str) -> bool:
+    def _is_socket(expr) -> bool:
         """True for a bare type socket name (``$name``)."""
-        return (expr.startswith('$') and not expr.startswith('$$')
-                and query.names(expr) == {expr} and query.head(expr) == expr)
+        name = bare_name(as_type(expr))
+        return name is not None and name.startswith('$') and not name.startswith('$$')
 
-    def _is_empty_socket(self, expr: str) -> bool:
+    def _is_empty_socket(self, expr) -> bool:
         """True for a type socket (``$name``) that has no alternatives."""
-        return (self._is_socket(expr) and expr not in self.cddl.type_choices
-                and expr not in self.cddl.types and expr not in self.cddl.type_aliases)
+        if not self._is_socket(expr):
+            return False
+        name = bare_name(as_type(expr))
+        return (name not in self.cddl.type_choices and name not in self.cddl.types
+                and name not in self.cddl.type_aliases)
 
-    def _is_literal(self, expr: str) -> bool:
+    def _is_literal(self, expr) -> bool:
         """True for a literal type (``1``, ``"x"``, ``h'01'``, ``true``), with or
         without controls (``"t" .regexp "t+"``)."""
-        return (query.literal(expr) is not None
-                or (expr in ('true', 'false')
-                    and expr not in self.cddl.types
-                    and expr not in self.cddl.type_choices
-                    and self.cddl.type_aliases.get(expr, expr) == expr))
+        expr = as_type(expr)
+        if query.literal(expr) is not None:
+            return True
+        name = bare_name(expr)
+        if name not in ('true', 'false') or name in self.cddl.types \
+                or name in self.cddl.type_choices:
+            return False
+        alias = self.cddl.alias_node(name)
+        return alias is None or alias == expr  # not redefined
 
-    def _checked_as_whole(self, expr: Optional[str]) -> bool:
+    def _checked_as_whole(self, expr) -> bool:
         """True for a type that only :meth:`_check_value` can check: an inline
         choice (``uint / tstr``), a type socket (``$name``), a choice from a
         group (``&(a: 0, b: 1)``), a parenthesized type (``(uint) .size 1``)
-        or a literal (``1``, ``"x"``, #73) or an item reference (``#1``, #167)."""
-        return bool(expr) and (len(self._split_choice(expr)) > 1
-                               or self._is_literal(expr)
-                               or query.item_ref(expr) is not None
-                               or self.cddl.resolve_type_alias(query.head(expr))
-                               in self._WHOLE_PRIMITIVES
-                               or expr in self.cddl.type_choices
-                               or self._is_socket(expr)
-                               or query.choice_from(expr) is not None
-                               or query.range_of(expr) is not None
-                               or self._is_compared_number(expr)
-                               or self._paren_parts(expr) is not None)
+        or a literal (``1``, ``"x"``, #73) or an item reference (``#1``, #167).
+
+        *expr* may be ``None`` or empty: no type.
+        """
+        if not expr:
+            return False
+        expr = as_type(expr)
+        name = bare_name(expr)
+        return (len(expr.alternatives) > 1
+                or self._is_literal(expr)
+                or query.item_ref(expr) is not None
+                or bare_name(self.cddl.resolve_alias(query.head(expr))) in self._WHOLE_PRIMITIVES
+                or (name is not None and name in self.cddl.type_choices)
+                or self._is_socket(expr)
+                or query.choice_from(expr) is not None
+                or query.range_of(expr) is not None
+                or self._is_compared_number(expr)
+                or self._paren_parts(expr) is not None)
 
     _NUMBER_TYPES = frozenset({'uint', 'int', 'float', 'float16', 'float32', 'float64',
                                'float16-32', 'float32-64'})
 
-    def _is_compared_number(self, expr: str) -> bool:
+    def _is_compared_number(self, expr) -> bool:
         """True for a number type with ``.ge``/``.gt``/``.le``/``.lt`` (``float .le 1.0``).
 
         :meth:`_check_value` checks those controls; the map-field and
         array-element paths would check only the type (#71).
         """
-        base = self.cddl.resolve_type_alias(query.head(expr))
+        base = bare_name(self.cddl.resolve_alias(query.head(expr)))
         return base in self._NUMBER_TYPES and self.cddl.extract_value_range(expr) is not None
 
     def _check_primitive_type(self, value, type_name, _depth: int = 0):
@@ -2488,10 +2550,12 @@ class CBORAnalyzer:
         Args:
             value:     The Python value decoded from CBOR.
             type_name: A CDDL primitive name such as 'uint', 'tstr', 'bool',
-                       'bstr', 'float', 'int', 'nil', or 'null'.
+                       'bstr', 'float', 'int', 'nil', or 'null', or a type
+                       node (an alias to a choice is checked alternative by
+                       alternative).
         """
-        resolved = self.cddl.resolve_type_alias(type_name)
-        alternatives = query.alternatives(resolved) if resolved else []
+        resolved = self.cddl.resolve_alias(type_name)
+        alternatives = query.alternatives(resolved)
         if len(alternatives) > 1 and _depth < 16:
             # A choice ('m = bstr / [* int]'): compatible if any alternative is,
             # incompatible only if every alternative is a mismatching primitive.
@@ -2500,7 +2564,7 @@ class CBORAnalyzer:
                 return True
             return False if all(r is False for r in results) else None
         # Strip any CDDL annotations (.size, etc.) to get just the base type
-        t = query.head(resolved) if resolved else type_name
+        t = query.head(resolved)
         if t == 'uint':
             if not isinstance(value, int) or isinstance(value, bool):
                 return False
