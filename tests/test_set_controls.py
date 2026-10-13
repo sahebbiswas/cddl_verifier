@@ -16,7 +16,7 @@ except ImportError:
 
 import unittest
 
-from cddl_verifier import validate
+from cddl_verifier import SchemaError, validate
 
 
 def ok(schema, data, root='r'):
@@ -60,8 +60,16 @@ class TestEqNe(unittest.TestCase):
 
     def test_argument_must_be_one_value(self):
         for arg in ('0..5', 'int', '{a: int}', '[* int]', '1 / 2'):
-            with self.assertRaises(Exception, msg=arg):
+            with self.assertRaises(SchemaError, msg=arg):
                 validate(f'r = int .eq ({arg})', 1, root_type='r')
+
+    def test_argument_checked_after_generic_substitution(self):
+        s = 'g<T> = uint .eq T\nr = g<(1 / 2)>'
+        with self.assertRaises(SchemaError):
+            validate(s, 1, root_type='r')
+        good = 'g<T> = uint .eq T\nr = g<5>'
+        self.assertTrue(ok(good, 5))
+        self.assertFalse(ok(good, 6))
 
 
 class TestAndWithin(unittest.TestCase):
@@ -105,6 +113,12 @@ class TestAndWithin(unittest.TestCase):
         s = 'r = [* int] .and [* 0..5]'
         self.assertTrue(ok(s, [1, 2]))
         self.assertFalse(ok(s, [1, 9]))
+
+    def test_array_target_keeps_its_own_shape(self):
+        s = 'r = {x: [+ uint] .and [* int]}'
+        self.assertTrue(ok(s, {'x': [1]}))
+        self.assertFalse(ok(s, {'x': []}))
+        self.assertFalse(ok(s, {'x': [-1]}))
 
     def test_in_field_and_element(self):
         s = 'r = {a: tstr .and (tstr .size 2), b: [* uint .and (0..3)]}'

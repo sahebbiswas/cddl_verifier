@@ -168,7 +168,8 @@ class CDDLParser:
       flags and CDDL-specific escapes are not interpreted.
     * Ranges (``0..10``, ``0.0...1.0``) and the comparison controls
       (``.ge``, ``.gt``, ``.le``, ``.lt``) are enforced on integers and
-      floats (#71); ``.eq`` and ``.ne`` are not yet (#76).
+      floats (#71). ``.eq`` and ``.ne`` compare with one value and ``.and``
+      and ``.within`` need both operands to match (#181).
 
     Attributes
     ----------

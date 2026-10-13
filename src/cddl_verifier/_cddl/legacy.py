@@ -718,7 +718,16 @@ class LegacyTables:
                     arg = Name(self._synthetic(inner, f'{path}@{node.op}'))
                 else:
                     arg = _as_type2(self._lift(Type((arg,)), f'{path}@{node.op}'))
-            return Control(self._lift(node.target, path), node.op, arg)
+            target = node.target
+            if node.op in _AND_CONTROLS:
+                # '[+ uint] .and [* int]': a structure target is lifted too, or its
+                # own shape would be lost behind the control
+                inner = target
+                while isinstance(inner, Paren) and len(inner.type.alternatives) == 1:
+                    inner = inner.type.alternatives[0]
+                if isinstance(inner, (Map, Array)):
+                    target = Name(self._synthetic(inner, f'{path}@target'))
+            return Control(self._lift(target, path), node.op, arg)
         if isinstance(node, Array):
             if not self._uniform(node):
                 # '[ int, tstr ]': a structure of its own, so its elements are

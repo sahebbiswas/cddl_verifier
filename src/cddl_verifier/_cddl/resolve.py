@@ -46,7 +46,7 @@ from typing import Dict, FrozenSet, Iterable, List, Optional, Set, Tuple, Union
 from .ast import (AnyItem, Array, BytesLit, ChoiceFrom, Control, FloatLit, Group,
                   GroupChoice, GroupRef, GroupRule, InlineGroup, IntLit, Major, Map,
                   Member, Name, Occurrence, Paren, Range, Schema, Span, Tag, TextLit,
-                  Type, TypeRule, Unwrap)
+                  Type, TypeRule, Unwrap, walk)
 from .errors import CDDLSemanticError
 from .prelude import parse_prelude
 
@@ -512,6 +512,8 @@ class _Resolver:
                                  f"type; wrap it as '{{ {node.name} }}' or "
                                  f"'[ {node.name} ]'", node.span)
             self.check_args(node.args, scope)
+            if node.args and rule is not None and rule.kind == TYPE:
+                self.check_instance_controls(node, scope)
         elif isinstance(node, Paren):
             self.check_type(node.type, scope)
         elif isinstance(node, Map):
@@ -666,6 +668,25 @@ class _Resolver:
 
     def literal(self, node):
         return _literal(self.rules, node)
+
+    def check_instance_controls(self, node: Name, scope):
+        """Recheck the ``.eq`` / ``.ne`` arguments of ``node`` once its generic arguments are in.
+
+        In the definition ``g<T> = uint .eq T`` the argument ``T`` is unknown, so
+        ``g<(1 / 2)>`` passes there; here the substituted argument is checked.
+        Names are not followed, so a recursive generic ends.
+        """
+        rule = self.rules.get(node.name)
+        if rule is None or len(node.args) != len(rule.params):
+            return
+        body = substitute(rule.type(), dict(zip(rule.params, node.args)))
+        for sub in walk(body):
+            if isinstance(sub, Control) and sub.op in ('eq', 'ne') \
+                    and self.one_value(sub.arg, scope) is False:
+                raise self.error(f"the argument of '.{sub.op}' must be one value (a number, "
+                                 f"a string, true, false, null or undefined, or a rule that is "
+                                 f"one), not a type that matches several; '{node.name}' "
+                                 f"passes one that matches several", node.span)
 
     def check_control(self, node: Control, scope):
         op = node.op
