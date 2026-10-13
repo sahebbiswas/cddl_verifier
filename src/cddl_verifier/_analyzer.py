@@ -2338,6 +2338,10 @@ class CBORAnalyzer:
             errors = self._primitive_errors(value, 'bstr', expr)
             return errors or self._check_value(nested, cbor_control[1], _depth + 1, strict)
 
+        cborseq_control = query.cborseq_control(expr)
+        if cborseq_control:  # 'bstr .cborseq [* T]': decode the sequence, check its items as an array
+            return self._cborseq_errors(value, expr, cborseq_control[1], _depth, strict)
+
         if name is not None and name in self.cddl.types:
             return self._sandboxed_validate(value, self.cddl.types[name], name)
 
@@ -2358,6 +2362,21 @@ class CBORAnalyzer:
             return [f"cannot check '{shown}'"]
         logger.debug(f"Cannot check type expression '{shown}'; accepting value")
         return []
+
+    def _cborseq_errors(self, value: Any, expr, inner, _depth: int, strict: bool) -> List[str]:
+        """Check a ``bstr .cborseq inner`` value: decode the sequence, match its items as an array."""
+        shown = format_node(inner)
+        if '@' in shown:  # a structure written in place, lifted to a rule of its own
+            shown = 'items'
+        if not isinstance(value, bytes):
+            return [f"expected bstr (.cborseq {shown}), got {type(value).__name__}"]
+        try:
+            items = CBOR.loads_sequence(value, keep_encoding=True)
+        except Exception as exc:
+            return [f"embedded CBOR sequence (.cborseq {shown}) does not decode: {exc}"]
+        # 'bstr .cborseq [* T] .size 4': the bytes' own controls apply too
+        errors = self._primitive_errors(value, 'bstr', expr)
+        return errors or self._check_value(items, inner, _depth + 1, strict)
 
     #: Controls that compare the value with their argument instead of
     #: describing its shape: equal to (``.eq``), different from (``.ne``), and
@@ -2615,6 +2634,7 @@ class CBORAnalyzer:
                 or query.range_of(expr) is not None
                 or self._is_compared_number(expr)
                 or any(control.op == 'bits' for control in query.controls(expr))
+                or query.cborseq_control(expr) is not None
                 or self._paren_parts(expr) is not None)
 
     _NUMBER_TYPES = frozenset({'uint', 'int', 'float', 'float16', 'float32', 'float64',

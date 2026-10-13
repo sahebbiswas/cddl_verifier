@@ -43,6 +43,12 @@ backtracking engine, so a pattern such as `(a+)+b` can take very long on a
 long text: do not use `.regexp` with schemas or data you do not trust
 ([#185](https://github.com/sahebbiswas/cddl_verifier/issues/185)).
 
+`bstr .cborseq T` holds a CBOR sequence (RFC 8742). The sequence is decoded
+and its items, taken as an array, must match `T`, which must be an array type:
+`bstr .cborseq [* uint]` takes any number of uints, including none, and
+`bstr .cborseq [uint, tstr]` takes exactly those two. A truncated or malformed
+item is an error that names the item and the offset (#77).
+
 `.bits` allows only the bit positions its argument names (RFC 8610 §3.8): a
 `uint`, a range, a choice of them, or a rule or `&(...)` that is one. For a
 `uint` position `n` is the bit worth `2**n`; for a `bstr` the first byte is

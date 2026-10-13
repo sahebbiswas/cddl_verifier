@@ -2039,21 +2039,18 @@
    "area": "control",
    "construct": "`.cborseq`",
    "spec": "RFC 8610 \u00a73.8",
-   "status": "unsupported",
+   "status": "supported",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "unsupported",
+    "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "Accepted without decoding the sequence; needs a sequence decoder (#77, #76).",
-   "issues": [
-    76,
-    77
-   ],
+   "notes": "The byte string must hold a CBOR sequence (RFC 8742) whose items, taken as an array, match the argument, which must be an array type: `bstr .cborseq [* uint]` takes any number of uints, including none. A truncated or malformed item is reported with its number and offset. The error is reported at the byte string, as for `.cbor`.",
+   "issues": [],
    "tests": [
-    "tests/test_resolve.py"
+    "tests/test_cborseq.py"
    ],
    "probes": [
     {
@@ -2061,11 +2058,30 @@
      "valid": [
       {
        "$bytes": "0102"
+      },
+      {
+       "$bytes": ""
       }
      ],
-     "accepted_but_invalid": [
+     "invalid": [
       {
        "$bytes": "6178"
+      },
+      {
+       "$bytes": "0162"
+      }
+     ]
+    },
+    {
+     "schema": "r = bstr .cborseq [uint, tstr]",
+     "valid": [
+      {
+       "$bytes": "016178"
+      }
+     ],
+     "invalid": [
+      {
+       "$bytes": "01"
       }
      ]
     }
