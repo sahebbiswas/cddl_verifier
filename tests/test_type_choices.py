@@ -19,6 +19,9 @@ import unittest
 from cddl_verifier import Validator, validate
 from cddl_verifier._analyzer import CBORAnalyzer, CDDLParser
 from cddl_verifier.cbor import encode
+from cddl_verifier._cddl import query
+from cddl_verifier._cddl.parser import parse_type_expr
+from cddl_verifier._cddl.printer import format_node
 
 RULES = "\nm = {a: uint}\nn = {b: tstr}\nt = #6.7(m)"
 
@@ -148,10 +151,12 @@ class TestArrayChoices(ChoiceTestCase):
         ])
 
     def test_group_choice_is_not_split(self):
-        self.assertEqual(CBORAnalyzer._split_choice("a // b"), ["a // b"])
-        self.assertEqual(CBORAnalyzer._split_choice("[a / b] / c"), ["[a / b]", "c"])
-        self.assertEqual(CBORAnalyzer._split_choice('tstr .regexp "x/y"'), ['tstr .regexp "x/y"'])
-        self.assertEqual(CBORAnalyzer._split_choice("#6.1(a / b) / c"), ["#6.1(a / b)", "c"])
+        def split(text):
+            return [format_node(alt) for alt in query.alternatives(parse_type_expr(text))]
+
+        self.assertEqual(split("[a / b] / c"), ["[ a / b ]", "c"])
+        self.assertEqual(split('tstr .regexp "x/y"'), ['tstr .regexp "x/y"'])
+        self.assertEqual(split("#6.1(a / b) / c"), ["#6.1(a / b)", "c"])
 
 
 class TestRootRules(ChoiceTestCase):
@@ -232,7 +237,7 @@ class TestParenthesizedTypes(ChoiceTestCase):
 
     def test_generic_instance_under_a_control(self):
         schema = "r = { o: opt<uint> .size 1 }\nopt<T> = T / nil"
-        self.assertEqual(CDDLParser(schema).types["r"]["fields"]["o"]["type"],
+        self.assertEqual(format_node(CDDLParser(schema).types["r"]["fields"]["o"]["type"]),
                          "(uint / nil) .size 1")
         self.check([
             (schema, {"o": 7}, True),

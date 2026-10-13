@@ -1,18 +1,15 @@
 #!/usr/bin/env python3
-"""Type text that carries its node, and ``query`` on nodes (#175, Part 1 of #115).
+"""Type expressions held as nodes (#175, #177: Parts 1 and 3 of #115).
 
-The ``CDDLParser`` tables hold type expressions as :class:`TypeText`: the
-canonical text, which also has the node it was made from. ``query`` answers
-the same questions about a node as about its text. These tests check, over the
-bundled schemas and every schema in the conformance matrix, that the text is
-the node's text and that the node and text answers agree, so the validator can
-read nodes without changing what it decides.
+The ``CDDLParser`` tables hold every type expression as a ``Type`` node, and
+``query`` answers questions about nodes only. These tests check, over the
+bundled schemas and every schema in the conformance matrix, that no table
+holds text, and cover ``as_type`` (where text enters), ``resolve_alias`` and
+the pieces ``query`` hands back.
 """
 
-import copy
 import json
 import logging
-import pickle
 import sys
 import unittest
 import warnings
@@ -29,7 +26,7 @@ from cddl_verifier._cddl import query  # noqa: E402
 from cddl_verifier._cddl.ast import Name, Type  # noqa: E402
 from cddl_verifier._cddl.parser import parse_type_expr  # noqa: E402
 from cddl_verifier._cddl.printer import format_node  # noqa: E402
-from cddl_verifier._cddl.typetext import TypeText, as_type, bare_name, rename  # noqa: E402
+from cddl_verifier._cddl.typeexpr import as_type, bare_name, rename  # noqa: E402
 
 
 def schemas():
@@ -45,8 +42,8 @@ def schemas():
     return found
 
 
-def type_texts(parser):
-    """Every table entry that holds type text, with where it is."""
+def table_types(parser):
+    """Every table entry that holds a type expression, with where it is."""
     for name, value in parser.type_aliases.items():
         yield f"alias {name}", value
     for name, values in parser.type_choices.items():
@@ -91,25 +88,10 @@ class Quiet(unittest.TestCase):
         warnings.resetwarnings()
 
 
-class TypeTextValue(Quiet):
-    def test_text_is_the_nodes_text(self):
-        node = parse_type_expr("tstr .size (1..3) / nil")
-        text = TypeText(node)
-        self.assertEqual(text, "tstr .size (1..3) / nil")
-        self.assertIs(text.node, node)
-        self.assertIsInstance(text, str)
-
-    def test_copies_and_pickles_keep_the_node(self):
-        text = TypeText(parse_type_expr("#6.7(uint)"))
-        self.assertIs(copy.deepcopy(text), text)
-        self.assertIs(copy.copy(text), text)
-        again = pickle.loads(pickle.dumps(text))
-        self.assertEqual((again, again.node), (text, text.node))
-
-    def test_as_type_accepts_nodes_typetext_and_text(self):
+class AsType(Quiet):
+    def test_as_type_accepts_nodes_and_text(self):
         node = parse_type_expr("uint / tstr")
         self.assertIs(as_type(node), node)
-        self.assertIs(as_type(TypeText(node)), node)
         self.assertEqual(as_type("uint / tstr"), node)
         self.assertEqual(as_type(Name("uint")), Type((Name("uint"),)))
 
@@ -133,37 +115,50 @@ class TypeTextValue(Quiet):
         self.assertEqual(format_node(rename(generic, "a", "z")), "a<z>")
 
 
-class TablesCarryNodes(Quiet):
-    def test_every_table_text_is_its_nodes_text(self):
+class TablesHoldNodes(Quiet):
+    def test_every_table_type_is_a_node_over_the_schemas(self):
         checked = 0
         for label, source in schemas().items():
             try:
                 parser = CDDLParser(source)
             except Exception:  # a schema the matrix lists as an error
                 continue
-            for where, text in type_texts(parser):
-                if not isinstance(text, TypeText):
-                    continue  # a synthetic type name (a plain str)
+            for where, value in table_types(parser):
                 with self.subTest(schema=label, where=where):
-                    self.assertEqual(str(text), format_node(text.node))
-                    self.assertEqual(as_type(str(text)), text.node,
-                                     "the text parses back to the node")
+                    self.assertIsInstance(value, Type)
                 checked += 1
         self.assertGreater(checked, 500)
 
-    def test_prelude_renaming_keeps_text_and_node_together(self):
+    def test_a_table_type_prints_and_parses_back_to_itself(self):
+        for label, source in schemas().items():
+            try:
+                parser = CDDLParser(source)
+            except Exception:
+                continue
+            for where, value in table_types(parser):
+                with self.subTest(schema=label, where=where):
+                    self.assertEqual(as_type(format_node(value)), value)
+
+    def test_prelude_renaming_is_applied_to_the_node(self):
         parser = CDDLParser("decfrac@tag = uint\nr = [decfrac]")
         alias = parser.type_aliases["decfrac"]
-        self.assertIsInstance(alias, TypeText)
-        self.assertEqual(str(alias), format_node(alias.node))
-        self.assertIn("@prelude", alias)
+        self.assertIsInstance(alias, Type)
+        self.assertIn("@prelude", format_node(alias))
 
-    def test_resolve_alias_walks_like_resolve_type_alias(self):
+    def test_resolve_alias_follows_names_only(self):
         parser = CDDLParser("a = b\nb = c\nc = tstr .size 3\nd = uint / nil\ne = d")
-        for name in ("a", "b", "c", "d", "e", "uint", "text", "number", "missing"):
+        expected = {"a": "tstr .size 3", "b": "tstr .size 3", "c": "tstr .size 3",
+                    "d": "uint / nil", "e": "uint / nil", "uint": "uint", "text": "tstr",
+                    "missing": "missing"}
+        for name, text in expected.items():
             with self.subTest(name=name):
-                self.assertEqual(format_node(parser.resolve_alias(name)),
-                                 parser.resolve_type_alias(name))
+                self.assertEqual(format_node(parser.resolve_alias(name)), text)
+                self.assertEqual(format_node(parser.resolve_alias(as_type(name))), text)
+
+    def test_resolve_alias_stops_at_the_depth(self):
+        parser = CDDLParser("a = b\nb = c\nc = tstr")
+        self.assertEqual(format_node(parser.resolve_alias("a", max_depth=2)), "c")
+        self.assertEqual(format_node(parser.resolve_alias("a", max_depth=1)), "b")
 
     def test_alias_node(self):
         parser = CDDLParser("a = tstr .size 3")
@@ -172,36 +167,12 @@ class TablesCarryNodes(Quiet):
 
 
 class QueryOnNodes(Quiet):
-    EXPRESSIONS = [
-        "uint", "tstr .size (1..4)", "uint .ge 1 .le 5", "uint / tstr / nil", "(uint / tstr) .size 1",
-        "#6.32(tstr)", "#6.<uint>(tstr)", "#7.25", "#", "#2", "bstr .cbor uint",
-        "bstr .cbor (uint / tstr)", "[* uint]", "[+ tstr]", "[uint, tstr]", "1..5", "0.5 ... 1.5",
-        '"a"', "h'01'", "1.5", "true", "&(a: 0, b: 1)", "&colors", "~t", "$socket",
-        "foo<uint, tstr>", "{ a: int }", "tstr .regexp \"[a-z]+\"",
-    ]
-
-    def test_the_same_answers_for_a_node_and_its_text(self):
-        def shape(value):
-            """Pieces compare by text, whichever form they come in."""
-            if isinstance(value, Type):
-                return format_node(value)
-            if hasattr(value, '_fields'):
-                return {f: shape(getattr(value, f)) for f in value._fields if f != 'parsed'}
-            if isinstance(value, (list, tuple)):
-                return [shape(v) for v in value]
-            if hasattr(value, '__dataclass_fields__'):
-                return format_node(value)
-            return value
-
-        for expression in self.EXPRESSIONS:
-            node = parse_type_expr(expression)
-            text = format_node(node)  # the tables hold canonical text
-            for name in ("alternatives", "head", "controls", "paren", "without_controls",
-                         "tag", "item_ref", "cbor_control", "literal", "range_of",
-                         "inline_array", "is_array", "names", "choice_from"):
-                with self.subTest(text=text, query=name):
-                    function = getattr(query, name)
-                    self.assertEqual(shape(function(node)), shape(function(text)))
+    def test_query_does_not_take_text(self):
+        for name in ("alternatives", "head", "controls", "paren", "tag", "cbor_control",
+                     "inline_array", "is_array", "names", "base"):
+            with self.subTest(query=name):
+                with self.assertRaises(TypeError):
+                    getattr(query, name)("uint / tstr")
 
     def test_pieces_of_a_node_are_nodes(self):
         node = parse_type_expr("uint / tstr")
@@ -212,6 +183,14 @@ class QueryOnNodes(Quiet):
         self.assertIsInstance(query.item_ref(parse_type_expr("#6.<uint>(tstr)")).inner, Type)
         paren = query.paren(parse_type_expr("(uint / tstr) .size 1"))
         self.assertTrue(all(isinstance(alt, Type) for alt in paren.inner))
+        self.assertIsInstance(query.inline_array(parse_type_expr("[+ tstr]"))[1], Type)
+
+    def test_head_and_control_arguments_are_text(self):
+        self.assertEqual(query.head(parse_type_expr("tstr .size 2")), "tstr")
+        self.assertEqual(query.head(parse_type_expr("coswid.tag-id")), "coswid.tag-id")
+        self.assertEqual(query.head(parse_type_expr("#6.1(x)")), "#6.1(x)")
+        controls = query.controls(parse_type_expr("uint .ge 0 .le 150"))
+        self.assertEqual([(c.op, c.arg_text) for c in controls], [("ge", "0"), ("le", "150")])
 
     def test_base_looks_through_controls(self):
         self.assertEqual(query.base(parse_type_expr("tstr .size 1 .regexp \"a\"")), Name("tstr"))

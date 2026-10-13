@@ -17,6 +17,8 @@ import unittest
 from cddl_verifier import Validator
 from cddl_verifier._analyzer import CDDLParser, main
 from cddl_verifier.cbor import encode
+from cddl_verifier._cddl.typeexpr import as_type
+from ._tables import as_text
 
 MAPS = "m1 = {1: int}\nm2 = {2: tstr}\n"
 SOCKET = "r = $s\n$s /= m1\n$s /= m2\n" + MAPS
@@ -31,8 +33,8 @@ class Matching(unittest.TestCase):
         self.p = CDDLParser(SOCKET)
 
     def test_matches_are_in_schema_order(self):
-        self.assertEqual(self.p.choice_matches("$s", {2: "x"}), ["m2"])
-        self.assertEqual(self.p.choice_matches("$s", {1: 1}), ["m1"])
+        self.assertEqual(as_text(self.p.choice_matches("$s", {2: "x"})), ["m2"])
+        self.assertEqual(as_text(self.p.choice_matches("$s", {1: 1})), ["m1"])
 
     def test_no_match_is_empty_not_the_first_alternative(self):
         self.assertEqual(self.p.choice_matches("$s", {3: 1}), [])
@@ -44,19 +46,19 @@ class Matching(unittest.TestCase):
 
     def test_several_matches_use_the_first(self):
         p = CDDLParser("$s /= m1\n$s /= m2\nm1 = {1: int, ? 2: tstr}\nm2 = {1: int, ? 3: tstr}")
-        self.assertEqual(p.choice_matches("$s", {1: 1}), ["m1", "m2"])
-        self.assertEqual(p.resolve_type_choice_for_data("$s", {1: 1}), "m1")
+        self.assertEqual(as_text(p.choice_matches("$s", {1: 1})), ["m1", "m2"])
+        self.assertEqual(as_text(p.resolve_type_choice_for_data("$s", {1: 1})), "m1")
 
     def test_tags_are_matched_with_their_content(self):
         p = CDDLParser("$s /= #6.7(m1)\n$s /= #6.7(m2)\n" + MAPS)
-        self.assertEqual(p.choice_matches("$s", (7, {2: "x"})), ["#6.7(m2)"])
+        self.assertEqual(as_text(p.choice_matches("$s", (7, {2: "x"}))), ["#6.7(m2)"])
         self.assertEqual(p.choice_matches("$s", (8, {2: "x"})), [])
 
     def test_inline_choices(self):
         p = CDDLParser("r = {x: m1 / m2}\n" + MAPS)
-        self.assertEqual(p.choice_alternatives("m1 / m2"), ["m1", "m2"])
+        self.assertEqual(as_text(p.choice_alternatives(as_type("m1 / m2"))), ["m1", "m2"])
         self.assertIsNone(p.choice_alternatives("m1"))
-        self.assertEqual(p.choice_matches("m1 / m2", {2: "x"}), ["m2"])
+        self.assertEqual(as_text(p.choice_matches(as_type("m1 / m2"), {2: "x"})), ["m2"])
 
 
 class EdnLabels(unittest.TestCase):

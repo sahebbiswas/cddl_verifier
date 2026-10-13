@@ -21,6 +21,7 @@ import unittest
 
 from cddl_verifier import Validator, validate
 from cddl_verifier._analyzer import CDDLParser
+from ._tables import as_text
 
 SCHEMAS = Path(__file__).resolve().parent.parent / "cddl-schemas"
 
@@ -37,7 +38,7 @@ class TestMaps(unittest.TestCase):
     def test_key_forms(self):
         p = CDDLParser('m = {\n  a: tstr,\n  ? 1: uint ; one\n  "s": int,\n'
                        '  ? &(reg: 5) => bstr,\n  7 => bool\n}')
-        self.assertEqual(p.types['m'], {'type': 'map', 'fields': {
+        self.assertEqual(as_text(p.types['m']), {'type': 'map', 'fields': {
             'a': field('a', 'tstr'),
             1: field('one', 'uint', optional=True),
             's': field('s', 'int'),
@@ -48,7 +49,7 @@ class TestMaps(unittest.TestCase):
 
     def test_multi_line_members_and_comments(self):
         p = CDDLParser("m = {\n  &(name: 0)\n    => tstr,\n  1:\n    uint ; count\n}")
-        self.assertEqual(p.types['m']['fields'], {
+        self.assertEqual(as_text(p.types['m']['fields']), {
             0: field('name', 'tstr', registered=True),
             1: field('count', 'uint'),
         })
@@ -62,20 +63,20 @@ class TestMaps(unittest.TestCase):
 
     def test_controls_and_choices_are_canonical_text(self):
         p = CDDLParser("m = { a: tstr .size (1..64), b: uint/tstr, c: #6.1(x) }\nx = uint")
-        types = [f['type'] for f in p.types['m']['fields'].values()]
+        types = [as_text(f['type']) for f in p.types['m']['fields'].values()]
         self.assertEqual(types, ['tstr .size (1..64)', 'uint / tstr', '#6.1(x)'])
 
     def test_generic_wrapper_reads_the_map_inside(self):
         p = CDDLParser("m = non-empty<{ ? a: int }>\nnon-empty<M> = (M) .and ({ + any => any })")
-        self.assertEqual(p.types['m']['fields'], {'a': field('a', 'int', optional=True)})
-        self.assertEqual(p.type_aliases['non-empty'], '(M) .and ({ + any => any })')
+        self.assertEqual(as_text(p.types['m']['fields']), {'a': field('a', 'int', optional=True)})
+        self.assertEqual(as_text(p.type_aliases['non-empty']), '(M) .and ({ + any => any })')
 
 
 class TestArrays(unittest.TestCase):
 
     def test_repeated_element(self):
         p = CDDLParser("a = [ + tstr ]")
-        self.assertEqual(p.types['a'], {'type': 'array', 'fields': {},
+        self.assertEqual(as_text(p.types['a']), {'type': 'array', 'fields': {},
                                         'element_types': {0: 'tstr'}, 'occurrence': '+',
                                         'length': (1, None)})
 
@@ -91,7 +92,7 @@ class TestArrays(unittest.TestCase):
 
     def test_positional_elements(self):
         p = CDDLParser("a = [ min: int / null, max: int, extra ]\nextra = tstr")
-        self.assertEqual(p.types['a']['element_types'],
+        self.assertEqual(as_text(p.types['a']['element_types']),
                          {0: 'int / null', 1: 'int', 2: 'extra'})
         self.assertEqual(sorted(p.types['a']['fields']), ['max', 'min'])
         self.assertEqual(p.types['a']['occurrence'], '')
@@ -101,16 +102,16 @@ class TestRulesAndTables(unittest.TestCase):
 
     def test_aliases(self):
         p = CDDLParser("a = b\nt = #6.501(m)\nc = uint / tstr\ns = bstr .size 16\nb = tstr\nm = {}")
-        self.assertEqual(p.type_aliases['a'], 'b')
-        self.assertEqual(p.type_aliases['t'], '#6.501(m)')
-        self.assertEqual(p.type_aliases['c'], 'uint / tstr')
-        self.assertEqual(p.type_aliases['s'], 'bstr .size 16')
+        self.assertEqual(as_text(p.type_aliases['a']), 'b')
+        self.assertEqual(as_text(p.type_aliases['t']), '#6.501(m)')
+        self.assertEqual(as_text(p.type_aliases['c']), 'uint / tstr')
+        self.assertEqual(as_text(p.type_aliases['s']), 'bstr .size 16')
 
     def test_choices_sockets_and_groups(self):
         p = CDDLParser("$c /= a\n$c /= b / c\n$$s //= ( x: int )\n"
                        "g = ( a: int, ? b: tstr )\nh = ( name )\n"
                        "a = uint\nb = tstr\nc = bstr\nx = int\nname = ( n: tstr )")
-        self.assertEqual(p.type_choices['$c'], ['a', 'b', 'c'])
+        self.assertEqual(as_text(p.type_choices['$c']), ['a', 'b', 'c'])
         self.assertEqual(p.socket_extensions['$$s'], ['(x: int)'])
         self.assertEqual(p.groups['g'], ['a: int', '? b: tstr'])
         self.assertEqual(p.groups['h'], ['name'])
@@ -122,7 +123,7 @@ class TestRulesAndTables(unittest.TestCase):
     def test_empty_schema_keeps_builtins(self):
         p = CDDLParser("")
         self.assertEqual(p.types, {})
-        self.assertEqual(p.type_aliases['text'], 'tstr')
+        self.assertEqual(as_text(p.type_aliases['text']), 'tstr')
         self.assertIsNone(p.first_definition)
 
 
@@ -158,13 +159,13 @@ class TestInlineMaps(unittest.TestCase):
 
     def test_synthetic_names(self):
         p = CDDLParser("r = { a: { b: uint }, c: [ * { d: int } ] }")
-        self.assertEqual(p.types['r']['fields']['a']['type'], 'r@a')
-        self.assertEqual(p.types['r@a']['fields'], {'b': field('b', 'uint')})
+        self.assertEqual(as_text(p.types['r']['fields']['a']['type']), 'r@a')
+        self.assertEqual(as_text(p.types['r@a']['fields']), {'b': field('b', 'uint')})
         self.assertEqual(p.synthetic_types, {'r@a', 'r@c@0'})
 
     def test_synthetic_names_never_collide_or_contain_dots(self):
         p = CDDLParser('r = { "a.b": { x: int } }\nr@a_b = int')
-        name = p.types['r']['fields']['a.b']['type']
+        name = as_text(p.types['r']['fields']['a.b']['type'])
         self.assertNotIn('.', name)
         self.assertNotEqual(name, 'r@a_b')
 
@@ -225,7 +226,7 @@ class TestKeyTypeMembers(unittest.TestCase):
 
     def test_computed_key_table_entry(self):
         p = CDDLParser("m = { * tstr => any, ? int => { a: int } }")
-        self.assertEqual(p.types['m']['computed_keys'],
+        self.assertEqual(as_text(p.types['m']['computed_keys']),
                          [{'key': 'tstr', 'type': 'any', 'min': 0, 'max': None},
                           {'key': 'int', 'type': 'm@value2', 'min': 0, 'max': 1}])
 
@@ -238,10 +239,10 @@ class TestBundledSchemas(unittest.TestCase):
         fields = p.types['measurement-values-map']['fields']
         self.assertTrue(fields[4]['optional'] and fields[5]['optional'])
         # positional array elements are no longer dropped
-        self.assertEqual(p.types['int-range']['element_types'],
+        self.assertEqual(as_text(p.types['int-range']['element_types']),
                          {0: 'int / negative-inf', 1: 'int / positive-inf'})
         self.assertIn('protected-corim-header-map-inline', p.types)
-        self.assertEqual(p.type_aliases['tagged-masked-raw-value'],
+        self.assertEqual(as_text(p.type_aliases['tagged-masked-raw-value']),
                          '#6.563(tagged-masked-raw-value@tag)')
 
 

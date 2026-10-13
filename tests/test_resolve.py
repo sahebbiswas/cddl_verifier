@@ -24,6 +24,7 @@ from cddl_verifier._analyzer import CDDLParser
 from cddl_verifier._cddl import CDDLSemanticError, format_node, parse_cddl
 from cddl_verifier._cddl.ast import Group, IntLit, Map, Name, Paren, Range, Type
 from cddl_verifier._cddl.resolve import KNOWN_CONTROLS, resolve, substitute
+from ._tables import as_text
 
 SCHEMAS = Path(__file__).resolve().parent.parent / "cddl-schemas"
 
@@ -292,14 +293,14 @@ class TestTablesUseTheModel(unittest.TestCase):
     def test_rule_kind_decides_group_or_alias(self):
         p = CDDLParser("r = { a: h }\nh = ( name )\nname = tstr\n"
                        "g = ( other )\nother = ( x: int )")
-        self.assertEqual(p.type_aliases['h'], 'name')
+        self.assertEqual(as_text(p.type_aliases['h']), 'name')
         self.assertNotIn('h', p.groups)
         self.assertEqual(p.groups['g'], ['other'])
         self.assertIs(p.resolved.lookup('g').kind, 'group')
 
     def test_generic_structure_rule(self):
         p = CDDLParser("r = pair<uint, tstr>\npair<A, B> = [A, B]")
-        self.assertEqual(p.types['r']['element_types'], {0: 'uint', 1: 'tstr'})
+        self.assertEqual(as_text(p.types['r']['element_types']), {0: 'uint', 1: 'tstr'})
         self.assertTrue(validate("r = pair<uint, tstr>\npair<A, B> = [A, B]", [1, "a"]).valid)
         self.assertFalse(validate("r = pair<uint, tstr>\npair<A, B> = [A, B]", [1, 2]).valid)
 
@@ -341,15 +342,15 @@ class TestTablesUseTheModel(unittest.TestCase):
         # its inline arrays are structures of their own (#133)
         chain = "r = list<uint>\nlist<T> = nil / [x: T, rest: list<T>]"
         p = CDDLParser(chain)
-        self.assertEqual(p.type_aliases['r'], 'nil / r@1')
-        self.assertEqual(p.types['r@1']['element_types'], {0: 'uint', 1: 'nil / r@1@rest@1'})
-        self.assertEqual(p.types['r@1@rest@1']['element_types'], {0: 'uint', 1: 'list<uint>'})
+        self.assertEqual(as_text(p.type_aliases['r']), 'nil / r@1')
+        self.assertEqual(as_text(p.types['r@1']['element_types']), {0: 'uint', 1: 'nil / r@1@rest@1'})
+        self.assertEqual(as_text(p.types['r@1@rest@1']['element_types']), {0: 'uint', 1: 'list<uint>'})
         self.assertTrue(validate(chain, [1, [2, None]]).valid)
         self.assertFalse(validate(chain, [1, [2]]).valid)
 
     def test_generic_alias_rule(self):
         schema = "r = opt<uint>\nopt<T> = T / nil"
-        self.assertEqual(CDDLParser(schema).type_aliases['r'], 'uint / nil')
+        self.assertEqual(as_text(CDDLParser(schema).type_aliases['r']), 'uint / nil')
         self.assertTrue(validate(schema, None).valid)
         self.assertFalse(validate(schema, "x").valid)
 
@@ -357,7 +358,7 @@ class TestTablesUseTheModel(unittest.TestCase):
         schema = ("r = ent<$role>\nent<role> = { role: role }\n"
                   "$role /= uint\n$role /= tstr")
         p = CDDLParser(schema)
-        self.assertEqual(p.types['r']['fields']['role']['type'], '$role')
+        self.assertEqual(as_text(p.types['r']['fields']['role']['type']), '$role')
         self.assertTrue(validate(schema, {"role": "x"}).valid)
 
 

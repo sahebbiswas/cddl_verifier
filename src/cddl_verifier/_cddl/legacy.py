@@ -5,16 +5,16 @@ parser used to produce (``types``, ``type_aliases``, ``type_choices``,
 ``socket_extensions``, ``groups``, ``registered_params``,
 ``first_definition``). This module builds them from a parsed ``Schema`` so
 those consumers keep working while they move to reading nodes (Phase C,
-#111; #115). Type expressions are written with :func:`format_node`, so
-consumers always see canonical text; the text is a :class:`TypeText`, which
-also holds the node it was made from (#175).
+#111; #115). A type expression in a table is a ``Type`` node (#177); group
+entries (``groups``, ``socket_extensions``) are still written with
+:func:`format_node`.
 
-Two things the validator cannot read from text get a table entry instead:
+Two things the validator cannot read from a type as written get a table entry instead:
 
 * An inline map (``a: { b: uint }``), an inline array other than
   ``[ + T ]`` / ``[ * T ]`` (#133), or a map or array inside a tag
   (``#6.563([ value: bytes ])``), becomes a type of its own named
-  ``<owner>@<path>`` (``r@a``), and the text refers to that name (#100).
+  ``<owner>@<path>`` (``r@a``), and the type refers to that name (#100).
 * An array type has ``length``, the ``(min, max)`` number of elements its
   entries' occurrences allow (``max`` ``None`` for no limit), when it can be
   worked out (#133). An array whose element *i* does not always take entry
@@ -42,10 +42,9 @@ from .ast import (Array, BytesLit, Control, FloatLit, Group, GroupRef, GroupRule
                   entry_type, registered_label, walk)
 from .parser import MAX_DEPTH
 from .printer import format_node
-from .typetext import TypeText
 
 #: How many generic instances may be expanding inside each other. Past it,
-#: a reference is kept as text, so 'g<T> = { n: g<[T]> }' terminates.
+#: a reference is kept as it is, so 'g<T> = { n: g<[T]> }' terminates.
 _MAX_INSTANCE_DEPTH = 16
 #: Most ways a map's group choices and optional groups may combine (#72).
 _MAX_MAP_ALTERNATIVES = 1024
@@ -68,10 +67,10 @@ class LegacyTables:
         self.resolved = resolved
         self.types: Dict[str, Dict] = {}
         self.groups: Dict[str, List[str]] = {}
-        self.type_choices: Dict[str, List[str]] = {}
+        self.type_choices: Dict[str, List[Type]] = {}
         self.socket_extensions: Dict[str, List[str]] = {}
         self.registered_params: Dict[Any, str] = {}
-        self.type_aliases: Dict[str, str] = {}
+        self.type_aliases: Dict[str, Type] = {}
         self.first_definition: Optional[str] = None
         #: Names given to inline maps and to structures inside tags (``r@a``).
         self.synthetic_types: set = set()
@@ -122,7 +121,7 @@ class LegacyTables:
                     self.type_choices[name] = [base]
             choices = self.type_choices.setdefault(name, [])
             for alt in rule.type.alternatives:
-                choices.append(self._text(Type((alt,)), f'{name}@{len(choices)}'))
+                choices.append(self._type_of(Type((alt,)), f'{name}@{len(choices)}'))
             return
         if self.first_definition is None and not self._is_group(rule):
             self.first_definition = name
@@ -145,9 +144,9 @@ class LegacyTables:
             if instance:
                 self._add_constraints(self.types[name], expanded, name)
         else:
-            self.type_aliases[name] = self._text(ty, name)
+            self.type_aliases[name] = self._type_of(ty, name)
 
-    def _take_base(self, name: str) -> Optional[str]:
+    def _take_base(self, name: str) -> Optional[Type]:
         """Move the definition of rule *name* out of its own name, and return where it went."""
         if name in self.types:
             moved, n = f'{name}@base', 2
@@ -155,7 +154,7 @@ class LegacyTables:
                 moved, n = f'{name}@base-{n}', n + 1  # '@base' may be an inline map of the rule
             self.types[moved] = self.types.pop(name)
             self.synthetic_types.add(moved)
-            return moved
+            return Type((Name(moved),))
         return self.type_aliases.pop(name, None)
 
     def _is_group(self, rule: TypeRule) -> bool:
@@ -391,8 +390,8 @@ class LegacyTables:
             low, high = (1, 1) if occurrence is None else (occurrence.min, occurrence.max)
             self._computed += 1
             computed = {
-                'key': self._text(Type((member.key.type,)), f'{owner}@key{self._computed}'),
-                'type': self._text(member.value, f'{owner}@value{self._computed}'),
+                'key': self._type_of(Type((member.key.type,)), f'{owner}@key{self._computed}'),
+                'type': self._type_of(member.value, f'{owner}@value{self._computed}'),
                 'min': low, 'max': high,
             }
             if member.key.cut:
@@ -418,7 +417,7 @@ class LegacyTables:
         if key is NOT_A_KEY:
             return None
         info = {'name': name,
-                'type': self._text(member.value, f'{owner}@{_path(key)}'),
+                'type': self._type_of(member.value, f'{owner}@{_path(key)}'),
                 'optional': optional}
         if label is not None:
             info['registered'] = True
@@ -427,7 +426,7 @@ class LegacyTables:
     def _array(self, group, owner: str) -> Dict:
         entries = _entries(group)
         fields: Dict[Any, Dict] = {}
-        element_types: Dict[int, str] = {}
+        element_types: Dict[int, Type] = {}
         for index, entry in enumerate(entries):
             if isinstance(entry, Member) and entry.key is not None:
                 field = self._field(entry, owner)
@@ -440,7 +439,7 @@ class LegacyTables:
                 value = entry_type(_without_occurrence(entry))
                 if value is None:
                     continue
-            element_types[index] = self._text(value, f'{owner}@{index}')
+            element_types[index] = self._type_of(value, f'{owner}@{index}')
         occurrence = ''
         if len(entries) == 1 and entries[0].occurrence is not None \
                 and entries[0].occurrence.text in ('+', '*'):
@@ -467,7 +466,7 @@ class LegacyTables:
         return type_def
 
     def _sequence(self, group, path: str, expanding: tuple,
-                  texts: Optional[Dict[int, str]] = None):
+                  texts: Optional[Dict[int, Type]] = None):
         """*group* as entry sequences an array's elements are matched to (#135).
 
         One list per group choice; each entry is ``{'min', 'max', 'type'}``
@@ -498,7 +497,7 @@ class LegacyTables:
             choices.append(entries)
         return choices
 
-    def _sequence_unit(self, entry, path: str, expanding: tuple, text: Optional[str]):
+    def _sequence_unit(self, entry, path: str, expanding: tuple, text: Optional[Type]):
         if isinstance(entry, Member) and _spliced(entry) is not None:
             # '~hdr': the entries of the array 'hdr', in place (#158)
             splice = _spliced(entry)
@@ -510,7 +509,7 @@ class LegacyTables:
             return None if group is None else {'group': group}
         if isinstance(entry, Member):
             if text is None:
-                text = self._text(entry.value, path)
+                text = self._type_of(entry.value, path)
             return {'type': text}
         if isinstance(entry, InlineGroup):
             group = self._sequence(entry.group, path, expanding)
@@ -526,7 +525,7 @@ class LegacyTables:
             return None  # the same group with other arguments
         if kind == 'type':
             if text is None:
-                text = self._text(Type((Name(entry.name, entry.args),)), path)
+                text = self._type_of(Type((Name(entry.name, entry.args),)), path)
             return {'type': text}
         if kind != 'group':
             return None
@@ -629,14 +628,11 @@ class LegacyTables:
             self._ref_lengths[key] = self._group_length(group, expanding + (ref.name,))
         return self._ref_lengths[key]
 
-    # --------------------------------------------------------------- text
+    # --------------------------------------------------------------- types
 
-    def _text(self, ty: Type, path: str) -> TypeText:
-        """Canonical text for *ty*, with inline maps replaced by synthetic names.
-
-        The :class:`TypeText` also holds the lifted node the text is made from (#175).
-        """
-        return TypeText(self._lift(ty, path))
+    def _type_of(self, ty: Type, path: str) -> Type:
+        """*ty* with inline maps, arrays and tags replaced by synthetic names."""
+        return self._lift(ty, path)
 
     def _lift(self, node, path: str):
         if isinstance(node, Type):
@@ -723,7 +719,7 @@ class LegacyTables:
         return node
 
     def _uniform(self, array: Array) -> bool:
-        """Whether *array* is ``[ + T ]`` or ``[ * T ]``, which stays as text.
+        """Whether *array* is ``[ + T ]`` or ``[ * T ]``, which stays inline.
 
         ``T`` must stand for one element: ``[ + g ]`` with a group ``g`` of
         several entries is a structure of its own, so its length is checked.
@@ -740,7 +736,7 @@ class LegacyTables:
     def _synthetic(self, structure, path: str, instance: Optional[tuple] = None) -> str:
         if instance is None and isinstance(structure, Map) and id(structure) in self._building:
             return self._building[id(structure)]
-        # The validator splits type text on '.' and whitespace: keep them out.
+        # A name is never cut at '.' or whitespace: keep them out.
         path = re.sub(r'[^A-Za-z0-9_@$-]', '_', path)
         if path.endswith('-'):
             path += '_'  # a trailing '-' is not part of a CDDL name
@@ -766,7 +762,7 @@ class LegacyTables:
 
         ``non-empty<M>`` instantiates to ``(M) .and ({ + any => any })``. The
         table describes ``M``; the other operand is kept in
-        ``type_def['constraints']`` as type text, and a value must match it
+        ``type_def['constraints']`` as a type, and a value must match it
         as well (#120).
         """
         operands = _control_operands(expanded)
@@ -780,9 +776,9 @@ class LegacyTables:
                 inner = inner.type.alternatives[0]
             if isinstance(inner, Array):
                 # '.and ([ + int ])': a structure of its own, so its length is checked
-                constraints.append(self._synthetic(inner, path))
+                constraints.append(Type((Name(self._synthetic(inner, path)),)))
             else:
-                constraints.append(self._text(Type((operand,)), path))
+                constraints.append(self._type_of(Type((operand,)), path))
         type_def['constraints'] = constraints
 
 
@@ -898,7 +894,7 @@ def _canonical_entries(group):
 
     ``[ + evs@series@0 ]`` parses with a ``GroupRef`` entry; lifting a map out
     of ``[ + { ... } ]`` leaves a ``Member`` whose value is the new name. They
-    print the same, so make the node the one the text parses to (#175).
+    print the same, so make the node the one the text parses to, so that types that print alike are equal (#175).
     """
     from .ast import Group, GroupChoice
     choices = []
