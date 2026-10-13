@@ -3,7 +3,10 @@
 `cddl-verify` and `CDDLParser` parse the whole CDDL grammar (RFC 8610, as
 updated by RFC 9682) and validate the subset used by practical attestation
 schemas such as CoRIM and CoSWID. This page lists what is supported and how
-validation behaves.
+validation behaves; [CONFORMANCE.md](CONFORMANCE.md) is the construct-by-construct
+matrix (parser, AST, resolver, validator, EDN, tests, and what is not yet done),
+checked against the code by the test suite
+([#86](https://github.com/sahebbiswas/cddl_verifier/issues/86)).
 
 ## Schema syntax
 

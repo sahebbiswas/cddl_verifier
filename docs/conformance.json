@@ -1,0 +1,3938 @@
+{
+ "format_version": 1,
+ "layers": {
+  "syntax": [
+   "parser",
+   "ast",
+   "resolver",
+   "validator",
+   "edn"
+  ],
+  "control": [
+   "parser",
+   "ast",
+   "resolver",
+   "validator",
+   "edn"
+  ],
+  "prelude": [
+   "parser",
+   "ast",
+   "resolver",
+   "validator",
+   "edn"
+  ],
+  "cbor": [
+   "decoder",
+   "encoder",
+   "validator",
+   "edn",
+   "json"
+  ]
+ },
+ "out_of_scope": [
+  {
+   "construct": "Reading EDN text",
+   "reason": "The library writes annotated EDN from CBOR; it does not parse EDN into CBOR."
+  },
+  {
+   "construct": "Signatures, MACs and cryptographic checks (COSE, CoRIM, EAT)",
+   "reason": "Validation is structural: the library checks the shape of the data, not what the data attests."
+  },
+  {
+   "construct": "Generating sample data from a schema",
+   "reason": "Schemas are used to validate and annotate data that already exists."
+  },
+  {
+   "construct": "CDDL outside RFC 8610, RFC 9165, RFC 9682, RFC 9741 and the modules draft comment syntax",
+   "reason": "Unknown control operators are schema errors; the chained-control extension is the only non-standard syntax accepted."
+  }
+ ],
+ "rows": [
+  {
+   "id": "syntax.rule",
+   "area": "syntax",
+   "construct": "Type rules `name = type`",
+   "spec": "RFC 8610 §2.1",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "n/a"
+   },
+   "notes": "The first rule is the default root; `--type` / `root_type` selects another.",
+   "issues": [],
+   "tests": [
+    "tests/test_cddl_parser.py",
+    "tests/test_resolve.py",
+    "tests/test_public_api.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = int\nother = tstr",
+     "valid": [
+      1
+     ],
+     "invalid": [
+      "a"
+     ]
+    },
+    {
+     "schema": "r = int\nother = tstr",
+     "root": "other",
+     "valid": [
+      "a"
+     ],
+     "invalid": [
+      1
+     ]
+    }
+   ]
+  },
+  {
+   "id": "syntax.type-extend",
+   "area": "syntax",
+   "construct": "Type extension `name /= type`",
+   "spec": "RFC 8610 §2.2.2",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "n/a"
+   },
+   "notes": "Adds alternatives to a type or a socket.",
+   "issues": [],
+   "tests": [
+    "tests/test_type_choices.py",
+    "tests/test_resolve.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = a\na = int\na /= tstr",
+     "valid": [
+      1,
+      "x"
+     ],
+     "invalid": [
+      {
+       "$bytes": "78"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "syntax.group-extend",
+   "area": "syntax",
+   "construct": "Group extension `name //= group`",
+   "spec": "RFC 8610 §2.2.2",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "supported"
+   },
+   "notes": "Adds a group choice alternative; sockets (`$$name`) are extended the same way.",
+   "issues": [],
+   "tests": [
+    "tests/test_group_composition.py",
+    "tests/test_resolve.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = {g}\ng = (a: int)\ng //= (b: tstr)",
+     "valid": [
+      {
+       "$map": [
+        [
+         "a",
+         1
+        ]
+       ]
+      },
+      {
+       "$map": [
+        [
+         "b",
+         "x"
+        ]
+       ]
+      }
+     ],
+     "invalid": [
+      {
+       "$map": [
+        [
+         "a",
+         "x"
+        ]
+       ]
+      },
+      {
+       "$map": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "syntax.type-choice",
+   "area": "syntax",
+   "construct": "Type choice `a / b`",
+   "spec": "RFC 8610 §2.2.2",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "supported"
+   },
+   "notes": "Resolved by checking every alternative; ambiguity is reported with `unique_choices` (#74).",
+   "issues": [],
+   "tests": [
+    "tests/test_type_choices.py",
+    "tests/test_choice_resolution.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = int / tstr / nil",
+     "valid": [
+      1,
+      "x",
+      null
+     ],
+     "invalid": [
+      {
+       "$bytes": "78"
+      },
+      [
+       1
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "syntax.group-choice",
+   "area": "syntax",
+   "construct": "Group choice `(a // b)`",
+   "spec": "RFC 8610 §2.2.2",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "supported"
+   },
+   "notes": "In maps (including products of several choices, up to 1024 combinations) and in arrays.",
+   "issues": [],
+   "tests": [
+    "tests/test_group_composition.py",
+    "tests/test_array_matching.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = {(a: int // b: tstr)}",
+     "valid": [
+      {
+       "$map": [
+        [
+         "a",
+         1
+        ]
+       ]
+      },
+      {
+       "$map": [
+        [
+         "b",
+         "x"
+        ]
+       ]
+      }
+     ],
+     "invalid": [
+      {
+       "$map": []
+      },
+      {
+       "$map": [
+        [
+         "a",
+         1
+        ],
+        [
+         "b",
+         "x"
+        ]
+       ]
+      }
+     ]
+    },
+    {
+     "schema": "r = [(int // tstr, tstr)]",
+     "valid": [
+      [
+       1
+      ],
+      [
+       "a",
+       "b"
+      ]
+     ],
+     "invalid": [
+      [
+       "a"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "syntax.occurrence",
+   "area": "syntax",
+   "construct": "Occurrence indicators `?` `*` `+` `n*m`",
+   "spec": "RFC 8610 §3.2",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "n/a"
+   },
+   "notes": "On array entries, map members, groups and wildcard members (bounds and the default of exactly one are enforced, #151).",
+   "issues": [],
+   "tests": [
+    "tests/test_array_length.py",
+    "tests/test_group_composition.py",
+    "tests/test_array_matching.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = [2*3 int]",
+     "valid": [
+      [
+       1,
+       2
+      ],
+      [
+       1,
+       2,
+       3
+      ]
+     ],
+     "invalid": [
+      [
+       1
+      ],
+      [
+       1,
+       2,
+       3,
+       4
+      ]
+     ]
+    },
+    {
+     "schema": "r = {? a: int}",
+     "valid": [
+      {
+       "$map": []
+      },
+      {
+       "$map": [
+        [
+         "a",
+         1
+        ]
+       ]
+      }
+     ],
+     "invalid": [
+      {
+       "$map": [
+        [
+         "a",
+         "x"
+        ]
+       ]
+      }
+     ]
+    },
+    {
+     "schema": "r = {+ tstr => int}",
+     "valid": [
+      {
+       "$map": [
+        [
+         "a",
+         1
+        ]
+       ]
+      }
+     ],
+     "invalid": [
+      {
+       "$map": []
+      }
+     ]
+    },
+    {
+     "schema": "r = {tstr => int}",
+     "valid": [
+      {
+       "$map": [
+        [
+         "a",
+         1
+        ]
+       ]
+      }
+     ],
+     "invalid": [
+      {
+       "$map": []
+      },
+      {
+       "$map": [
+        [
+         "a",
+         1
+        ],
+        [
+         "b",
+         2
+        ]
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "syntax.map",
+   "area": "syntax",
+   "construct": "Maps `{ ... }`",
+   "spec": "RFC 8610 §3.5",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "supported"
+   },
+   "notes": "Members with bareword, text, integer (also negative), byte-string, bool, float and type keys; maps are closed unless a wildcard member allows more. A `null => T` key is accepted but not enforced as required (#160).",
+   "issues": [
+    160
+   ],
+   "tests": [
+    "tests/test_map_key_types.py",
+    "tests/test_legacy_tables.py",
+    "tests/test_group_composition.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = {a: int}",
+     "valid": [
+      {
+       "$map": [
+        [
+         "a",
+         1
+        ]
+       ]
+      }
+     ],
+     "invalid": [
+      {
+       "$map": [
+        [
+         "b",
+         1
+        ]
+       ]
+      },
+      {
+       "$map": [
+        [
+         "a",
+         1
+        ],
+        [
+         "b",
+         2
+        ]
+       ]
+      },
+      {
+       "$map": [
+        [
+         "a",
+         "x"
+        ]
+       ]
+      }
+     ]
+    },
+    {
+     "schema": "r = {1: int, -1: tstr}",
+     "valid": [
+      {
+       "$map": [
+        [
+         1,
+         1
+        ],
+        [
+         -1,
+         "x"
+        ]
+       ]
+      }
+     ],
+     "invalid": [
+      {
+       "$map": [
+        [
+         1,
+         1
+        ]
+       ]
+      }
+     ]
+    },
+    {
+     "schema": "r = {\"a b\": int}",
+     "valid": [
+      {
+       "$map": [
+        [
+         "a b",
+         1
+        ]
+       ]
+      }
+     ],
+     "invalid": [
+      {
+       "$map": [
+        [
+         "a",
+         1
+        ]
+       ]
+      }
+     ]
+    },
+    {
+     "schema": "r = {h'01': int}",
+     "valid": [
+      {
+       "$map": [
+        [
+         {
+          "$bytes": "01"
+         },
+         1
+        ]
+       ]
+      }
+     ],
+     "invalid": [
+      {
+       "$map": [
+        [
+         {
+          "$bytes": "02"
+         },
+         1
+        ]
+       ]
+      }
+     ]
+    },
+    {
+     "schema": "r = {tstr => int}",
+     "valid": [
+      {
+       "$map": [
+        [
+         "a",
+         1
+        ]
+       ]
+      }
+     ],
+     "invalid": [
+      {
+       "$map": [
+        [
+         1,
+         1
+        ]
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "syntax.cut",
+   "area": "syntax",
+   "construct": "Cuts `^` (`\"a\" ^=> T`)",
+   "spec": "RFC 8610 §3.5.4",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "n/a"
+   },
+   "notes": "A cut stops later wildcard members from claiming the key.",
+   "issues": [],
+   "tests": [
+    "tests/test_group_composition.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = {? \"a\" ^=> int, * tstr => tstr}",
+     "valid": [
+      {
+       "$map": [
+        [
+         "a",
+         1
+        ]
+       ]
+      },
+      {
+       "$map": [
+        [
+         "b",
+         "x"
+        ]
+       ]
+      }
+     ],
+     "invalid": [
+      {
+       "$map": [
+        [
+         "a",
+         "x"
+        ]
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "syntax.array",
+   "area": "syntax",
+   "construct": "Arrays `[ ... ]`",
+   "spec": "RFC 8610 §3.4",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "supported"
+   },
+   "notes": "Entries are matched in order with backtracking, so an optional entry before another is fine (#135); lengths are checked (#133).",
+   "issues": [],
+   "tests": [
+    "tests/test_array_matching.py",
+    "tests/test_array_length.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = [int, tstr]",
+     "valid": [
+      [
+       1,
+       "a"
+      ]
+     ],
+     "invalid": [
+      [
+       "a",
+       1
+      ],
+      [
+       1
+      ],
+      []
+     ]
+    },
+    {
+     "schema": "r = [* int, tstr]",
+     "valid": [
+      [
+       1,
+       2,
+       "a"
+      ],
+      [
+       "a"
+      ]
+     ],
+     "invalid": [
+      [
+       1,
+       2
+      ]
+     ]
+    },
+    {
+     "schema": "r = [[int]]",
+     "valid": [
+      [
+       [
+        1
+       ]
+      ]
+     ],
+     "invalid": [
+      [
+       1
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "syntax.group",
+   "area": "syntax",
+   "construct": "Groups, group references and inline groups",
+   "spec": "RFC 8610 §3.3",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "supported"
+   },
+   "notes": "In maps and arrays, with occurrences, choices, sockets, recursion (also through arrays, #138) and generics (#72).",
+   "issues": [],
+   "tests": [
+    "tests/test_group_composition.py",
+    "tests/test_array_matching.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = [g]\ng = (int, tstr)",
+     "valid": [
+      [
+       1,
+       "a"
+      ]
+     ],
+     "invalid": [
+      [
+       1
+      ]
+     ]
+    },
+    {
+     "schema": "r = {id, b: int}\nid = (a: int)",
+     "valid": [
+      {
+       "$map": [
+        [
+         "a",
+         1
+        ],
+        [
+         "b",
+         2
+        ]
+       ]
+      }
+     ],
+     "invalid": [
+      {
+       "$map": [
+        [
+         "b",
+         2
+        ]
+       ]
+      }
+     ]
+    },
+    {
+     "schema": "r = [g]\ng = (int, ? g)",
+     "valid": [
+      [
+       1
+      ],
+      [
+       1,
+       2,
+       3
+      ]
+     ],
+     "invalid": [
+      [
+       "a"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "syntax.unwrap",
+   "area": "syntax",
+   "construct": "Unwrap `~name`",
+   "spec": "RFC 8610 §3.7",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "supported"
+   },
+   "notes": "Splices the entries of a map or array into a map or array, and unwraps a tag as a type (#158). A map or array in a place that needs a type is a group, not a type, and matches nothing.",
+   "issues": [],
+   "tests": [
+    "tests/test_group_composition.py",
+    "tests/test_type_choices.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = {~m, c: int}\nm = {a: int}",
+     "valid": [
+      {
+       "$map": [
+        [
+         "a",
+         1
+        ],
+        [
+         "c",
+         2
+        ]
+       ]
+      }
+     ],
+     "invalid": [
+      {
+       "$map": [
+        [
+         "c",
+         2
+        ]
+       ]
+      }
+     ]
+    },
+    {
+     "schema": "r = [~hdr, tstr]\nhdr = [int, int]",
+     "valid": [
+      [
+       1,
+       2,
+       "x"
+      ]
+     ],
+     "invalid": [
+      [
+       1,
+       "x"
+      ]
+     ]
+    },
+    {
+     "schema": "r = ~t\nt = #6.5(int)",
+     "valid": [
+      5
+     ],
+     "invalid": [
+      "x"
+     ]
+    }
+   ],
+   "schema_errors": [
+    "r = {~hdr}\nhdr = [int]"
+   ]
+  },
+  {
+   "id": "syntax.choice-from",
+   "area": "syntax",
+   "construct": "Choices from groups `&(...)` and `&name`",
+   "spec": "RFC 8610 §2.2.2.2",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "n/a"
+   },
+   "notes": "The choice of the values of a group's entries.",
+   "issues": [],
+   "tests": [
+    "tests/test_type_choices.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = &(a: 1, b: 2)",
+     "valid": [
+      1,
+      2
+     ],
+     "invalid": [
+      3
+     ]
+    },
+    {
+     "schema": "r = &g\ng = (a: 1, b: 2)",
+     "valid": [
+      1,
+      2
+     ],
+     "invalid": [
+      3
+     ]
+    }
+   ]
+  },
+  {
+   "id": "syntax.generics",
+   "area": "syntax",
+   "construct": "Generic rules `name<T> = ...`",
+   "spec": "RFC 8610 §3.9",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "supported"
+   },
+   "notes": "Instantiated where used (also in control arguments, #127); recursive generics terminate.",
+   "issues": [],
+   "tests": [
+    "tests/test_resolve.py",
+    "tests/test_legacy_tables.py",
+    "tests/test_and_within.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = pair<int>\npair<T> = [T, T]",
+     "valid": [
+      [
+       1,
+       2
+      ]
+     ],
+     "invalid": [
+      [
+       1,
+       "a"
+      ]
+     ]
+    }
+   ],
+   "schema_errors": [
+    "r = pair<int, int>\npair<T> = [T, T]"
+   ]
+  },
+  {
+   "id": "syntax.sockets",
+   "area": "syntax",
+   "construct": "Type and group sockets `$name`, `$$name`",
+   "spec": "RFC 8610 §3.9",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "supported"
+   },
+   "notes": "An empty socket matches nothing; extensions (`/=`, `//=`) from the schema and its modules are merged.",
+   "issues": [],
+   "tests": [
+    "tests/test_type_choices.py",
+    "tests/test_group_composition.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = $t\n$t /= int\n$t /= tstr",
+     "valid": [
+      1,
+      "a"
+     ],
+     "invalid": [
+      {
+       "$bytes": "78"
+      }
+     ]
+    },
+    {
+     "schema": "r = {$$g}\n$$g //= (a: int)\n$$g //= (b: tstr)",
+     "valid": [
+      {
+       "$map": [
+        [
+         "a",
+         1
+        ]
+       ]
+      },
+      {
+       "$map": [
+        [
+         "b",
+         "x"
+        ]
+       ]
+      }
+     ],
+     "invalid": [
+      {
+       "$map": [
+        [
+         "a",
+         "x"
+        ]
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "syntax.recursion",
+   "area": "syntax",
+   "construct": "Recursive rules",
+   "spec": "RFC 8610 §2.1",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "supported"
+   },
+   "notes": "Self-referencing types, groups and generics; a rule defined only in terms of itself (`a = b`, `b = a`) is a schema error.",
+   "issues": [],
+   "tests": [
+    "tests/test_array_matching.py",
+    "tests/test_resolve.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = [* r]",
+     "valid": [
+      [
+       []
+      ],
+      [
+       [],
+       [
+        []
+       ]
+      ]
+     ],
+     "invalid": [
+      [
+       1
+      ]
+     ]
+    }
+   ],
+   "schema_errors": [
+    "a = b\nb = a"
+   ]
+  },
+  {
+   "id": "syntax.names",
+   "area": "syntax",
+   "construct": "Identifiers with `-`, `_`, `.`, `$` and `@`",
+   "spec": "RFC 8610 §3.1",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "n/a"
+   },
+   "notes": "Includes dotted names such as `a.b`.",
+   "issues": [],
+   "tests": [
+    "tests/test_cddl_parser.py"
+   ],
+   "probes": [
+    {
+     "schema": "my-t = int\nr = my-t",
+     "valid": [
+      1
+     ],
+     "invalid": [
+      "a"
+     ]
+    },
+    {
+     "schema": "a.b = int\nr = a.b",
+     "valid": [
+      1
+     ],
+     "invalid": [
+      "a"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "syntax.comments",
+   "area": "syntax",
+   "construct": "Comments, whitespace and trailing commas",
+   "spec": "RFC 8610 §3.1",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "n/a",
+    "validator": "n/a",
+    "edn": "n/a"
+   },
+   "notes": "Syntax only: there is no data to reject. `0: tstr ; name` comments name fields in EDN (deprecation planned, #108).",
+   "issues": [
+    108
+   ],
+   "tests": [
+    "tests/test_cddl_parser.py",
+    "tests/test_cddl_parser.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = {a: int,} ; trailing comma and comment\n; whole line",
+     "valid": [
+      {
+       "$map": [
+        [
+         "a",
+         1
+        ]
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "syntax.int-literal",
+   "area": "syntax",
+   "construct": "Integer literals (decimal, `0x`, `0b`)",
+   "spec": "RFC 8610 §3.1",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "n/a"
+   },
+   "notes": "Matched exactly; a float does not match an integer literal.",
+   "issues": [],
+   "tests": [
+    "tests/test_literal_types.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = 0x10",
+     "valid": [
+      16
+     ],
+     "invalid": [
+      15
+     ]
+    },
+    {
+     "schema": "r = 0b101",
+     "valid": [
+      5
+     ],
+     "invalid": [
+      4
+     ]
+    }
+   ]
+  },
+  {
+   "id": "syntax.float-literal",
+   "area": "syntax",
+   "construct": "Float literals (decimal, exponent, hexadecimal)",
+   "spec": "RFC 8610 §3.1",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "n/a"
+   },
+   "notes": "Matched exactly; the integer 1 does not match 1.0.",
+   "issues": [],
+   "tests": [
+    "tests/test_literal_types.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = 1.5",
+     "valid": [
+      1.5
+     ],
+     "invalid": [
+      1.0
+     ]
+    },
+    {
+     "schema": "r = 0x1.8p1",
+     "valid": [
+      3.0
+     ],
+     "invalid": [
+      2.0
+     ]
+    },
+    {
+     "schema": "r = 1.0",
+     "valid": [
+      1.0
+     ],
+     "invalid": [
+      1
+     ]
+    }
+   ]
+  },
+  {
+   "id": "syntax.text-literal",
+   "area": "syntax",
+   "construct": "Text literals with escapes",
+   "spec": "RFC 8610 §3.1",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "n/a"
+   },
+   "notes": "",
+   "issues": [],
+   "tests": [
+    "tests/test_literal_types.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = \"a\\nb\"",
+     "valid": [
+      "a\nb"
+     ],
+     "invalid": [
+      "a"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "syntax.bytes-literal",
+   "area": "syntax",
+   "construct": "Byte-string literals (`h'..'`, `b64'..'`, `'text'`)",
+   "spec": "RFC 8610 §3.1",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "n/a"
+   },
+   "notes": "",
+   "issues": [],
+   "tests": [
+    "tests/test_literal_types.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = h'0102'",
+     "valid": [
+      {
+       "$bytes": "0102"
+      }
+     ],
+     "invalid": [
+      {
+       "$bytes": "01"
+      }
+     ]
+    },
+    {
+     "schema": "r = b64'AQI'",
+     "valid": [
+      {
+       "$bytes": "0102"
+      }
+     ],
+     "invalid": [
+      {
+       "$bytes": "01"
+      }
+     ]
+    },
+    {
+     "schema": "r = 'ab'",
+     "valid": [
+      {
+       "$bytes": "6162"
+      }
+     ],
+     "invalid": [
+      {
+       "$bytes": "61"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "syntax.range",
+   "area": "syntax",
+   "construct": "Ranges `a..b`, `a...b`",
+   "spec": "RFC 8610 §3.8.3",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "n/a"
+   },
+   "notes": "Integer and float bounds, inclusive and exclusive; bounds of different kinds, or an empty range, are schema errors (#71).",
+   "issues": [],
+   "tests": [
+    "tests/test_ranges.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = 1..3",
+     "valid": [
+      1,
+      3
+     ],
+     "invalid": [
+      0,
+      4
+     ]
+    },
+    {
+     "schema": "r = 1...3",
+     "valid": [
+      1,
+      2
+     ],
+     "invalid": [
+      3
+     ]
+    },
+    {
+     "schema": "r = 0.5..1.5",
+     "valid": [
+      1.0
+     ],
+     "invalid": [
+      2.0
+     ]
+    }
+   ],
+   "schema_errors": [
+    "r = 3..1",
+    "r = 1..2.5"
+   ]
+  },
+  {
+   "id": "syntax.tag",
+   "area": "syntax",
+   "construct": "Tags `#6.n(type)`",
+   "spec": "RFC 8610 §3.6",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "supported"
+   },
+   "notes": "Tag number and content are checked; nesting works. Tags are `(number, value)` tuples for now (#78).",
+   "issues": [
+    78
+   ],
+   "tests": [
+    "tests/test_tag_validation.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = #6.5([int, int])",
+     "valid": [
+      {
+       "$tag": 5,
+       "$value": [
+        1,
+        2
+       ]
+      }
+     ],
+     "invalid": [
+      {
+       "$tag": 6,
+       "$value": [
+        1,
+        2
+       ]
+      },
+      {
+       "$tag": 5,
+       "$value": [
+        1,
+        "a"
+       ]
+      },
+      [
+       1,
+       2
+      ]
+     ]
+    },
+    {
+     "schema": "r = #6.1(#6.2(uint))",
+     "valid": [
+      {
+       "$tag": 1,
+       "$value": {
+        "$tag": 2,
+        "$value": 5
+       }
+      }
+     ],
+     "invalid": [
+      {
+       "$tag": 1,
+       "$value": {
+        "$tag": 3,
+        "$value": 5
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "syntax.tag-type",
+   "area": "syntax",
+   "construct": "Tag number given as a type `#6.<type>(t)`",
+   "spec": "RFC 9682",
+   "status": "partial",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "unsupported",
+    "edn": "n/a"
+   },
+   "notes": "Parsed into the AST but not checked: any content is accepted in fields and elements, and the rule fails at the root (#167).",
+   "issues": [
+    167
+   ],
+   "tests": [
+    "tests/test_cddl_parser.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = {a: #6.<uint>(tstr)}",
+     "accepted_but_invalid": [
+      {
+       "$map": [
+        [
+         "a",
+         {
+          "$tag": 5,
+          "$value": 1
+         }
+        ]
+       ]
+      }
+     ]
+    },
+    {
+     "schema": "r = #6.<uint>(tstr)",
+     "rejected_but_valid": [
+      {
+       "$tag": 5,
+       "$value": "a"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "syntax.major-types",
+   "area": "syntax",
+   "construct": "Major types `#M`, `#M.N`, `#`",
+   "spec": "RFC 8610 §3.6",
+   "status": "partial",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "unsupported",
+    "edn": "n/a"
+   },
+   "notes": "Parsed into the AST but not checked: accepted without checking in fields and elements, and failing at the root (#167).",
+   "issues": [
+    167
+   ],
+   "tests": [
+    "tests/test_cddl_parser.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = {a: #1}",
+     "accepted_but_invalid": [
+      {
+       "$map": [
+        [
+         "a",
+         "x"
+        ]
+       ]
+      }
+     ]
+    },
+    {
+     "schema": "r = {a: #7.25}",
+     "accepted_but_invalid": [
+      {
+       "$map": [
+        [
+         "a",
+         "x"
+        ]
+       ]
+      }
+     ]
+    },
+    {
+     "schema": "r = #1",
+     "rejected_but_valid": [
+      -1
+     ]
+    }
+   ]
+  },
+  {
+   "id": "syntax.modules",
+   "area": "syntax",
+   "construct": "Modules `;# import X as P`, `;# include X`",
+   "spec": "draft-ietf-cbor-cddl-modules",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "supported"
+   },
+   "notes": "Draft comment syntax. Modules come from `modules=` / `--module` or a search path; one that is not found keeps its names unchecked and warns (#121). No RFC modules are bundled.",
+   "issues": [],
+   "tests": [
+    "tests/test_modules.py"
+   ],
+   "probes": [
+    {
+     "schema": ";# import lib as l\nr = l.t",
+     "modules": {
+      "lib": "t = uint"
+     },
+     "valid": [
+      1
+     ],
+     "invalid": [
+      "a"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "syntax.root",
+   "area": "syntax",
+   "construct": "Root rules that are not maps or arrays",
+   "spec": "RFC 8610 §2.1",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "supported"
+   },
+   "notes": "Primitives with controls, choices, literals and tags work as the root type (#94).",
+   "issues": [],
+   "tests": [
+    "tests/test_type_choices.py",
+    "tests/test_public_api.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = uint .size 1",
+     "valid": [
+      5
+     ],
+     "invalid": [
+      300
+     ]
+    },
+    {
+     "schema": "r = \"a\" / \"b\"",
+     "valid": [
+      "a"
+     ],
+     "invalid": [
+      "c"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "semantic.names",
+   "area": "syntax",
+   "construct": "Name resolution and schema errors",
+   "spec": "RFC 8610 §2",
+   "status": "supported",
+   "layers": {
+    "parser": "n/a",
+    "ast": "n/a",
+    "resolver": "supported",
+    "validator": "n/a",
+    "edn": "n/a"
+   },
+   "notes": "Undefined names (with suggestions), duplicate definitions, wrong generic argument counts, unknown controls and misapplied controls are `SchemaError`s with a position (#70).",
+   "issues": [],
+   "tests": [
+    "tests/test_resolve.py",
+    "tests/test_cddl_parser.py"
+   ],
+   "schema_errors": [
+    "r = unit",
+    "a = int\na = tstr",
+    "r = uint .nosuchcontrol 1",
+    "r = tstr .regexp 1",
+    "r = int / $$g"
+   ]
+  },
+  {
+   "id": "control.size",
+   "area": "control",
+   "construct": "`.size`",
+   "spec": "RFC 8610 §3.8",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "n/a"
+   },
+   "notes": "Integers (number of bytes), byte and text strings (bytes of UTF-8), with a number or a range argument (#67).",
+   "issues": [],
+   "tests": [
+    "tests/test_size_control.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = uint .size 1",
+     "valid": [
+      5
+     ],
+     "invalid": [
+      300
+     ]
+    },
+    {
+     "schema": "r = bstr .size 2",
+     "valid": [
+      {
+       "$bytes": "6162"
+      }
+     ],
+     "invalid": [
+      {
+       "$bytes": "61"
+      }
+     ]
+    },
+    {
+     "schema": "r = tstr .size (1..3)",
+     "valid": [
+      "ab"
+     ],
+     "invalid": [
+      "abcd",
+      ""
+     ]
+    },
+    {
+     "schema": "r = tstr .size 2",
+     "valid": [
+      "é"
+     ],
+     "invalid": [
+      "é!"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.bits",
+   "area": "control",
+   "construct": "`.bits`",
+   "spec": "RFC 8610 §3.8",
+   "status": "unsupported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "unsupported",
+    "edn": "n/a"
+   },
+   "notes": "Parsed and checked for a fitting target and argument, but the validator accepts any value (#76).",
+   "issues": [
+    76
+   ],
+   "tests": [
+    "tests/test_resolve.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = uint .bits f\nf = &(a: 0, b: 2)",
+     "valid": [
+      5
+     ],
+     "accepted_but_invalid": [
+      2
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.regexp",
+   "area": "control",
+   "construct": "`.regexp`",
+   "spec": "RFC 8610 §3.8",
+   "status": "partial",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "partial",
+    "edn": "n/a"
+   },
+   "notes": "Matched with Python `re` (search from the start of the text), not the XSD dialect RFC 8610 names; a pattern that `re` rejects is reported (#76).",
+   "issues": [
+    76
+   ],
+   "tests": [
+    "tests/test_cbor_control_args.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = tstr .regexp \"[a-z]+\"",
+     "valid": [
+      "abc"
+     ],
+     "invalid": [
+      "ABC"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.cbor",
+   "area": "control",
+   "construct": "`.cbor`",
+   "spec": "RFC 8610 §3.8",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "n/a"
+   },
+   "notes": "The byte string must hold one CBOR item matching the argument (named types, structures and generic instances, #127); errors inside it are offset-mapped to the outer bytes.",
+   "issues": [],
+   "tests": [
+    "tests/test_cbor_control_args.py",
+    "tests/test_cbor_control_args.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = bstr .cbor uint",
+     "valid": [
+      {
+       "$bytes": "05"
+      }
+     ],
+     "invalid": [
+      {
+       "$bytes": "6178"
+      },
+      {
+       "$bytes": "ff"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.cborseq",
+   "area": "control",
+   "construct": "`.cborseq`",
+   "spec": "RFC 8610 §3.8",
+   "status": "unsupported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "unsupported",
+    "edn": "n/a"
+   },
+   "notes": "Accepted without decoding the sequence; needs a sequence decoder (#77, #76).",
+   "issues": [
+    76,
+    77
+   ],
+   "tests": [
+    "tests/test_resolve.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = bstr .cborseq [* uint]",
+     "valid": [
+      {
+       "$bytes": "0102"
+      }
+     ],
+     "accepted_but_invalid": [
+      {
+       "$bytes": "6178"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.within",
+   "area": "control",
+   "construct": "`.within`",
+   "spec": "RFC 8610 §3.8",
+   "status": "partial",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "partial",
+    "edn": "n/a"
+   },
+   "notes": "Enforced only around a generic structure (`non-empty<M>`, #120); on other types the argument is parsed and ignored (#76).",
+   "issues": [
+    76,
+    120
+   ],
+   "tests": [
+    "tests/test_and_within.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = tstr .within (tstr .size 2)",
+     "valid": [
+      "ab"
+     ],
+     "accepted_but_invalid": [
+      "abc"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.and",
+   "area": "control",
+   "construct": "`.and`",
+   "spec": "RFC 8610 §3.8",
+   "status": "partial",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "partial",
+    "edn": "n/a"
+   },
+   "notes": "Enforced only around a generic structure (`non-empty<M>`, #120); on other types the argument is parsed and ignored (#76).",
+   "issues": [
+    76,
+    120
+   ],
+   "tests": [
+    "tests/test_and_within.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = tstr .and (tstr .size 2)",
+     "valid": [
+      "ab"
+     ],
+     "accepted_but_invalid": [
+      "abc"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.lt",
+   "area": "control",
+   "construct": "`.lt`",
+   "spec": "RFC 8610 §3.8",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "n/a"
+   },
+   "notes": "Numbers (less than the argument); integers and floats.",
+   "issues": [],
+   "tests": [
+    "tests/test_cbor_control_args.py",
+    "tests/test_size_control.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = uint .lt 5",
+     "valid": [
+      4
+     ],
+     "invalid": [
+      5
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.le",
+   "area": "control",
+   "construct": "`.le`",
+   "spec": "RFC 8610 §3.8",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "n/a"
+   },
+   "notes": "Numbers (at most the argument); integers and floats.",
+   "issues": [],
+   "tests": [
+    "tests/test_cbor_control_args.py",
+    "tests/test_size_control.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = uint .le 5",
+     "valid": [
+      5
+     ],
+     "invalid": [
+      6
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.gt",
+   "area": "control",
+   "construct": "`.gt`",
+   "spec": "RFC 8610 §3.8",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "n/a"
+   },
+   "notes": "Numbers (greater than the argument); integers and floats.",
+   "issues": [],
+   "tests": [
+    "tests/test_cbor_control_args.py",
+    "tests/test_size_control.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = uint .gt 5",
+     "valid": [
+      6
+     ],
+     "invalid": [
+      5
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.ge",
+   "area": "control",
+   "construct": "`.ge`",
+   "spec": "RFC 8610 §3.8",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "n/a"
+   },
+   "notes": "Numbers (at least the argument); integers and floats.",
+   "issues": [],
+   "tests": [
+    "tests/test_cbor_control_args.py",
+    "tests/test_size_control.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = uint .ge 5",
+     "valid": [
+      5
+     ],
+     "invalid": [
+      4
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.eq",
+   "area": "control",
+   "construct": "`.eq`",
+   "spec": "RFC 8610 §3.8",
+   "status": "unsupported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "unsupported",
+    "edn": "n/a"
+   },
+   "notes": "Accepted without comparing (#76).",
+   "issues": [
+    76
+   ],
+   "tests": [
+    "tests/test_resolve.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = uint .eq 5",
+     "valid": [
+      5
+     ],
+     "accepted_but_invalid": [
+      4
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.ne",
+   "area": "control",
+   "construct": "`.ne`",
+   "spec": "RFC 8610 §3.8",
+   "status": "unsupported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "unsupported",
+    "edn": "n/a"
+   },
+   "notes": "Accepted without comparing (#76).",
+   "issues": [
+    76
+   ],
+   "tests": [
+    "tests/test_resolve.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = uint .ne 5",
+     "valid": [
+      4
+     ],
+     "accepted_but_invalid": [
+      5
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.default",
+   "area": "control",
+   "construct": "`.default`",
+   "spec": "RFC 8610 §3.8",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "n/a"
+   },
+   "notes": "Advisory: the data must match the base type; the default value itself is not applied.",
+   "issues": [],
+   "tests": [
+    "tests/test_cbor_control_args.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = {? a: uint .default 3}",
+     "valid": [
+      {
+       "$map": []
+      },
+      {
+       "$map": [
+        [
+         "a",
+         1
+        ]
+       ]
+      }
+     ],
+     "invalid": [
+      {
+       "$map": [
+        [
+         "a",
+         "x"
+        ]
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.plus",
+   "area": "control",
+   "construct": "`.plus`",
+   "spec": "RFC 9165",
+   "status": "unsupported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "unsupported",
+    "edn": "n/a"
+   },
+   "notes": "Not computed: `4 .plus 1` rejects the correct value 5 (#76).",
+   "issues": [
+    76
+   ],
+   "tests": [
+    "tests/test_resolve.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = 4 .plus 1",
+     "rejected_but_valid": [
+      5
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.cat",
+   "area": "control",
+   "construct": "`.cat`",
+   "spec": "RFC 9165",
+   "status": "unsupported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "unsupported",
+    "edn": "n/a"
+   },
+   "notes": "Not computed: `\"a\" .cat \"b\"` rejects the correct value `\"ab\"`, and `tstr .cat \"b\"` accepts anything (#76).",
+   "issues": [
+    76
+   ],
+   "tests": [
+    "tests/test_resolve.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = \"a\" .cat \"b\"",
+     "rejected_but_valid": [
+      "ab"
+     ]
+    },
+    {
+     "schema": "r = tstr .cat \"b\"",
+     "accepted_but_invalid": [
+      "zz"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.det",
+   "area": "control",
+   "construct": "`.det`",
+   "spec": "RFC 9165",
+   "status": "unsupported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "unsupported",
+    "edn": "n/a"
+   },
+   "notes": "Parsed; the validator treats the target as an ordinary type (#76).",
+   "issues": [
+    76
+   ],
+   "tests": [
+    "tests/test_resolve.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = tstr .det \"x\"",
+     "valid": [
+      "x"
+     ],
+     "accepted_but_invalid": [
+      "y"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.abnf",
+   "area": "control",
+   "construct": "`.abnf`",
+   "spec": "RFC 9165",
+   "status": "unsupported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "unsupported",
+    "edn": "n/a"
+   },
+   "notes": "Accepted without parsing the grammar (#76).",
+   "issues": [
+    76
+   ],
+   "tests": [
+    "tests/test_resolve.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = tstr .abnf \"a = 1*%x61\"",
+     "valid": [
+      "a"
+     ],
+     "accepted_but_invalid": [
+      "b"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.abnfb",
+   "area": "control",
+   "construct": "`.abnfb`",
+   "spec": "RFC 9165",
+   "status": "unsupported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "unsupported",
+    "edn": "n/a"
+   },
+   "notes": "Accepted without parsing the grammar (#76).",
+   "issues": [
+    76
+   ],
+   "tests": [
+    "tests/test_resolve.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = bstr .abnfb \"a = 1*%x61\"",
+     "valid": [
+      {
+       "$bytes": "61"
+      }
+     ],
+     "accepted_but_invalid": [
+      {
+       "$bytes": "62"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.feature",
+   "area": "control",
+   "construct": "`.feature`",
+   "spec": "RFC 9165",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "n/a"
+   },
+   "notes": "Advisory (RFC 9165): the data must match the base type; the feature name is not interpreted.",
+   "issues": [],
+   "tests": [
+    "tests/test_resolve.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = uint .feature \"f\"",
+     "valid": [
+      1
+     ],
+     "invalid": [
+      "a"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.b64u",
+   "area": "control",
+   "construct": "`.b64u`",
+   "spec": "RFC 9741",
+   "status": "unsupported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "unsupported",
+    "edn": "n/a"
+   },
+   "notes": "Accepted without decoding the text (#76).",
+   "issues": [
+    76
+   ],
+   "tests": [
+    "tests/test_resolve.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = tstr .b64u bstr",
+     "accepted_but_invalid": [
+      "ÿ!"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.b64c",
+   "area": "control",
+   "construct": "`.b64c`",
+   "spec": "RFC 9741",
+   "status": "unsupported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "unsupported",
+    "edn": "n/a"
+   },
+   "notes": "Accepted without decoding the text (#76).",
+   "issues": [
+    76
+   ],
+   "tests": [
+    "tests/test_resolve.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = tstr .b64c bstr",
+     "accepted_but_invalid": [
+      "ÿ!"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.b64u-sloppy",
+   "area": "control",
+   "construct": "`.b64u-sloppy`",
+   "spec": "RFC 9741",
+   "status": "unsupported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "unsupported",
+    "edn": "n/a"
+   },
+   "notes": "Accepted without decoding the text (#76).",
+   "issues": [
+    76
+   ],
+   "tests": [
+    "tests/test_resolve.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = tstr .b64u-sloppy bstr",
+     "accepted_but_invalid": [
+      "ÿ!"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.b64c-sloppy",
+   "area": "control",
+   "construct": "`.b64c-sloppy`",
+   "spec": "RFC 9741",
+   "status": "unsupported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "unsupported",
+    "edn": "n/a"
+   },
+   "notes": "Accepted without decoding the text (#76).",
+   "issues": [
+    76
+   ],
+   "tests": [
+    "tests/test_resolve.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = tstr .b64c-sloppy bstr",
+     "accepted_but_invalid": [
+      "ÿ!"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.b45",
+   "area": "control",
+   "construct": "`.b45`",
+   "spec": "RFC 9741",
+   "status": "unsupported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "unsupported",
+    "edn": "n/a"
+   },
+   "notes": "Accepted without decoding the text (#76).",
+   "issues": [
+    76
+   ],
+   "tests": [
+    "tests/test_resolve.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = tstr .b45 bstr",
+     "accepted_but_invalid": [
+      "ÿ!"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.b32",
+   "area": "control",
+   "construct": "`.b32`",
+   "spec": "RFC 9741",
+   "status": "unsupported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "unsupported",
+    "edn": "n/a"
+   },
+   "notes": "Accepted without decoding the text (#76).",
+   "issues": [
+    76
+   ],
+   "tests": [
+    "tests/test_resolve.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = tstr .b32 bstr",
+     "accepted_but_invalid": [
+      "ÿ!"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.h32",
+   "area": "control",
+   "construct": "`.h32`",
+   "spec": "RFC 9741",
+   "status": "unsupported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "unsupported",
+    "edn": "n/a"
+   },
+   "notes": "Accepted without decoding the text (#76).",
+   "issues": [
+    76
+   ],
+   "tests": [
+    "tests/test_resolve.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = tstr .h32 bstr",
+     "accepted_but_invalid": [
+      "ÿ!"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.hex",
+   "area": "control",
+   "construct": "`.hex`",
+   "spec": "RFC 9741",
+   "status": "unsupported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "unsupported",
+    "edn": "n/a"
+   },
+   "notes": "Accepted without decoding the text (#76).",
+   "issues": [
+    76
+   ],
+   "tests": [
+    "tests/test_resolve.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = tstr .hex bstr",
+     "accepted_but_invalid": [
+      "ÿ!"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.hexlc",
+   "area": "control",
+   "construct": "`.hexlc`",
+   "spec": "RFC 9741",
+   "status": "unsupported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "unsupported",
+    "edn": "n/a"
+   },
+   "notes": "Accepted without decoding the text (#76).",
+   "issues": [
+    76
+   ],
+   "tests": [
+    "tests/test_resolve.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = tstr .hexlc bstr",
+     "accepted_but_invalid": [
+      "ÿ!"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.hexuc",
+   "area": "control",
+   "construct": "`.hexuc`",
+   "spec": "RFC 9741",
+   "status": "unsupported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "unsupported",
+    "edn": "n/a"
+   },
+   "notes": "Accepted without decoding the text (#76).",
+   "issues": [
+    76
+   ],
+   "tests": [
+    "tests/test_resolve.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = tstr .hexuc bstr",
+     "accepted_but_invalid": [
+      "ÿ!"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.base10",
+   "area": "control",
+   "construct": "`.base10`",
+   "spec": "RFC 9741",
+   "status": "unsupported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "unsupported",
+    "edn": "n/a"
+   },
+   "notes": "Accepted without decoding the text (#76).",
+   "issues": [
+    76
+   ],
+   "tests": [
+    "tests/test_resolve.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = tstr .base10 bstr",
+     "accepted_but_invalid": [
+      "ÿ!"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.printf",
+   "area": "control",
+   "construct": "`.printf`",
+   "spec": "RFC 9741",
+   "status": "unsupported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "unsupported",
+    "edn": "n/a"
+   },
+   "notes": "Accepted without formatting (#76).",
+   "issues": [
+    76
+   ],
+   "tests": [
+    "tests/test_resolve.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = tstr .printf [\"%d\", 1]",
+     "valid": [
+      "1"
+     ],
+     "accepted_but_invalid": [
+      "2"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.json",
+   "area": "control",
+   "construct": "`.json`",
+   "spec": "RFC 9741",
+   "status": "unsupported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "unsupported",
+    "edn": "n/a"
+   },
+   "notes": "Accepted without parsing the JSON text (#76).",
+   "issues": [
+    76
+   ],
+   "tests": [
+    "tests/test_resolve.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = tstr .json {a: int}",
+     "valid": [
+      "{\"a\":1}"
+     ],
+     "accepted_but_invalid": [
+      "{\"a\":\"x\"}"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "control.join",
+   "area": "control",
+   "construct": "`.join`",
+   "spec": "RFC 9741",
+   "status": "unsupported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "unsupported",
+    "edn": "n/a"
+   },
+   "notes": "Accepted without joining (#76).",
+   "issues": [
+    76
+   ],
+   "tests": [
+    "tests/test_resolve.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = tstr .join [\"a\", \"b\"]",
+     "valid": [
+      "ab"
+     ],
+     "accepted_but_invalid": [
+      "zz"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "prelude.any",
+   "area": "prelude",
+   "construct": "`any`",
+   "spec": "RFC 8610 Appendix D",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "n/a"
+   },
+   "notes": "",
+   "issues": [],
+   "tests": [
+    "tests/test_prelude_types.py"
+   ],
+   "covers": [
+    "any"
+   ],
+   "probes": [
+    {
+     "schema": "r = any",
+     "valid": [
+      1,
+      "a",
+      [
+       1
+      ],
+      null
+     ]
+    }
+   ]
+  },
+  {
+   "id": "prelude.bool",
+   "area": "prelude",
+   "construct": "`bool`, `true`, `false`",
+   "spec": "RFC 8610 Appendix D",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "n/a"
+   },
+   "notes": "Integers 0 and 1 do not match.",
+   "issues": [],
+   "tests": [
+    "tests/test_prelude_types.py"
+   ],
+   "covers": [
+    "bool",
+    "true",
+    "false"
+   ],
+   "probes": [
+    {
+     "schema": "r = bool",
+     "valid": [
+      true,
+      false
+     ],
+     "invalid": [
+      1
+     ]
+    },
+    {
+     "schema": "r = true",
+     "valid": [
+      true
+     ],
+     "invalid": [
+      false
+     ]
+    }
+   ]
+  },
+  {
+   "id": "prelude.nil",
+   "area": "prelude",
+   "construct": "`nil`, `null`",
+   "spec": "RFC 8610 Appendix D",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "n/a"
+   },
+   "notes": "",
+   "issues": [],
+   "tests": [
+    "tests/test_prelude_types.py"
+   ],
+   "covers": [
+    "nil",
+    "null"
+   ],
+   "probes": [
+    {
+     "schema": "r = nil",
+     "valid": [
+      null
+     ],
+     "invalid": [
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "id": "prelude.undefined",
+   "area": "prelude",
+   "construct": "`undefined`",
+   "spec": "RFC 8610 Appendix D",
+   "status": "unsupported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "unsupported",
+    "edn": "n/a"
+   },
+   "notes": "The decoder cannot read the CBOR `undefined` item, so no data can match (#168).",
+   "issues": [
+    168
+   ],
+   "tests": [
+    "tests/test_prelude_types.py"
+   ],
+   "covers": [
+    "undefined"
+   ],
+   "probes": [
+    {
+     "schema": "r = undefined",
+     "invalid": [
+      1,
+      null
+     ]
+    }
+   ]
+  },
+  {
+   "id": "prelude.integers",
+   "area": "prelude",
+   "construct": "`uint`, `nint`, `int`",
+   "spec": "RFC 8610 Appendix D",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "n/a"
+   },
+   "notes": "Booleans do not match; `int` is the 64-bit range, bignums are `biguint`/`bignint`.",
+   "issues": [],
+   "tests": [
+    "tests/test_prelude_types.py",
+    "tests/test_cbor_cddl_analyzer.py"
+   ],
+   "covers": [
+    "uint",
+    "nint",
+    "int"
+   ],
+   "probes": [
+    {
+     "schema": "r = uint",
+     "valid": [
+      0,
+      18446744073709551615
+     ],
+     "invalid": [
+      -1,
+      true
+     ]
+    },
+    {
+     "schema": "r = nint",
+     "valid": [
+      -1
+     ],
+     "invalid": [
+      0
+     ]
+    },
+    {
+     "schema": "r = int",
+     "valid": [
+      -1,
+      1
+     ],
+     "invalid": [
+      "a",
+      18446744073709551616
+     ]
+    }
+   ]
+  },
+  {
+   "id": "prelude.bignums",
+   "area": "prelude",
+   "construct": "`biguint`, `bignint`, `bigint`, `integer`, `unsigned`",
+   "spec": "RFC 8610 Appendix D",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "n/a"
+   },
+   "notes": "Tags 2 and 3 (bignums).",
+   "issues": [],
+   "tests": [
+    "tests/test_prelude_types.py"
+   ],
+   "covers": [
+    "biguint",
+    "bignint",
+    "bigint",
+    "integer",
+    "unsigned"
+   ],
+   "probes": [
+    {
+     "schema": "r = biguint",
+     "valid": [
+      {
+       "$tag": 2,
+       "$value": {
+        "$bytes": "010000000000000000"
+       }
+      }
+     ],
+     "invalid": [
+      {
+       "$tag": 3,
+       "$value": {
+        "$bytes": "01"
+       }
+      }
+     ]
+    },
+    {
+     "schema": "r = integer",
+     "valid": [
+      5
+     ],
+     "invalid": [
+      "a"
+     ]
+    },
+    {
+     "schema": "r = unsigned",
+     "valid": [
+      5
+     ],
+     "invalid": [
+      -1
+     ]
+    }
+   ]
+  },
+  {
+   "id": "prelude.bytes",
+   "area": "prelude",
+   "construct": "`bstr`, `bytes`",
+   "spec": "RFC 8610 Appendix D",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "n/a"
+   },
+   "notes": "",
+   "issues": [],
+   "tests": [
+    "tests/test_prelude_types.py"
+   ],
+   "covers": [
+    "bstr",
+    "bytes"
+   ],
+   "probes": [
+    {
+     "schema": "r = bstr",
+     "valid": [
+      {
+       "$bytes": "61"
+      }
+     ],
+     "invalid": [
+      "a"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "prelude.text",
+   "area": "prelude",
+   "construct": "`tstr`, `text`",
+   "spec": "RFC 8610 Appendix D",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "n/a"
+   },
+   "notes": "",
+   "issues": [],
+   "tests": [
+    "tests/test_prelude_types.py"
+   ],
+   "covers": [
+    "tstr",
+    "text"
+   ],
+   "probes": [
+    {
+     "schema": "r = tstr",
+     "valid": [
+      "a"
+     ],
+     "invalid": [
+      {
+       "$bytes": "61"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "prelude.floats",
+   "area": "prelude",
+   "construct": "`float16`, `float32`, `float64`, `float`, `float16-32`, `float32-64`",
+   "spec": "RFC 8610 Appendix D",
+   "status": "partial",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "partial",
+    "edn": "n/a"
+   },
+   "notes": "Any float matches any of them: decoded floats carry no width, so `float16` accepts `1e300` (#169). `float` and the choices accept floats only.",
+   "issues": [
+    169
+   ],
+   "tests": [
+    "tests/test_prelude_types.py"
+   ],
+   "covers": [
+    "float16",
+    "float32",
+    "float64",
+    "float",
+    "float16-32",
+    "float32-64"
+   ],
+   "probes": [
+    {
+     "schema": "r = float",
+     "valid": [
+      1.5
+     ],
+     "invalid": [
+      1,
+      "a"
+     ]
+    },
+    {
+     "schema": "r = float16",
+     "valid": [
+      1.5
+     ],
+     "invalid": [
+      "a"
+     ],
+     "accepted_but_invalid": [
+      1e+300
+     ]
+    }
+   ]
+  },
+  {
+   "id": "prelude.number",
+   "area": "prelude",
+   "construct": "`number`",
+   "spec": "RFC 8610 Appendix D",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "n/a"
+   },
+   "notes": "`int / float`.",
+   "issues": [],
+   "tests": [
+    "tests/test_prelude_types.py"
+   ],
+   "covers": [
+    "number"
+   ],
+   "probes": [
+    {
+     "schema": "r = number",
+     "valid": [
+      1,
+      1.5
+     ],
+     "invalid": [
+      "a"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "prelude.time",
+   "area": "prelude",
+   "construct": "`tdate`, `time`",
+   "spec": "RFC 8610 Appendix D",
+   "status": "partial",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "partial",
+    "edn": "n/a"
+   },
+   "notes": "The tag number and the type of the content are checked, not the date text (#169).",
+   "issues": [
+    169
+   ],
+   "tests": [
+    "tests/test_prelude_types.py"
+   ],
+   "covers": [
+    "tdate",
+    "time"
+   ],
+   "probes": [
+    {
+     "schema": "r = tdate",
+     "valid": [
+      {
+       "$tag": 0,
+       "$value": "2020-01-01T00:00:00Z"
+      }
+     ],
+     "invalid": [
+      {
+       "$tag": 1,
+       "$value": "2020-01-01T00:00:00Z"
+      },
+      "x"
+     ],
+     "accepted_but_invalid": [
+      {
+       "$tag": 0,
+       "$value": "not a date"
+      }
+     ]
+    },
+    {
+     "schema": "r = time",
+     "valid": [
+      {
+       "$tag": 1,
+       "$value": 5
+      }
+     ],
+     "invalid": [
+      {
+       "$tag": 0,
+       "$value": 5
+      },
+      5
+     ]
+    }
+   ]
+  },
+  {
+   "id": "prelude.decimal",
+   "area": "prelude",
+   "construct": "`decfrac`, `bigfloat`",
+   "spec": "RFC 8610 Appendix D",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "n/a"
+   },
+   "notes": "Tags 4 and 5 holding `[exponent, mantissa]`.",
+   "issues": [],
+   "tests": [
+    "tests/test_prelude_types.py"
+   ],
+   "covers": [
+    "decfrac",
+    "bigfloat"
+   ],
+   "probes": [
+    {
+     "schema": "r = decfrac",
+     "valid": [
+      {
+       "$tag": 4,
+       "$value": [
+        1,
+        2
+       ]
+      }
+     ],
+     "invalid": [
+      {
+       "$tag": 4,
+       "$value": [
+        1
+       ]
+      }
+     ]
+    },
+    {
+     "schema": "r = bigfloat",
+     "valid": [
+      {
+       "$tag": 5,
+       "$value": [
+        1,
+        2
+       ]
+      }
+     ],
+     "invalid": [
+      {
+       "$tag": 5,
+       "$value": [
+        "a",
+        2
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "prelude.encoding-tags",
+   "area": "prelude",
+   "construct": "`eb64url`, `eb64legacy`, `eb16`, `cbor-any`",
+   "spec": "RFC 8610 Appendix D",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "n/a"
+   },
+   "notes": "Tag numbers 21, 22, 23 and 55799.",
+   "issues": [],
+   "tests": [
+    "tests/test_prelude_types.py"
+   ],
+   "covers": [
+    "eb64url",
+    "eb64legacy",
+    "eb16",
+    "cbor-any"
+   ],
+   "probes": [
+    {
+     "schema": "r = eb64url",
+     "valid": [
+      {
+       "$tag": 21,
+       "$value": "a"
+      }
+     ],
+     "invalid": [
+      {
+       "$tag": 22,
+       "$value": "a"
+      }
+     ]
+    },
+    {
+     "schema": "r = cbor-any",
+     "valid": [
+      {
+       "$tag": 55799,
+       "$value": 1
+      }
+     ],
+     "invalid": [
+      "x"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "prelude.tagged-text",
+   "area": "prelude",
+   "construct": "`encoded-cbor`, `uri`, `b64url`, `b64legacy`, `regexp`, `mime-message`",
+   "spec": "RFC 8610 Appendix D",
+   "status": "partial",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "partial",
+    "edn": "n/a"
+   },
+   "notes": "The tag number and the type of the content are checked, not its meaning: `uri` accepts any text and `encoded-cbor` any byte string (#169).",
+   "issues": [
+    169
+   ],
+   "tests": [
+    "tests/test_prelude_types.py"
+   ],
+   "covers": [
+    "encoded-cbor",
+    "uri",
+    "b64url",
+    "b64legacy",
+    "regexp",
+    "mime-message"
+   ],
+   "probes": [
+    {
+     "schema": "r = uri",
+     "valid": [
+      {
+       "$tag": 32,
+       "$value": "http://a"
+      }
+     ],
+     "invalid": [
+      {
+       "$tag": 32,
+       "$value": 5
+      },
+      "http://a"
+     ],
+     "accepted_but_invalid": [
+      {
+       "$tag": 32,
+       "$value": "::not uri"
+      }
+     ]
+    },
+    {
+     "schema": "r = encoded-cbor",
+     "valid": [
+      {
+       "$tag": 24,
+       "$value": {
+        "$bytes": "01"
+       }
+      }
+     ],
+     "invalid": [
+      {
+       "$tag": 24,
+       "$value": "a"
+      }
+     ],
+     "accepted_but_invalid": [
+      {
+       "$tag": 24,
+       "$value": {
+        "$bytes": "ffff"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cbor.integers",
+   "area": "cbor",
+   "construct": "Integers (major types 0 and 1, up to 64 bits)",
+   "spec": "RFC 8949",
+   "status": "supported",
+   "layers": {
+    "decoder": "supported",
+    "encoder": "supported",
+    "validator": "supported",
+    "edn": "supported",
+    "json": "supported"
+   },
+   "notes": "Non-shortest encodings are accepted by `loads()` (`1800` is 0); the optional deterministic check is #95.",
+   "issues": [
+    95
+   ],
+   "tests": [
+    "tests/test_rfc8949_conformance.py",
+    "tests/test_strict_decoding.py"
+   ],
+   "cbor": [
+    {
+     "hex": "00",
+     "decode": "ok",
+     "roundtrip": true,
+     "json_roundtrip": true,
+     "edn": true
+    },
+    {
+     "hex": "3bffffffffffffffff",
+     "decode": "ok",
+     "roundtrip": true,
+     "json_roundtrip": true
+    },
+    {
+     "hex": "1800",
+     "decode": "ok",
+     "roundtrip": false
+    },
+    {
+     "hex": "1c",
+     "decode": "error"
+    }
+   ]
+  },
+  {
+   "id": "cbor.strings",
+   "area": "cbor",
+   "construct": "Byte and text strings (definite length)",
+   "spec": "RFC 8949",
+   "status": "supported",
+   "layers": {
+    "decoder": "supported",
+    "encoder": "supported",
+    "validator": "supported",
+    "edn": "supported",
+    "json": "supported"
+   },
+   "notes": "Text strings must be valid UTF-8.",
+   "issues": [],
+   "tests": [
+    "tests/test_rfc8949_conformance.py",
+    "tests/test_strict_decoding.py"
+   ],
+   "cbor": [
+    {
+     "hex": "4161",
+     "decode": "ok",
+     "roundtrip": true,
+     "json_roundtrip": true,
+     "edn": true
+    },
+    {
+     "hex": "6161",
+     "decode": "ok",
+     "roundtrip": true,
+     "json_roundtrip": true
+    },
+    {
+     "hex": "62c328",
+     "decode": "error"
+    },
+    {
+     "hex": "5a000000026162",
+     "decode": "ok",
+     "roundtrip": false
+    }
+   ]
+  },
+  {
+   "id": "cbor.arrays-maps",
+   "area": "cbor",
+   "construct": "Arrays and maps (definite length)",
+   "spec": "RFC 8949",
+   "status": "supported",
+   "layers": {
+    "decoder": "supported",
+    "encoder": "supported",
+    "validator": "supported",
+    "edn": "supported",
+    "json": "supported"
+   },
+   "notes": "Duplicate map keys are rejected (#65); non-string keys keep their type (#88).",
+   "issues": [
+    92
+   ],
+   "tests": [
+    "tests/test_rfc8949_conformance.py",
+    "tests/test_map_key_types.py",
+    "tests/test_strict_decoding.py"
+   ],
+   "cbor": [
+    {
+     "hex": "8101",
+     "decode": "ok",
+     "roundtrip": true,
+     "json_roundtrip": true,
+     "edn": true
+    },
+    {
+     "hex": "a1616101",
+     "decode": "ok",
+     "roundtrip": true,
+     "json_roundtrip": true,
+     "edn": true
+    },
+    {
+     "hex": "a10101",
+     "decode": "ok",
+     "roundtrip": true,
+     "json_roundtrip": true
+    },
+    {
+     "hex": "a2616101616102",
+     "decode": "error"
+    },
+    {
+     "hex": "a2f501f502",
+     "decode": "error"
+    },
+    {
+     "hex": "a2f93c00010102",
+     "decode": "ok",
+     "roundtrip": false,
+     "json_roundtrip": false
+    }
+   ]
+  },
+  {
+   "id": "cbor.simple",
+   "area": "cbor",
+   "construct": "`false`, `true`, `null`",
+   "spec": "RFC 8949",
+   "status": "supported",
+   "layers": {
+    "decoder": "supported",
+    "encoder": "supported",
+    "validator": "supported",
+    "edn": "supported",
+    "json": "supported"
+   },
+   "notes": "",
+   "issues": [],
+   "tests": [
+    "tests/test_rfc8949_conformance.py"
+   ],
+   "cbor": [
+    {
+     "hex": "f4",
+     "decode": "ok",
+     "roundtrip": true,
+     "json_roundtrip": true
+    },
+    {
+     "hex": "f5",
+     "decode": "ok",
+     "roundtrip": true,
+     "json_roundtrip": true
+    },
+    {
+     "hex": "f6",
+     "decode": "ok",
+     "roundtrip": true,
+     "json_roundtrip": true
+    }
+   ]
+  },
+  {
+   "id": "cbor.floats",
+   "area": "cbor",
+   "construct": "Floats (half, single, double)",
+   "spec": "RFC 8949",
+   "status": "partial",
+   "layers": {
+    "decoder": "supported",
+    "encoder": "partial",
+    "validator": "partial",
+    "edn": "supported",
+    "json": "supported"
+   },
+   "notes": "All three widths decode to a Python float; the encoder writes doubles unless `canonical=True` (shortest form that keeps the value). Width is lost on decoding (#169, #96).",
+   "issues": [
+    96,
+    169
+   ],
+   "tests": [
+    "tests/test_deterministic_encoding.py",
+    "tests/test_rfc8949_conformance.py"
+   ],
+   "cbor": [
+    {
+     "hex": "f93c00",
+     "decode": "ok",
+     "roundtrip": false,
+     "canonical": true
+    },
+    {
+     "hex": "fb3ff199999999999a",
+     "decode": "ok",
+     "roundtrip": true,
+     "json_roundtrip": true
+    },
+    {
+     "hex": "fa7f800000",
+     "decode": "ok",
+     "roundtrip": false
+    }
+   ]
+  },
+  {
+   "id": "cbor.tags",
+   "area": "cbor",
+   "construct": "Tags (major type 6)",
+   "spec": "RFC 8949",
+   "status": "partial",
+   "layers": {
+    "decoder": "partial",
+    "encoder": "partial",
+    "validator": "supported",
+    "edn": "supported",
+    "json": "supported"
+   },
+   "notes": "Tags decode to `(number, value)` tuples, so a two-element tuple is ambiguous with a tag; a dedicated type is planned (#78). Bignums (2, 3) decode to Python ints in values.",
+   "issues": [
+    78
+   ],
+   "tests": [
+    "tests/test_tag_validation.py",
+    "tests/test_rfc8949_conformance.py"
+   ],
+   "cbor": [
+    {
+     "hex": "c101",
+     "decode": "ok",
+     "roundtrip": true,
+     "json_roundtrip": true,
+     "edn": true
+    },
+    {
+     "hex": "d9d9f701",
+     "decode": "ok",
+     "roundtrip": true,
+     "json_roundtrip": true
+    },
+    {
+     "hex": "c249010000000000000000",
+     "decode": "ok",
+     "roundtrip": true,
+     "json_roundtrip": true
+    }
+   ]
+  },
+  {
+   "id": "cbor.indefinite",
+   "area": "cbor",
+   "construct": "Indefinite-length strings, arrays and maps",
+   "spec": "RFC 8949",
+   "status": "unsupported",
+   "layers": {
+    "decoder": "unsupported",
+    "encoder": "n/a",
+    "validator": "n/a",
+    "edn": "n/a",
+    "json": "n/a"
+   },
+   "notes": "Rejected with `CBORUnsupportedError` (#168).",
+   "issues": [
+    168
+   ],
+   "tests": [
+    "tests/test_strict_decoding.py"
+   ],
+   "cbor": [
+    {
+     "hex": "9f0102ff",
+     "decode": "error"
+    },
+    {
+     "hex": "bf616101ff",
+     "decode": "error"
+    },
+    {
+     "hex": "5f4101ff",
+     "decode": "error"
+    }
+   ]
+  },
+  {
+   "id": "cbor.undefined",
+   "area": "cbor",
+   "construct": "`undefined` and unassigned simple values",
+   "spec": "RFC 8949",
+   "status": "unsupported",
+   "layers": {
+    "decoder": "unsupported",
+    "encoder": "n/a",
+    "validator": "n/a",
+    "edn": "n/a",
+    "json": "n/a"
+   },
+   "notes": "Rejected (#168).",
+   "issues": [
+    168
+   ],
+   "tests": [
+    "tests/test_strict_decoding.py"
+   ],
+   "cbor": [
+    {
+     "hex": "f7",
+     "decode": "error"
+    },
+    {
+     "hex": "f0",
+     "decode": "error"
+    },
+    {
+     "hex": "f8ff",
+     "decode": "error"
+    }
+   ]
+  },
+  {
+   "id": "cbor.strict",
+   "area": "cbor",
+   "construct": "One complete item per input",
+   "spec": "RFC 8949",
+   "status": "supported",
+   "layers": {
+    "decoder": "supported",
+    "encoder": "n/a",
+    "validator": "n/a",
+    "edn": "n/a",
+    "json": "n/a"
+   },
+   "notes": "`loads()` rejects empty, truncated and trailing data; a sequence API is #77.",
+   "issues": [
+    77
+   ],
+   "tests": [
+    "tests/test_strict_decoding.py"
+   ],
+   "cbor": [
+    {
+     "hex": "",
+     "decode": "error"
+    },
+    {
+     "hex": "1a0000",
+     "decode": "error"
+    },
+    {
+     "hex": "0101",
+     "decode": "error"
+    }
+   ]
+  },
+  {
+   "id": "cbor.canonical",
+   "area": "cbor",
+   "construct": "Core deterministic encoding (§4.2.1)",
+   "spec": "RFC 8949",
+   "status": "supported",
+   "layers": {
+    "decoder": "n/a",
+    "encoder": "supported",
+    "validator": "n/a",
+    "edn": "n/a",
+    "json": "n/a"
+   },
+   "notes": "Shortest integers and floats, map keys sorted by encoded bytes, definite lengths. The optional §4.2.2 reduction of integral floats is not applied.",
+   "issues": [],
+   "tests": [
+    "tests/test_deterministic_encoding.py",
+    "tests/test_canonical_and_json.py"
+   ],
+   "cbor": [
+    {
+     "hex": "a2616102616201",
+     "decode": "ok",
+     "canonical": true
+    },
+    {
+     "hex": "f93c00",
+     "decode": "ok",
+     "canonical": true
+    }
+   ]
+  },
+  {
+   "id": "cbor.json",
+   "area": "cbor",
+   "construct": "Typed JSON bridge",
+   "spec": "project format",
+   "status": "supported",
+   "layers": {
+    "decoder": "n/a",
+    "encoder": "n/a",
+    "validator": "n/a",
+    "edn": "n/a",
+    "json": "supported"
+   },
+   "notes": "`typed=True` keeps byte strings, tags and non-string keys so the JSON converts back to the same CBOR; hardening of the annotations is #79.",
+   "issues": [
+    79
+   ],
+   "tests": [
+    "tests/test_canonical_and_json.py",
+    "tests/test_json_map_keys.py"
+   ],
+   "cbor": [
+    {
+     "hex": "4161",
+     "decode": "ok",
+     "json_roundtrip": true
+    },
+    {
+     "hex": "c101",
+     "decode": "ok",
+     "json_roundtrip": true
+    },
+    {
+     "hex": "a10101",
+     "decode": "ok",
+     "json_roundtrip": true
+    }
+   ]
+  },
+  {
+   "id": "syntax.chained-controls",
+   "area": "syntax",
+   "construct": "Chained controls `uint .ge 0 .le 150`",
+   "spec": "project extension",
+   "status": "supported",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "supported",
+    "edn": "n/a"
+   },
+   "notes": "Not RFC 8610 grammar: the parser accepts it as an extension and every control applies. Deprecation is planned (#113).",
+   "issues": [
+    113
+   ],
+   "tests": [
+    "tests/test_cddl_parser.py",
+    "tests/test_cbor_cddl_analyzer.py"
+   ],
+   "probes": [
+    {
+     "schema": "r = uint .ge 0 .le 150",
+     "valid": [
+      5
+     ],
+     "invalid": [
+      200
+     ]
+    }
+   ]
+  }
+ ]
+}

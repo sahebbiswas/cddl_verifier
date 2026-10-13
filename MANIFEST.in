@@ -5,3 +5,5 @@ recursive-include tests *.py
 include .github/scripts/check_version_bump.py
 recursive-include cddl-schemas *.cddl *.edn
 recursive-include test-data *.cbor
+include docs/conformance.json
+recursive-include scripts *.py
