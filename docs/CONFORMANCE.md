@@ -19,7 +19,7 @@ Layers: the **parser** reads the syntax into the typed **AST**; the **resolver**
 | Area | ✅ supported | 🟡 partial | ❌ unsupported | Total |
 |------|-------------:|-----------:|---------------:|------:|
 | CDDL syntax and semantics | 29 | 0 | 0 | 29 |
-| Control operators | 8 | 3 | 23 | 34 |
+| Control operators | 12 | 1 | 21 | 34 |
 | Prelude types (RFC 8610 Appendix D) | 12 | 2 | 0 | 14 |
 | CBOR data model (RFC 8949) | 9 | 2 | 0 | 11 |
 
@@ -70,14 +70,14 @@ Every operator the resolver knows (RFC 8610, RFC 9165, RFC 9741). An operator th
 | `.regexp` | RFC 8610 §3.8 | 🟡 | ✅ | ✅ | ✅ | 🟡 | – | Matched with Python `re` (search from the start of the text), not the XSD dialect RFC 8610 names; a pattern that `re` rejects is reported (#76). [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `test_cbor_control_args.py` |
 | `.cbor` | RFC 8610 §3.8 | ✅ | ✅ | ✅ | ✅ | ✅ | – | The byte string must hold one CBOR item matching the argument (named types, structures and generic instances, #127); errors inside it are offset-mapped to the outer bytes. | `test_cbor_control_args.py`, `test_cbor_control_args.py` |
 | `.cborseq` | RFC 8610 §3.8 | ❌ | ✅ | ✅ | ✅ | ❌ | – | Accepted without decoding the sequence; needs a sequence decoder (#77, #76). [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76), [#77](https://github.com/sahebbiswas/cddl_verifier/issues/77) | `test_resolve.py` |
-| `.within` | RFC 8610 §3.8 | 🟡 | ✅ | ✅ | ✅ | 🟡 | – | Enforced only around a generic structure (`non-empty<M>`, #120); on other types the argument is parsed and ignored (#76). [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76), [#120](https://github.com/sahebbiswas/cddl_verifier/issues/120) | `test_and_within.py` |
-| `.and` | RFC 8610 §3.8 | 🟡 | ✅ | ✅ | ✅ | 🟡 | – | Enforced only around a generic structure (`non-empty<M>`, #120); on other types the argument is parsed and ignored (#76). [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76), [#120](https://github.com/sahebbiswas/cddl_verifier/issues/120) | `test_and_within.py` |
+| `.within` | RFC 8610 §3.8 | ✅ | ✅ | ✅ | ✅ | ✅ | – | The data must match the target and the argument, for any target: a primitive, a choice, a rule, a tag, a map or an array (`non-empty<M>` is the generic case, #120). `.within` is checked as `.and`, since only values are validated. [#120](https://github.com/sahebbiswas/cddl_verifier/issues/120) | `test_set_controls.py`, `test_and_within.py` |
+| `.and` | RFC 8610 §3.8 | ✅ | ✅ | ✅ | ✅ | ✅ | – | The data must match the target and the argument, for any target: a primitive, a choice, a rule, a tag, a map or an array (`non-empty<M>` is the generic case, #120). `.within` is checked as `.and`, since only values are validated. [#120](https://github.com/sahebbiswas/cddl_verifier/issues/120) | `test_set_controls.py`, `test_and_within.py` |
 | `.lt` | RFC 8610 §3.8 | ✅ | ✅ | ✅ | ✅ | ✅ | – | Numbers (less than the argument); integers and floats. | `test_cbor_control_args.py`, `test_size_control.py` |
 | `.le` | RFC 8610 §3.8 | ✅ | ✅ | ✅ | ✅ | ✅ | – | Numbers (at most the argument); integers and floats. | `test_cbor_control_args.py`, `test_size_control.py` |
 | `.gt` | RFC 8610 §3.8 | ✅ | ✅ | ✅ | ✅ | ✅ | – | Numbers (greater than the argument); integers and floats. | `test_cbor_control_args.py`, `test_size_control.py` |
 | `.ge` | RFC 8610 §3.8 | ✅ | ✅ | ✅ | ✅ | ✅ | – | Numbers (at least the argument); integers and floats. | `test_cbor_control_args.py`, `test_size_control.py` |
-| `.eq` | RFC 8610 §3.8 | ❌ | ✅ | ✅ | ✅ | ❌ | – | Accepted without comparing (#76). [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `test_resolve.py` |
-| `.ne` | RFC 8610 §3.8 | ❌ | ✅ | ✅ | ✅ | ❌ | – | Accepted without comparing (#76). [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `test_resolve.py` |
+| `.eq` | RFC 8610 §3.8 | ✅ | ✅ | ✅ | ✅ | ✅ | – | The data equals the argument, which must be one value: a literal, `true`, `false`, `null`, `undefined` or a rule that is one. Any other argument is a schema error. | `test_set_controls.py` |
+| `.ne` | RFC 8610 §3.8 | ✅ | ✅ | ✅ | ✅ | ✅ | – | The data differs from the argument, which must be one value, as for `.eq`. | `test_set_controls.py` |
 | `.default` | RFC 8610 §3.8 | ✅ | ✅ | ✅ | ✅ | ✅ | – | Advisory: the data must match the base type; the default value itself is not applied. | `test_cbor_control_args.py` |
 | `.plus` | RFC 9165 | ❌ | ✅ | ✅ | ✅ | ❌ | – | Not computed: `4 .plus 1` rejects the correct value 5 (#76). [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `test_resolve.py` |
 | `.cat` | RFC 9165 | ❌ | ✅ | ✅ | ✅ | ❌ | – | Not computed: `"a" .cat "b"` rejects the correct value `"ab"`, and `tstr .cat "b"` accepts anything (#76). [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `test_resolve.py` |

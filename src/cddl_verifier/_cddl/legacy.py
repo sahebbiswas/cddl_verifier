@@ -708,6 +708,16 @@ class LegacyTables:
                     arg = Name(self._synthetic(arg, f'{path}@arg'))
                 else:
                     arg = _as_type2(self._lift(Type((arg,)), f'{path}@arg'))
+            elif node.op in _AND_CONTROLS:
+                # 'T .and { a: 0..5 }': the value must match the operand too, so a
+                # map or array there is a structure of its own, as around a generic
+                inner = arg
+                while isinstance(inner, Paren) and len(inner.type.alternatives) == 1:
+                    inner = inner.type.alternatives[0]
+                if isinstance(inner, (Map, Array)):
+                    arg = Name(self._synthetic(inner, f'{path}@{node.op}'))
+                else:
+                    arg = _as_type2(self._lift(Type((arg,)), f'{path}@{node.op}'))
             return Control(self._lift(node.target, path), node.op, arg)
         if isinstance(node, Array):
             if not self._uniform(node):

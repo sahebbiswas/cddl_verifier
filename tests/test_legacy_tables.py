@@ -69,7 +69,7 @@ class TestMaps(unittest.TestCase):
     def test_generic_wrapper_reads_the_map_inside(self):
         p = CDDLParser("m = non-empty<{ ? a: int }>\nnon-empty<M> = (M) .and ({ + any => any })")
         self.assertEqual(as_text(p.types['m']['fields']), {'a': field('a', 'int', optional=True)})
-        self.assertEqual(as_text(p.type_aliases['non-empty']), '(M) .and ({ + any => any })')
+        self.assertEqual(as_text(p.type_aliases['non-empty']), '(M) .and non-empty@and')
 
 
 class TestArrays(unittest.TestCase):

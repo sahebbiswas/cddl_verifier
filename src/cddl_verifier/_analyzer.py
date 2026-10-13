@@ -10,6 +10,7 @@ public ``cddl_verifier`` API (``validate``, ``Validator``) instead.
 import argparse
 import contextlib
 import copy
+from dataclasses import replace
 import functools
 import logging
 import math
@@ -2225,6 +2226,16 @@ class CBORAnalyzer:
             return [f"matches none of {' / '.join(format_node(alt) for alt in alternatives)} "
                     f"({'; '.join(failures)})"]
 
+        split = self._split_set_controls(expr)
+        if split is not None:  # 'T .eq 5', 'T .ne 5', 'T .and U', 'T .within U'
+            target, operands = split
+            errors = self._check_value(value, target, _depth + 1, strict)
+            for op, arg in operands:
+                if errors:
+                    break
+                errors = self._operand_errors(value, op, arg, _depth, strict)
+            return errors
+
         paren = self._paren_parts(expr)
         if paren is not None:
             return self._paren_errors(value, expr, paren, _depth, strict)
@@ -2302,6 +2313,53 @@ class CBORAnalyzer:
         if strict:
             return [f"cannot check '{shown}'"]
         logger.debug(f"Cannot check type expression '{shown}'; accepting value")
+        return []
+
+    #: Controls that compare the value with their argument instead of
+    #: describing its shape: equal to (``.eq``), different from (``.ne``), and
+    #: matching the argument type too (``.and``, ``.within``).
+    _SET_CONTROLS = frozenset({'eq', 'ne', 'and', 'within'})
+
+    @classmethod
+    def _split_set_controls(cls, expr) -> Optional[Tuple[Type, List[Tuple[str, Any]]]]:
+        """``(target, [(op, arg), ...])`` for a type with ``.eq``, ``.ne``, ``.and`` or ``.within``.
+
+        *target* is the type without those controls (its other controls, such as
+        ``.size``, stay); the pairs are in source order. ``None`` when the type
+        has none of them.
+        """
+        expr = as_type(expr)
+        if len(expr.alternatives) != 1 or not isinstance(expr.alternatives[0], Control):
+            return None
+        operands: List[Tuple[str, Any]] = []
+
+        def strip(node):
+            if not isinstance(node, Control):
+                return node
+            inner = strip(node.target)
+            if node.op in cls._SET_CONTROLS:
+                operands.append((node.op, node.arg))
+                return inner
+            return inner if inner is node.target else replace(node, target=inner)
+
+        target = strip(expr.alternatives[0])
+        if not operands:
+            return None
+        return (target if isinstance(target, Type) else Type((target,))), operands
+
+    def _operand_errors(self, value: Any, op: str, arg, _depth: int, strict: bool) -> List[str]:
+        """Check *value* against the argument of ``.eq``, ``.ne``, ``.and`` or ``.within``."""
+        operand = arg if isinstance(arg, Type) else Type((arg,))
+        errors = self._check_value(value, operand, _depth + 1, strict)
+        shown = format_node(operand)
+        if op == 'eq':
+            return [f"expected a value equal to {shown} (.eq), got {self._format_value_for_log(value)}"] \
+                if errors else []
+        if op == 'ne':
+            return [] if errors else [
+                f"expected a value other than {shown} (.ne), got {self._format_value_for_log(value)}"]
+        if errors:
+            return [f"does not satisfy its control operand '{shown}' (.{op}): {errors[0]}"]
         return []
 
     def _item_errors(self, value: Any, item: 'query.ItemRef', _depth: int,
@@ -2503,6 +2561,7 @@ class CBORAnalyzer:
         expr = as_type(expr)
         name = bare_name(expr)
         return (len(expr.alternatives) > 1
+                or self._split_set_controls(expr) is not None
                 or self._is_literal(expr)
                 or query.item_ref(expr) is not None
                 or bare_name(self.cddl.resolve_alias(_name_type(query.head(expr)))) in self._WHOLE_PRIMITIVES

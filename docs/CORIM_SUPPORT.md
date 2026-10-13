@@ -113,8 +113,8 @@ validity-map = non-empty<{
 
 **Support:** ⚠ PARTIAL
 - Parses generic type definitions and instantiates them where they are used
-- Enforces `.and` / `.within` around a generic structure (`non-empty<M>`
-  rejects an empty map)
+- Enforces `.and` / `.within` / `.eq` / `.ne` on any target, including a generic
+  structure (`non-empty<M>` rejects an empty map)
 - Does NOT enforce other controls (`.size`, ...) around a generic structure
   ([#76](https://github.com/sahebbiswas/cddl_verifier/issues/76))
 

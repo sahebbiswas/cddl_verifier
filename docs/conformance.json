@@ -2063,20 +2063,20 @@
    "area": "control",
    "construct": "`.within`",
    "spec": "RFC 8610 \u00a73.8",
-   "status": "partial",
+   "status": "supported",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "partial",
+    "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "Enforced only around a generic structure (`non-empty<M>`, #120); on other types the argument is parsed and ignored (#76).",
+   "notes": "The data must match the target and the argument, for any target: a primitive, a choice, a rule, a tag, a map or an array (`non-empty<M>` is the generic case, #120). `.within` is checked as `.and`, since only values are validated.",
    "issues": [
-    76,
     120
    ],
    "tests": [
+    "tests/test_set_controls.py",
     "tests/test_and_within.py"
    ],
    "probes": [
@@ -2085,8 +2085,32 @@
      "valid": [
       "ab"
      ],
-     "accepted_but_invalid": [
-      "abc"
+     "invalid": [
+      "abc",
+      1
+     ]
+    },
+    {
+     "schema": "r = {a: int} .within {a: 0..5}",
+     "valid": [
+      {
+       "$map": [
+        [
+         "a",
+         3
+        ]
+       ]
+      }
+     ],
+     "invalid": [
+      {
+       "$map": [
+        [
+         "a",
+         9
+        ]
+       ]
+      }
      ]
     }
    ]
@@ -2096,20 +2120,20 @@
    "area": "control",
    "construct": "`.and`",
    "spec": "RFC 8610 \u00a73.8",
-   "status": "partial",
+   "status": "supported",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "partial",
+    "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "Enforced only around a generic structure (`non-empty<M>`, #120); on other types the argument is parsed and ignored (#76).",
+   "notes": "The data must match the target and the argument, for any target: a primitive, a choice, a rule, a tag, a map or an array (`non-empty<M>` is the generic case, #120). `.within` is checked as `.and`, since only values are validated.",
    "issues": [
-    76,
     120
    ],
    "tests": [
+    "tests/test_set_controls.py",
     "tests/test_and_within.py"
    ],
    "probes": [
@@ -2118,8 +2142,32 @@
      "valid": [
       "ab"
      ],
-     "accepted_but_invalid": [
-      "abc"
+     "invalid": [
+      "abc",
+      1
+     ]
+    },
+    {
+     "schema": "r = {a: int} .and {a: 0..5}",
+     "valid": [
+      {
+       "$map": [
+        [
+         "a",
+         3
+        ]
+       ]
+      }
+     ],
+     "invalid": [
+      {
+       "$map": [
+        [
+         "a",
+         9
+        ]
+       ]
+      }
      ]
     }
    ]
@@ -2253,20 +2301,18 @@
    "area": "control",
    "construct": "`.eq`",
    "spec": "RFC 8610 \u00a73.8",
-   "status": "unsupported",
+   "status": "supported",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "unsupported",
+    "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "Accepted without comparing (#76).",
-   "issues": [
-    76
-   ],
+   "notes": "The data equals the argument, which must be one value: a literal, `true`, `false`, `null`, `undefined` or a rule that is one. Any other argument is a schema error.",
+   "issues": [],
    "tests": [
-    "tests/test_resolve.py"
+    "tests/test_set_controls.py"
    ],
    "probes": [
     {
@@ -2274,8 +2320,33 @@
      "valid": [
       5
      ],
-     "accepted_but_invalid": [
-      4
+     "invalid": [
+      4,
+      "5",
+      5.0
+     ]
+    },
+    {
+     "schema": "r = {a: tstr .eq \"x\"}",
+     "valid": [
+      {
+       "$map": [
+        [
+         "a",
+         "x"
+        ]
+       ]
+      }
+     ],
+     "invalid": [
+      {
+       "$map": [
+        [
+         "a",
+         "y"
+        ]
+       ]
+      }
      ]
     }
    ]
@@ -2285,20 +2356,18 @@
    "area": "control",
    "construct": "`.ne`",
    "spec": "RFC 8610 \u00a73.8",
-   "status": "unsupported",
+   "status": "supported",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "unsupported",
+    "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "Accepted without comparing (#76).",
-   "issues": [
-    76
-   ],
+   "notes": "The data differs from the argument, which must be one value, as for `.eq`.",
+   "issues": [],
    "tests": [
-    "tests/test_resolve.py"
+    "tests/test_set_controls.py"
    ],
    "probes": [
     {
@@ -2306,8 +2375,23 @@
      "valid": [
       4
      ],
-     "accepted_but_invalid": [
+     "invalid": [
       5
+     ]
+    },
+    {
+     "schema": "r = [* any .ne null]",
+     "valid": [
+      [
+       1,
+       "a"
+      ]
+     ],
+     "invalid": [
+      [
+       1,
+       null
+      ]
      ]
     }
    ]

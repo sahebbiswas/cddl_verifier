@@ -456,7 +456,8 @@ As implemented in #110 (`_cddl/legacy.py`):
   with real instantiation.
 - **Chained controls.** `uint .ge 0 .le 150` is accepted as a non-standard
   extension and parsed as `Control(Control(uint, ge, 0), le, 150)`, because
-  the standard forms are not enforced before #71 and #76. Each link counts
+  the standard forms were not enforced before #71 and #76 (`.and`, `.within`,
+  `.eq` and `.ne` are enforced from 0.19.0). Each link counts
   toward `MAX_DEPTH`.
 
 ### Phase C: consumers read nodes instead of strings ([#111](https://github.com/sahebbiswas/cddl_verifier/issues/111))
