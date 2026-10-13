@@ -1924,29 +1924,42 @@
    "area": "control",
    "construct": "`.bits`",
    "spec": "RFC 8610 \u00a73.8",
-   "status": "unsupported",
+   "status": "supported",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "unsupported",
+    "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "Parsed and checked for a fitting target and argument, but the validator accepts any value (#76).",
-   "issues": [
-    76
-   ],
+   "notes": "Only the bit positions the argument names may be set, for a `uint` and a `bstr` (the first byte is least significant: bit 8 is the lowest bit of the second byte). The argument is a uint, a range, a choice of them, or a rule or `&(...)` that is. Anything else is a schema error; the message names the stray bit.",
+   "issues": [],
    "tests": [
-    "tests/test_resolve.py"
+    "tests/test_bits_regexp.py"
    ],
    "probes": [
     {
      "schema": "r = uint .bits f\nf = &(a: 0, b: 2)",
      "valid": [
+      0,
       5
      ],
-     "accepted_but_invalid": [
-      2
+     "invalid": [
+      2,
+      3
+     ]
+    },
+    {
+     "schema": "r = bstr .bits 8",
+     "valid": [
+      {
+       "$bytes": "0001"
+      }
+     ],
+     "invalid": [
+      {
+       "$bytes": "01"
+      }
      ]
     }
    ]
@@ -1956,19 +1969,18 @@
    "area": "control",
    "construct": "`.regexp`",
    "spec": "RFC 8610 \u00a73.8",
-   "status": "partial",
+   "status": "supported",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "partial",
+    "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "Matched with Python `re` (search from the start of the text), not the XSD dialect RFC 8610 names; a pattern that `re` rejects is reported (#76).",
-   "issues": [
-    76
-   ],
+   "notes": "The pattern is an XSD regular expression, as RFC 8610 says, translated for Python: the whole text must match, `^` and `$` are ordinary characters, `\\d`, `\\w`, `\\s`, `\\i`, `\\c`, `\\p{...}` and `\\P{...}` follow XSD, and a class can subtract another (`[a-z-[aeiou]]`). Unicode categories come from the running Python and only common blocks (`\\p{IsGreek}`) are known. A pattern XSD does not have (lazy quantifier, `(?:`, back reference) or an unknown category or block is a schema error naming it.",
+   "issues": [],
    "tests": [
+    "tests/test_bits_regexp.py",
     "tests/test_cbor_control_args.py"
    ],
    "probes": [
@@ -1978,7 +1990,8 @@
       "abc"
      ],
      "invalid": [
-      "ABC"
+      "ABC",
+      "abc1"
      ]
     }
    ]

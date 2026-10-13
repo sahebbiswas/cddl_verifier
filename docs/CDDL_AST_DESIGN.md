@@ -470,7 +470,8 @@ in the same commit:
 |-----------|---------------------|---------------|
 | `.size` | `extract_size_constraint`, `_size_bound` | `Control(op="size")` with an `IntLit`, `Range` or `Name` argument |
 | `.ge/.gt/.le/.lt` | `extract_value_range` | `Control(op=...)` |
-| `.regexp` | `extract_regexp` | `Control(op="regexp", arg=TextLit)` |
+| `.regexp` | `extract_regexp`, `regexp_violation` (`xsd_regex`) | `Control(op="regexp", arg=TextLit)` |
+| `.bits` | `extract_bits`, `bits_violation` (`resolve.bit_mask`) | `Control(op="bits")` with an `IntLit`, `Range`, `Name`, `ChoiceFrom` or choice argument |
 | `.cbor` | `extract_cbor_control` (now `query.cbor_control`) | `Control(op="cbor")` |
 | tags | `extract_cbor_tag`, `_peel_tagged_primitive`, string parts of `_with_tag` (now `query.tag`) | `Tag` |
 | choices | `_split_choice`, string parts of `_check_value` (now `query.alternatives`) | `Type.alternatives` |
@@ -487,7 +488,7 @@ As implemented, in two steps by agreement:
   EDN generator ask about a type expression: `alternatives`, `head` (the base
   of a control chain), `controls`, `tag`, `cbor_control`, `literal`,
   `inline_array`, `is_array`, `names`. `_analyzer.py` has no regex or character
-  scan over type text; the only regex matches data against a `.regexp` pattern.
+  scan over type text; there is no regex in it; `.regexp` patterns are matched by `_cddl/xsd_regex.py`, which reads the XSD dialect RFC 8610 names (#182).
 - **#115 (done).** The text is removed from the tables and nodes are passed
   through every function. It was an epic with three parts, one pull request
   each, so that no diff had to move the whole validator at once:
