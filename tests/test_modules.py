@@ -103,6 +103,16 @@ class Linking(unittest.TestCase):
                       modules={"a": ";# import b as b\nt = b.t", "b": ";# import a as a\nt = a.t"})
         self.assertIn("cycle", str(cm.exception))
 
+    def test_prefix_for_two_modules_is_rejected(self):
+        for modules in ({"one": "a = uint", "two": "b = uint"},
+                        {"one": "a = uint"}):  # 'two' not found: still a clash
+            with self.subTest(modules=sorted(modules)):
+                with self.assertRaises(SchemaError) as cm:
+                    quiet(Validator, ";# import one as p\n;# import two as p\nr = p.a",
+                          modules=modules)
+                self.assertIn("prefix 'p' is used for both module 'one' and module 'two'",
+                              str(cm.exception))
+
     def test_same_module_imported_twice(self):
         v = Validator(";# import base as x\n;# import base as y\nr = [x.small, y.small]",
                       modules=MODULES)
@@ -122,9 +132,9 @@ class Linking(unittest.TestCase):
 
     def test_rule_location_is_in_the_module_file(self):
         with tempfile.TemporaryDirectory() as d:
-            (Path(d) / "lib.cddl").write_text("\n\nt = uint\n")
+            (Path(d) / "lib.cddl").write_text("\n\nt = uint\n", encoding="utf-8")
             schema = Path(d) / "main.cddl"
-            schema.write_text(";# import lib as l\nr = l.t\n")
+            schema.write_text(";# import lib as l\nr = l.t\n", encoding="utf-8")
             v = Validator(schema)
             self.assertEqual(v._parser.rule_location("l.t"), f"{Path(d) / 'lib.cddl'}:3:1")
             self.assertTrue(v._parser.rule_location("r").endswith("main.cddl:2:1"))
@@ -133,11 +143,11 @@ class Linking(unittest.TestCase):
 class Finding(unittest.TestCase):
     def test_module_path_and_schema_directory(self):
         with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as e:
-            (Path(d) / "lib.cddl").write_text(LIB)
-            (Path(d) / "base.cddl").write_text(BASE)
+            (Path(d) / "lib.cddl").write_text(LIB, encoding="utf-8")
+            (Path(d) / "base.cddl").write_text(BASE, encoding="utf-8")
             self.assertTrue(Validator(MAIN, module_path=[d]).validate(GOOD).valid)
             schema = Path(d) / "main.cddl"
-            schema.write_text(MAIN)
+            schema.write_text(MAIN, encoding="utf-8")
             self.assertTrue(Validator(schema).validate(GOOD).valid)
             # a directory that does not hold it
             v = quiet(Validator, MAIN, module_path=[e])
@@ -145,7 +155,7 @@ class Finding(unittest.TestCase):
 
     def test_modules_may_be_paths(self):
         with tempfile.TemporaryDirectory() as d:
-            (Path(d) / "x.cddl").write_text("t = uint")
+            (Path(d) / "x.cddl").write_text("t = uint", encoding="utf-8")
             v = Validator(";# import x as x\nr = x.t", modules={"x": Path(d) / "x.cddl"})
             self.assertTrue(v.validate(1).valid)
             self.assertFalse(v.validate("a").valid)
@@ -203,9 +213,9 @@ class Cli(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             (root / "mods").mkdir()
-            (root / "mods" / "lib.cddl").write_text(LIB)
-            (root / "elsewhere.cddl").write_text(BASE)
-            (root / "main.cddl").write_text(MAIN)
+            (root / "mods" / "lib.cddl").write_text(LIB, encoding="utf-8")
+            (root / "elsewhere.cddl").write_text(BASE, encoding="utf-8")
+            (root / "main.cddl").write_text(MAIN, encoding="utf-8")
             (root / "d.cbor").write_bytes(encode(GOOD))
             schema, data = str(root / "main.cddl"), str(root / "d.cbor")
 

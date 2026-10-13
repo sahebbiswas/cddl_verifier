@@ -126,11 +126,16 @@ class _Linker:
         prefixes: Set[str] = set()
         any_name = False
         done: Set[Tuple[str, Optional[str]]] = set()
+        bound: Dict[str, str] = {}  # prefix -> the module it names
 
         for _kind, module, prefix in parse_imports(text):
             if (module, prefix) in done:
                 continue
             done.add((module, prefix))
+            if prefix:
+                if bound.setdefault(prefix, module) != module:
+                    raise SchemaError(f"prefix '{prefix}' is used for both module "
+                                      f"'{bound[prefix]}' and module '{module}'")
             result = self.module(module, stack)
             if result is None:
                 unloaded.append((module, prefix))
@@ -143,8 +148,10 @@ class _Linker:
             if prefix:
                 loaded_prefixes[prefix] = module
             names = {r.name for r in result.schema.rules if not r.name.startswith('$')}
-            mapping = (lambda n, p=prefix, names=names:
-                       f'{p}.{n}' if p and n in names else n)
+
+            def mapping(n, p=prefix, names=names):
+                return f'{p}.{n}' if p and n in names else n
+
             source = result.schema.source
             for rule in result.schema.rules:
                 renamed = rename(rule, mapping)
