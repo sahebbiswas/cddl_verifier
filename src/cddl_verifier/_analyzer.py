@@ -20,10 +20,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from ._cddl import parse_cddl, parse_prelude, query
-from ._cddl.ast import (BytesLit, FloatLit, GroupRef, InlineGroup, IntLit, Member, Name, Paren,
-                        Range, TextLit, walk)
+from ._cddl.ast import (BytesLit, FloatLit, GroupRef, InlineGroup, IntLit, Major, Member, Name,
+                        Paren, Range, Tag, TextLit, walk)
 from ._cddl.printer import format_node
 from ._cddl.legacy import LegacyTables
+from ._cddl.items import major_error, tag_parts, width_unchecked
 from ._cddl.modules import ModuleLoader, link, unloaded_warnings
 from ._cddl.resolve import resolve
 from ._version import __version__
@@ -296,7 +297,8 @@ class CDDLParser:
         self.ast = linked.schema
         self._origins = linked.origins
         self.resolved = resolve(self.ast, linked.imports)
-        self.warnings = unloaded_warnings(linked, self.resolved.external)
+        self.warnings = (unloaded_warnings(linked, self.resolved.external)
+                         + _width_warnings(self.ast))
         tables = LegacyTables(self.ast, self.resolved)
         self.types = tables.types
         self.groups = tables.groups
@@ -768,6 +770,19 @@ def _mismatch_category(base_type: str, value: Any) -> str:
     if base_type == 'tstr':
         return 'value' if isinstance(value, str) else 'type'
     return 'type'
+
+
+def _width_warnings(schema) -> List[str]:
+    """One warning per ``#M.N`` that names an encoding width the decoder does not keep (#167)."""
+    seen: List[str] = []
+    for node in walk(schema):
+        if isinstance(node, Major) and width_unchecked(node.major, node.info):
+            text = format_node(node)
+            if text not in seen:
+                seen.append(text)
+    return [f"'{text}' is checked as '#{text[1]}': the decoder does not keep the width an "
+            f"integer or length was encoded in, so the number after the dot is not enforced"
+            for text in seen]
 
 
 def _describe_value(value: Any) -> str:
@@ -2142,8 +2157,11 @@ class CBORAnalyzer:
     def _is_structured(self, alt: str) -> bool:
         """Whether choice alternative *alt* is a map, array or tag, by name or in full."""
         resolved = self.cddl.resolve_type_alias(alt.strip())
+        item = query.item_ref(resolved)
         return (resolved in self.cddl.types or query.tag(resolved) is not None
-                or query.is_array(resolved))
+                or query.is_array(resolved)
+                or (item is not None and (isinstance(item.node, Tag)
+                                          or getattr(item.node, 'major', 0) in (4, 5, 6))))
 
     def _check_value(self, value: Any, expr: str, _depth: int = 0,
                      strict: bool = False) -> List[str]:
@@ -2220,6 +2238,10 @@ class CBORAnalyzer:
                 return [f"requires CBOR tag {expected_tag}, got tag {value[0]}"]
             return self._check_value(value[1], inner, _depth + 1, strict)
 
+        item = query.item_ref(expr)
+        if item is not None:  # '#', '#1', '#7.25', '#6.<uint>(tstr)' (#167)
+            return self._item_errors(value, item, _depth, strict)
+
         range_errors = self._range_errors(value, expr, strict)
         if range_errors is not None:
             return range_errors
@@ -2259,6 +2281,43 @@ class CBORAnalyzer:
             return [f"cannot check '{expr}'"]
         logger.debug(f"Cannot check type expression '{expr}'; accepting value")
         return []
+
+    def _item_errors(self, value: Any, item: 'query.ItemRef', _depth: int,
+                     strict: bool) -> List[str]:
+        """Check *value* against ``#``, ``#M``, ``#M.N``, ``#6(t)`` or ``#6.<type>(t)``."""
+        node = item.node
+        if isinstance(node, Major):
+            if item.tag_type is None:
+                error = major_error(value, node.major, node.info)
+                return [error] if error else []
+            if node.major == 6:  # '#6.<type>': the tag number is any number the type allows
+                parts = tag_parts(value)
+                if parts is None:
+                    return [f"expected a tag (#6), got {self._describe_item(value)}"]
+                errors = self._check_value(parts[0], item.tag_type, _depth + 1, True)
+                return [f"tag number {parts[0]} does not match {item.tag_type}: {errors[0]}"] \
+                    if errors else []
+            # '#7.<type>': the additional information is any number the type allows
+            for info in range(32):
+                if not self._check_value(info, item.tag_type, _depth + 1, True) \
+                        and not major_error(value, node.major, info):
+                    return []
+            return [f"expected #{node.major}.<{item.tag_type}>, got {self._describe_item(value)}"]
+        if not isinstance(node, Tag):
+            return []  # '#': any data item
+        parts = tag_parts(value)
+        if parts is None:
+            return [f"expected a tag (#6), got {self._describe_item(value)}"]
+        if item.tag_type is not None:
+            errors = self._check_value(parts[0], item.tag_type, _depth + 1, True)
+            if errors:
+                return [f"tag number {parts[0]} does not match {item.tag_type}: {errors[0]}"]
+        return self._check_value(parts[1], item.inner, _depth + 1, strict)
+
+    @staticmethod
+    def _describe_item(value: Any) -> str:
+        return type(value).__name__ if not isinstance(value, (int, float, str, bool)) \
+            else repr(value)
 
     def _paren_errors(self, value: Any, expr: str, paren: 'query.ParenParts',
                       _depth: int, strict: bool) -> List[str]:
@@ -2396,9 +2455,10 @@ class CBORAnalyzer:
         """True for a type that only :meth:`_check_value` can check: an inline
         choice (``uint / tstr``), a type socket (``$name``), a choice from a
         group (``&(a: 0, b: 1)``), a parenthesized type (``(uint) .size 1``)
-        or a literal (``1``, ``"x"``, #73)."""
+        or a literal (``1``, ``"x"``, #73) or an item reference (``#1``, #167)."""
         return bool(expr) and (len(self._split_choice(expr)) > 1
                                or self._is_literal(expr)
+                               or query.item_ref(expr) is not None
                                or self.cddl.resolve_type_alias(query.head(expr))
                                in self._WHOLE_PRIMITIVES
                                or expr in self.cddl.type_choices

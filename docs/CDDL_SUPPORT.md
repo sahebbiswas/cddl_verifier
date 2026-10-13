@@ -287,6 +287,36 @@ array elements and in `$socket` choices.
   Validate tagged data against the tagged rule.
 - Tags around primitives (`#6.1(tstr .size 2)`) are checked, and then the
   value inside is checked against the primitive and its controls.
+- A tag number can be a type (RFC 9682): `#6.<uint>(tstr)` is any tag around a
+  text string, and `#6.<uint .le 10>(any)` or `#6.<1 / 2>(any)` limit the
+  number. `#6(t)` accepts any tag. A bignum the decoder returns as an integer
+  counts as tag 2 or 3.
+
+## Major types (`#`, `#0`, `#7.25`)
+
+A reference by encoding matches data items by their major type, and is checked
+at the root, in map fields, in array elements and in choices (`#1 / tstr`):
+
+| Reference | Matches |
+|-----------|---------|
+| `#` | any data item |
+| `#0`, `#1` | an unsigned integer, a negative integer (a 64-bit one; bignums are tags) |
+| `#2`, `#3` | a byte string, a text string |
+| `#4`, `#5` | an array, a map |
+| `#6` | any tag (and a bignum) |
+| `#6.N`, `#6.<type>` | a tag numbered N (or whose number the type allows) around any item, as `#6.N(#)`; the number is the tag number, not additional information (RFC 9682), so any N is checked |
+| `#7` | `false`, `true`, `null` or a float |
+| `#0.5`, `#1.0` | the integer 5, the integer -1 |
+| `#2.2`, `#3.1`, `#4.2`, `#5.1` | a string, array or map of that length (below 24) |
+| `#7.20`, `#7.21`, `#7.22` | `false`, `true`, `null` |
+| `#7.25` to `#7.27` | a float (the decoder does not keep the width, so all three match any float, as `float16`, `float32` and `float64` do) |
+| `#7.<type>` | the simple value whose number the type allows |
+
+The encoded width cannot be checked: `#0.26` (a number from 24 to 27 after the
+dot) is checked as `#0`, and a warning says so
+([#171](https://github.com/sahebbiswas/cddl_verifier/issues/171)). `undefined`
+and unassigned simple values are not decoded, so `#7.23` matches nothing
+([#168](https://github.com/sahebbiswas/cddl_verifier/issues/168)).
 
 ## Nested CBOR (`.cbor` control operator)
 
@@ -429,8 +459,9 @@ reported. A group that refers to itself adds its members once.
 A literal key stands for the CBOR value it denotes, so `1.5: tstr`,
 `h'01': int` and `true => int` are required members like `1: int`. Note that
 `true: int` is the text key `"true"` (RFC 8610: a bare word before `:` is a
-text string); write `true => int` for the simple value. A `null => T` member
-is not checked yet.
+text string); write `true => int` for the simple value. The same goes for
+`null => T` (or `nil => T`): it is a required member, where `null: T` is the text
+key `"null"`.
 
 Inline maps are validated like named rules, wherever they appear:
 

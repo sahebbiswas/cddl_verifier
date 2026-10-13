@@ -123,9 +123,9 @@ of the problem. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/b
   Validation covers a practical subset of what the grammar can express: the
   control operators `.bits`, `.cborseq`, `.eq`, `.ne`, `.abnf`, `.abnfb` and the
   RFC 9741 conversions are parsed but not enforced
-  ([#76](https://github.com/sahebbiswas/cddl_verifier/issues/76)), and major-type
-  references such as `#7.25` are not checked
-  ([#167](https://github.com/sahebbiswas/cddl_verifier/issues/167)). The
+  ([#76](https://github.com/sahebbiswas/cddl_verifier/issues/76)), and the encoded
+  width in a major-type reference such as `#0.26` is not checked
+  ([#171](https://github.com/sahebbiswas/cddl_verifier/issues/171)). The
   [conformance matrix](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CONFORMANCE.md)
   has the full list.
 - **Canonical encoding**: implements the RFC 8949 §4.2.1 core deterministic
