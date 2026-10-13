@@ -26,7 +26,7 @@ except ImportError:
 
 import unittest
 
-from cddl_verifier import SchemaError, Validator
+from cddl_verifier import CBORDecodeError, SchemaError, Validator
 from cddl_verifier import cbor as cbor_api
 from cddl_verifier import json_codec
 from cddl_verifier._cddl.prelude import parse_prelude
@@ -116,7 +116,6 @@ class Matrix(unittest.TestCase):
                 if row["status"] == "supported":
                     self.assertEqual(states - {"supported"}, set(), "a supported row has no weak layer")
                     self.assertFalse(gaps, "a supported row has no known gap")
-                    self.assertFalse(row["issues"] and row["area"] != "cbor" and gaps)
                 else:
                     self.assertTrue(states - {"supported"} or row["status"] == "out-of-scope",
                                     "a row that is not supported has a weak layer")
@@ -169,7 +168,7 @@ class Matrix(unittest.TestCase):
                 raw = bytes.fromhex(item["hex"])
                 with self.subTest(row=row["id"], hex=item["hex"]):
                     if item["decode"] == "error":
-                        with self.assertRaises(Exception):
+                        with self.assertRaises(CBORDecodeError):
                             cbor_api.decode(raw)
                         continue
                     decoded = cbor_api.decode(raw)

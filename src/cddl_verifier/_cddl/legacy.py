@@ -148,7 +148,9 @@ class LegacyTables:
     def _take_base(self, name: str) -> Optional[str]:
         """Move the definition of rule *name* out of its own name, and return where it went."""
         if name in self.types:
-            moved = f'{name}@base'
+            moved, n = f'{name}@base', 2
+            while moved in self.types or moved in self._rule_names:
+                moved, n = f'{name}@base-{n}', n + 1  # '@base' may be an inline map of the rule
             self.types[moved] = self.types.pop(name)
             self.synthetic_types.add(moved)
             return moved

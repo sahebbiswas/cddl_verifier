@@ -475,6 +475,11 @@ class TestTypeExtension(unittest.TestCase):
     def test_as_field_type_and_through_an_alias(self):
         self.check("r = {f: b}\na = uint\na /= tstr\nb = a", [{"f": 1}, {"f": "x"}], [{"f": -1}])
 
+    def test_base_with_an_inline_map_field(self):
+        # the field's inline map is already named 'a@base'
+        self.check("r = a\na = {base: {x: int}}\na /= tstr",
+                   [{"base": {"x": 1}}, "s"], [{"base": {"x": "no"}}, 1])
+
     def test_sockets_still_start_empty(self):
         self.check("r = $s\n$s /= int\n$s /= tstr", [1, "x"], [b"x"])
 
