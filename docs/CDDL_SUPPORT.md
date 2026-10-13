@@ -304,6 +304,7 @@ at the root, in map fields, in array elements and in choices (`#1 / tstr`):
 | `#2`, `#3` | a byte string, a text string |
 | `#4`, `#5` | an array, a map |
 | `#6` | any tag (and a bignum) |
+| `#6.N`, `#6.<type>` | a tag numbered N (or whose number the type allows) around any item, as `#6.N(#)`; the number is the tag number, not additional information (RFC 9682), so any N is checked |
 | `#7` | `false`, `true`, `null` or a float |
 | `#0.5`, `#1.0` | the integer 5, the integer -1 |
 | `#2.2`, `#3.1`, `#4.2`, `#5.1` | a string, array or map of that length (below 24) |

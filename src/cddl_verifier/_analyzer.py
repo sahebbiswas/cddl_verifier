@@ -2290,6 +2290,13 @@ class CBORAnalyzer:
             if item.tag_type is None:
                 error = major_error(value, node.major, node.info)
                 return [error] if error else []
+            if node.major == 6:  # '#6.<type>': the tag number is any number the type allows
+                parts = tag_parts(value)
+                if parts is None:
+                    return [f"expected a tag (#6), got {self._describe_item(value)}"]
+                errors = self._check_value(parts[0], item.tag_type, _depth + 1, True)
+                return [f"tag number {parts[0]} does not match {item.tag_type}: {errors[0]}"] \
+                    if errors else []
             # '#7.<type>': the additional information is any number the type allows
             for info in range(32):
                 if not self._check_value(info, item.tag_type, _depth + 1, True) \

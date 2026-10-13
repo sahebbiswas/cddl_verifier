@@ -1581,7 +1581,7 @@
     "validator": "partial",
     "edn": "n/a"
    },
-   "notes": "`#M` matches data items of major type M, `#M.N` with N below 24 the value or length, `#7.20`-`#7.22` false, true and null, `#7.25`-`#7.27` any float, and `#` any item, as the root rule, field, element or choice alternative. The encoded width is not kept by the decoder, so `#0.26` is checked as `#0` (with a warning, #171), `#7.26` as any float (#169), and `#7.23` (undefined) and unassigned simple values match nothing because they cannot be decoded (#168).",
+   "notes": "`#M` matches data items of major type M, `#M.N` with N below 24 the value or length, `#7.20`-`#7.22` false, true and null, `#7.25`-`#7.27` any float, `#6` any tag, `#6.N` a tag numbered N (any N: the number is the tag number, not additional information), and `#` any item, as the root rule, field, element or choice alternative. The encoded width is not kept by the decoder, so `#0.26` is checked as `#0` (with a warning, #171), `#7.26` as any float (#169), and `#7.23` (undefined) and unassigned simple values match nothing because they cannot be decoded (#168).",
    "issues": [
     168,
     169,
@@ -1692,6 +1692,26 @@
       "x"
      ],
      "invalid": [
+      1
+     ]
+    },
+    {
+     "schema": "r = #6.2",
+     "valid": [
+      {
+       "$tag": 2,
+       "$value": {
+        "$bytes": "01"
+       }
+      }
+     ],
+     "invalid": [
+      {
+       "$tag": 3,
+       "$value": {
+        "$bytes": "01"
+       }
+      },
       1
      ]
     }

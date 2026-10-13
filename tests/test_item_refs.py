@@ -186,6 +186,37 @@ class TestAdditionalInformation(ItemRefTestCase):
                 self.assertEqual(Validator(f"r = {ref}").warnings, ())
 
 
+class TestBareTagNumber(unittest.TestCase):
+    """``#6.N`` (no parentheses) is a tag numbered N around any item (RFC 9682)."""
+
+    def check(self, schema, cases):
+        validator = Validator(schema)
+        for data, expected in cases:
+            with self.subTest(schema=schema, data=data):
+                result = validator.validate(HEX(data))
+                self.assertEqual(result.valid, expected, result.errors)
+                self.assertEqual(validator.warnings, ())  # N is the number, not a width
+
+    def test_number_must_match(self):
+        self.check("r = #6.1", [("c101", True), ("c16178", True), ("c201", False), ("01", False)])
+
+    def test_number_of_24_or_more(self):
+        self.check("r = #6.24", [("d81841ff", True), ("d8201841", False), ("c101", False)])
+
+    def test_bignum_is_tag_2_or_3(self):
+        self.check("r = #6.2", [("c249010000000000000000", True), ("c301", False)])
+        self.check("r = #6.3", [("c349010000000000000000", True), ("c201", False)])
+
+    def test_in_fields_elements_and_choices(self):
+        self.check("r = {a: #6.1}", [("a16161c101", True), ("a16161c201", False)])
+        self.check("r = [* #6.1]", [("81c101", True), ("81c201", False)])
+        self.check("r = #6.1 / #6.2", [("c101", True), ("c201", True), ("c301", False)])
+
+    def test_number_given_as_a_type(self):
+        self.check("r = #6.<uint .ge 24>", [("d82001", True), ("c101", False), ("01", False)])
+        self.check("r = {a: #6.<1 / 2>}", [("a16161c101", True), ("a16161c301", False)])
+
+
 class TestTagReferences(unittest.TestCase):
 
     def check(self, schema, cases):

@@ -13,10 +13,14 @@ Major Decoded value                              ``#M.N``
 3     ``str``                                    ``N`` below 24 is the length
 4     ``list``                                   ``N`` below 24 is the length
 5     ``dict``                                   ``N`` below 24 is the length
-6     a ``(tag, item)`` tuple, or a bignum       (not checked)
+6     a ``(tag, item)`` tuple, or a bignum       ``N`` is the tag number
 7     ``bool``, ``None``, ``float``              20 ``false``, 21 ``true``,
                                                  22 ``null``, 25-27 a float
 ====  =========================================  ===============================
+
+For major types 6 and 7 the number is not additional information (RFC 9682):
+``#6.N`` is a tag with number ``N`` around any item, as ``#6.N(#)`` is, and
+``#7.N`` is a simple value (or, for 25 to 27, a float).
 
 What the decoder does not keep cannot be checked: the width an item was
 encoded in (``#0.26`` is checked as ``#0``, and ``#7.26`` as any float, as
@@ -73,12 +77,17 @@ def major_error(value: Any, major: int, info: Optional[int] = None) -> Optional[
     """Why *value* is not ``#major`` / ``#major.info``, or ``None`` if it is."""
     if not _has_major(value, major):
         return f"expected a {MAJOR_NAMES[major]} (#{major}), got {_describe(value)}"
-    if info is None or major == 6 or width_unchecked(major, info):
+    if info is None:
+        return None
+    if major == 6:  # '#6.N': the tag number is N, whatever width it was encoded in
+        number = tag_parts(value)[0]
+        return None if number == info else f"expected tag {info} (#6.{info}), got tag {number}"
+    if width_unchecked(major, info):
         return None
     if major == 7:
-        if info == 20 and value is False or info == 21 and value is True \
-                or info == 22 and value is None \
-                or info in (25, 26, 27) and isinstance(value, float):
+        if ((info == 20 and value is False) or (info == 21 and value is True)
+                or (info == 22 and value is None)
+                or (info in (25, 26, 27) and isinstance(value, float))):
             return None
         return f"expected #7.{info}, got {_describe(value)}"
     if major in (0, 1):
