@@ -53,7 +53,7 @@
    "id": "syntax.rule",
    "area": "syntax",
    "construct": "Type rules `name = type`",
-   "spec": "RFC 8610 §2.1",
+   "spec": "RFC 8610 \u00a72.1",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -95,7 +95,7 @@
    "id": "syntax.type-extend",
    "area": "syntax",
    "construct": "Type extension `name /= type`",
-   "spec": "RFC 8610 §2.2.2",
+   "spec": "RFC 8610 \u00a72.2.2",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -129,7 +129,7 @@
    "id": "syntax.group-extend",
    "area": "syntax",
    "construct": "Group extension `name //= group`",
-   "spec": "RFC 8610 §2.2.2",
+   "spec": "RFC 8610 \u00a72.2.2",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -185,7 +185,7 @@
    "id": "syntax.type-choice",
    "area": "syntax",
    "construct": "Type choice `a / b`",
-   "spec": "RFC 8610 §2.2.2",
+   "spec": "RFC 8610 \u00a72.2.2",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -223,7 +223,7 @@
    "id": "syntax.group-choice",
    "area": "syntax",
    "construct": "Group choice `(a // b)`",
-   "spec": "RFC 8610 §2.2.2",
+   "spec": "RFC 8610 \u00a72.2.2",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -300,7 +300,7 @@
    "id": "syntax.occurrence",
    "area": "syntax",
    "construct": "Occurrence indicators `?` `*` `+` `n*m`",
-   "spec": "RFC 8610 §3.2",
+   "spec": "RFC 8610 \u00a73.2",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -422,7 +422,7 @@
    "id": "syntax.map",
    "area": "syntax",
    "construct": "Maps `{ ... }`",
-   "spec": "RFC 8610 §3.5",
+   "spec": "RFC 8610 \u00a73.5",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -431,10 +431,8 @@
     "validator": "supported",
     "edn": "supported"
    },
-   "notes": "Members with bareword, text, integer (also negative), byte-string, bool, float and type keys; maps are closed unless a wildcard member allows more. A `null => T` key is accepted but not enforced as required (#160).",
-   "issues": [
-    160
-   ],
+   "notes": "Members with bareword, text, integer (also negative), byte-string, bool, float and type keys; maps are closed unless a wildcard member allows more. A `null` (or `nil`) key written with `=>` is a required member like any other; `null: T` is the text key `\"null\"`.",
+   "issues": [],
    "tests": [
     "tests/test_map_key_types.py",
     "tests/test_legacy_tables.py",
@@ -583,6 +581,24 @@
        ]
       }
      ]
+    },
+    {
+     "schema": "r = {null => int}",
+     "valid": [
+      {
+       "$map": [
+        [
+         null,
+         1
+        ]
+       ]
+      }
+     ],
+     "invalid": [
+      {
+       "$map": []
+      }
+     ]
     }
    ]
   },
@@ -590,7 +606,7 @@
    "id": "syntax.cut",
    "area": "syntax",
    "construct": "Cuts `^` (`\"a\" ^=> T`)",
-   "spec": "RFC 8610 §3.5.4",
+   "spec": "RFC 8610 \u00a73.5.4",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -642,7 +658,7 @@
    "id": "syntax.array",
    "area": "syntax",
    "construct": "Arrays `[ ... ]`",
-   "spec": "RFC 8610 §3.4",
+   "spec": "RFC 8610 \u00a73.4",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -717,7 +733,7 @@
    "id": "syntax.group",
    "area": "syntax",
    "construct": "Groups, group references and inline groups",
-   "spec": "RFC 8610 §3.3",
+   "spec": "RFC 8610 \u00a73.3",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -798,7 +814,7 @@
    "id": "syntax.unwrap",
    "area": "syntax",
    "construct": "Unwrap `~name`",
-   "spec": "RFC 8610 §3.7",
+   "spec": "RFC 8610 \u00a73.7",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -875,7 +891,7 @@
    "id": "syntax.choice-from",
    "area": "syntax",
    "construct": "Choices from groups `&(...)` and `&name`",
-   "spec": "RFC 8610 §2.2.2.2",
+   "spec": "RFC 8610 \u00a72.2.2.2",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -916,7 +932,7 @@
    "id": "syntax.generics",
    "area": "syntax",
    "construct": "Generic rules `name<T> = ...`",
-   "spec": "RFC 8610 §3.9",
+   "spec": "RFC 8610 \u00a73.9",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -957,7 +973,7 @@
    "id": "syntax.sockets",
    "area": "syntax",
    "construct": "Type and group sockets `$name`, `$$name`",
-   "spec": "RFC 8610 §3.9",
+   "spec": "RFC 8610 \u00a73.9",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -1022,7 +1038,7 @@
    "id": "syntax.recursion",
    "area": "syntax",
    "construct": "Recursive rules",
-   "spec": "RFC 8610 §2.1",
+   "spec": "RFC 8610 \u00a72.1",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -1066,7 +1082,7 @@
    "id": "syntax.names",
    "area": "syntax",
    "construct": "Identifiers with `-`, `_`, `.`, `$` and `@`",
-   "spec": "RFC 8610 §3.1",
+   "spec": "RFC 8610 \u00a73.1",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -1105,7 +1121,7 @@
    "id": "syntax.comments",
    "area": "syntax",
    "construct": "Comments, whitespace and trailing commas",
-   "spec": "RFC 8610 §3.1",
+   "spec": "RFC 8610 \u00a73.1",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -1142,7 +1158,7 @@
    "id": "syntax.int-literal",
    "area": "syntax",
    "construct": "Integer literals (decimal, `0x`, `0b`)",
-   "spec": "RFC 8610 §3.1",
+   "spec": "RFC 8610 \u00a73.1",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -1181,7 +1197,7 @@
    "id": "syntax.float-literal",
    "area": "syntax",
    "construct": "Float literals (decimal, exponent, hexadecimal)",
-   "spec": "RFC 8610 §3.1",
+   "spec": "RFC 8610 \u00a73.1",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -1229,7 +1245,7 @@
    "id": "syntax.text-literal",
    "area": "syntax",
    "construct": "Text literals with escapes",
-   "spec": "RFC 8610 §3.1",
+   "spec": "RFC 8610 \u00a73.1",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -1259,7 +1275,7 @@
    "id": "syntax.bytes-literal",
    "area": "syntax",
    "construct": "Byte-string literals (`h'..'`, `b64'..'`, `'text'`)",
-   "spec": "RFC 8610 §3.1",
+   "spec": "RFC 8610 \u00a73.1",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -1319,7 +1335,7 @@
    "id": "syntax.range",
    "area": "syntax",
    "construct": "Ranges `a..b`, `a...b`",
-   "spec": "RFC 8610 §3.8.3",
+   "spec": "RFC 8610 \u00a73.8.3",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -1374,7 +1390,7 @@
    "id": "syntax.tag",
    "area": "syntax",
    "construct": "Tags `#6.n(type)`",
-   "spec": "RFC 8610 §3.6",
+   "spec": "RFC 8610 \u00a73.6",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -1451,25 +1467,37 @@
    "area": "syntax",
    "construct": "Tag number given as a type `#6.<type>(t)`",
    "spec": "RFC 9682",
-   "status": "partial",
+   "status": "supported",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "unsupported",
+    "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "Parsed into the AST but not checked: any content is accepted in fields and elements, and the rule fails at the root (#167).",
-   "issues": [
-    167
-   ],
+   "notes": "Checked as the root rule, a map field, an array element and a choice alternative: the item must be a tag whose number matches `<type>` (`#6.<uint .le 10>(t)`, `#6.<1 / 2>(t)`) and whose content matches `t`. `#6(t)` accepts any tag. A bignum the decoder returns as an integer counts as tag 2 or 3.",
+   "issues": [],
    "tests": [
+    "tests/test_item_refs.py",
     "tests/test_cddl_parser.py"
    ],
    "probes": [
     {
      "schema": "r = {a: #6.<uint>(tstr)}",
-     "accepted_but_invalid": [
+     "valid": [
+      {
+       "$map": [
+        [
+         "a",
+         {
+          "$tag": 5,
+          "$value": "x"
+         }
+        ]
+       ]
+      }
+     ],
+     "invalid": [
       {
        "$map": [
         [
@@ -1480,16 +1508,62 @@
          }
         ]
        ]
+      },
+      {
+       "$map": [
+        [
+         "a",
+         "x"
+        ]
+       ]
       }
      ]
     },
     {
      "schema": "r = #6.<uint>(tstr)",
-     "rejected_but_valid": [
+     "valid": [
       {
        "$tag": 5,
        "$value": "a"
       }
+     ],
+     "invalid": [
+      {
+       "$tag": 5,
+       "$value": 1
+      },
+      "a"
+     ]
+    },
+    {
+     "schema": "r = #6.<uint .le 10>(any)",
+     "valid": [
+      {
+       "$tag": 5,
+       "$value": 1
+      }
+     ],
+     "invalid": [
+      {
+       "$tag": 32,
+       "$value": 1
+      }
+     ]
+    },
+    {
+     "schema": "r = [* #6(tstr)]",
+     "valid": [
+      [
+       {
+        "$tag": 1,
+        "$value": "x"
+       }
+      ]
+     ],
+     "invalid": [
+      [
+       "x"
+      ]
      ]
     }
    ]
@@ -1498,26 +1572,39 @@
    "id": "syntax.major-types",
    "area": "syntax",
    "construct": "Major types `#M`, `#M.N`, `#`",
-   "spec": "RFC 8610 §3.6",
+   "spec": "RFC 8610 \u00a73.6",
    "status": "partial",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "unsupported",
+    "validator": "partial",
     "edn": "n/a"
    },
-   "notes": "Parsed into the AST but not checked: accepted without checking in fields and elements, and failing at the root (#167).",
+   "notes": "`#M` matches data items of major type M, `#M.N` with N below 24 the value or length, `#7.20`-`#7.22` false, true and null, `#7.25`-`#7.27` any float, and `#` any item, as the root rule, field, element or choice alternative. The encoded width is not kept by the decoder, so `#0.26` is checked as `#0` (with a warning, #171), `#7.26` as any float (#169), and `#7.23` (undefined) and unassigned simple values match nothing because they cannot be decoded (#168).",
    "issues": [
-    167
+    168,
+    169,
+    171
    ],
    "tests": [
+    "tests/test_item_refs.py",
     "tests/test_cddl_parser.py"
    ],
    "probes": [
     {
      "schema": "r = {a: #1}",
-     "accepted_but_invalid": [
+     "valid": [
+      {
+       "$map": [
+        [
+         "a",
+         -1
+        ]
+       ]
+      }
+     ],
+     "invalid": [
       {
        "$map": [
         [
@@ -1525,17 +1612,12 @@
          "x"
         ]
        ]
-      }
-     ]
-    },
-    {
-     "schema": "r = {a: #7.25}",
-     "accepted_but_invalid": [
+      },
       {
        "$map": [
         [
          "a",
-         "x"
+         1
         ]
        ]
       }
@@ -1543,8 +1625,74 @@
     },
     {
      "schema": "r = #1",
-     "rejected_but_valid": [
+     "valid": [
       -1
+     ],
+     "invalid": [
+      1,
+      "x"
+     ]
+    },
+    {
+     "schema": "r = {a: #7.25}",
+     "valid": [
+      {
+       "$map": [
+        [
+         "a",
+         1.5
+        ]
+       ]
+      }
+     ],
+     "invalid": [
+      {
+       "$map": [
+        [
+         "a",
+         "x"
+        ]
+       ]
+      },
+      {
+       "$map": [
+        [
+         "a",
+         1
+        ]
+       ]
+      }
+     ]
+    },
+    {
+     "schema": "r = [* #3.2]",
+     "valid": [
+      [
+       "ab"
+      ]
+     ],
+     "invalid": [
+      [
+       "a"
+      ]
+     ]
+    },
+    {
+     "schema": "r = #",
+     "valid": [
+      1,
+      "x"
+     ],
+     "invalid": []
+    },
+    {
+     "schema": "r = #1 / tstr",
+     "valid": [
+      -1,
+      "x"
+     ],
+     "invalid": [
+      1
      ]
     }
    ]
@@ -1586,7 +1734,7 @@
    "id": "syntax.root",
    "area": "syntax",
    "construct": "Root rules that are not maps or arrays",
-   "spec": "RFC 8610 §2.1",
+   "spec": "RFC 8610 \u00a72.1",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -1626,7 +1774,7 @@
    "id": "semantic.names",
    "area": "syntax",
    "construct": "Name resolution and schema errors",
-   "spec": "RFC 8610 §2",
+   "spec": "RFC 8610 \u00a72",
    "status": "supported",
    "layers": {
     "parser": "n/a",
@@ -1653,7 +1801,7 @@
    "id": "control.size",
    "area": "control",
    "construct": "`.size`",
-   "spec": "RFC 8610 §3.8",
+   "spec": "RFC 8610 \u00a73.8",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -1703,10 +1851,10 @@
     {
      "schema": "r = tstr .size 2",
      "valid": [
-      "é"
+      "\u00e9"
      ],
      "invalid": [
-      "é!"
+      "\u00e9!"
      ]
     }
    ]
@@ -1715,7 +1863,7 @@
    "id": "control.bits",
    "area": "control",
    "construct": "`.bits`",
-   "spec": "RFC 8610 §3.8",
+   "spec": "RFC 8610 \u00a73.8",
    "status": "unsupported",
    "layers": {
     "parser": "supported",
@@ -1747,7 +1895,7 @@
    "id": "control.regexp",
    "area": "control",
    "construct": "`.regexp`",
-   "spec": "RFC 8610 §3.8",
+   "spec": "RFC 8610 \u00a73.8",
    "status": "partial",
    "layers": {
     "parser": "supported",
@@ -1779,7 +1927,7 @@
    "id": "control.cbor",
    "area": "control",
    "construct": "`.cbor`",
-   "spec": "RFC 8610 §3.8",
+   "spec": "RFC 8610 \u00a73.8",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -1817,7 +1965,7 @@
    "id": "control.cborseq",
    "area": "control",
    "construct": "`.cborseq`",
-   "spec": "RFC 8610 §3.8",
+   "spec": "RFC 8610 \u00a73.8",
    "status": "unsupported",
    "layers": {
     "parser": "supported",
@@ -1854,7 +2002,7 @@
    "id": "control.within",
    "area": "control",
    "construct": "`.within`",
-   "spec": "RFC 8610 §3.8",
+   "spec": "RFC 8610 \u00a73.8",
    "status": "partial",
    "layers": {
     "parser": "supported",
@@ -1887,7 +2035,7 @@
    "id": "control.and",
    "area": "control",
    "construct": "`.and`",
-   "spec": "RFC 8610 §3.8",
+   "spec": "RFC 8610 \u00a73.8",
    "status": "partial",
    "layers": {
     "parser": "supported",
@@ -1920,7 +2068,7 @@
    "id": "control.lt",
    "area": "control",
    "construct": "`.lt`",
-   "spec": "RFC 8610 §3.8",
+   "spec": "RFC 8610 \u00a73.8",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -1951,7 +2099,7 @@
    "id": "control.le",
    "area": "control",
    "construct": "`.le`",
-   "spec": "RFC 8610 §3.8",
+   "spec": "RFC 8610 \u00a73.8",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -1982,7 +2130,7 @@
    "id": "control.gt",
    "area": "control",
    "construct": "`.gt`",
-   "spec": "RFC 8610 §3.8",
+   "spec": "RFC 8610 \u00a73.8",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -2013,7 +2161,7 @@
    "id": "control.ge",
    "area": "control",
    "construct": "`.ge`",
-   "spec": "RFC 8610 §3.8",
+   "spec": "RFC 8610 \u00a73.8",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -2044,7 +2192,7 @@
    "id": "control.eq",
    "area": "control",
    "construct": "`.eq`",
-   "spec": "RFC 8610 §3.8",
+   "spec": "RFC 8610 \u00a73.8",
    "status": "unsupported",
    "layers": {
     "parser": "supported",
@@ -2076,7 +2224,7 @@
    "id": "control.ne",
    "area": "control",
    "construct": "`.ne`",
-   "spec": "RFC 8610 §3.8",
+   "spec": "RFC 8610 \u00a73.8",
    "status": "unsupported",
    "layers": {
     "parser": "supported",
@@ -2108,7 +2256,7 @@
    "id": "control.default",
    "area": "control",
    "construct": "`.default`",
-   "spec": "RFC 8610 §3.8",
+   "spec": "RFC 8610 \u00a73.8",
    "status": "supported",
    "layers": {
     "parser": "supported",
@@ -2369,7 +2517,7 @@
     {
      "schema": "r = tstr .b64u bstr",
      "accepted_but_invalid": [
-      "ÿ!"
+      "\u00ff!"
      ]
     }
    ]
@@ -2398,7 +2546,7 @@
     {
      "schema": "r = tstr .b64c bstr",
      "accepted_but_invalid": [
-      "ÿ!"
+      "\u00ff!"
      ]
     }
    ]
@@ -2427,7 +2575,7 @@
     {
      "schema": "r = tstr .b64u-sloppy bstr",
      "accepted_but_invalid": [
-      "ÿ!"
+      "\u00ff!"
      ]
     }
    ]
@@ -2456,7 +2604,7 @@
     {
      "schema": "r = tstr .b64c-sloppy bstr",
      "accepted_but_invalid": [
-      "ÿ!"
+      "\u00ff!"
      ]
     }
    ]
@@ -2485,7 +2633,7 @@
     {
      "schema": "r = tstr .b45 bstr",
      "accepted_but_invalid": [
-      "ÿ!"
+      "\u00ff!"
      ]
     }
    ]
@@ -2514,7 +2662,7 @@
     {
      "schema": "r = tstr .b32 bstr",
      "accepted_but_invalid": [
-      "ÿ!"
+      "\u00ff!"
      ]
     }
    ]
@@ -2543,7 +2691,7 @@
     {
      "schema": "r = tstr .h32 bstr",
      "accepted_but_invalid": [
-      "ÿ!"
+      "\u00ff!"
      ]
     }
    ]
@@ -2572,7 +2720,7 @@
     {
      "schema": "r = tstr .hex bstr",
      "accepted_but_invalid": [
-      "ÿ!"
+      "\u00ff!"
      ]
     }
    ]
@@ -2601,7 +2749,7 @@
     {
      "schema": "r = tstr .hexlc bstr",
      "accepted_but_invalid": [
-      "ÿ!"
+      "\u00ff!"
      ]
     }
    ]
@@ -2630,7 +2778,7 @@
     {
      "schema": "r = tstr .hexuc bstr",
      "accepted_but_invalid": [
-      "ÿ!"
+      "\u00ff!"
      ]
     }
    ]
@@ -2659,7 +2807,7 @@
     {
      "schema": "r = tstr .base10 bstr",
      "accepted_but_invalid": [
-      "ÿ!"
+      "\u00ff!"
      ]
     }
    ]
@@ -3833,7 +3981,7 @@
   {
    "id": "cbor.canonical",
    "area": "cbor",
-   "construct": "Core deterministic encoding (§4.2.1)",
+   "construct": "Core deterministic encoding (\u00a74.2.1)",
    "spec": "RFC 8949",
    "status": "supported",
    "layers": {
@@ -3843,7 +3991,7 @@
     "edn": "n/a",
     "json": "n/a"
    },
-   "notes": "Shortest integers and floats, map keys sorted by encoded bytes, definite lengths. The optional §4.2.2 reduction of integral floats is not applied.",
+   "notes": "Shortest integers and floats, map keys sorted by encoded bytes, definite lengths. The optional \u00a74.2.2 reduction of integral floats is not applied.",
    "issues": [],
    "tests": [
     "tests/test_deterministic_encoding.py",

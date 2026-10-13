@@ -269,6 +269,31 @@ class TestLiteralKeys(unittest.TestCase):
         schema = "r = {&(flag: true) => int}\ntrue = 5"
         self.check(schema, [("a10501", True), ("a1f501", False)])
 
+    def test_null_key_is_required(self):
+        # #160: None is also the dict key of a CBOR null key
+        self.check("r = {null => int}", [
+            ("a0", False), ("a1f601", True), ("a1f6616f", False), ("a1616101", False),
+        ])
+        self.check("r = {nil => int}", [("a0", False), ("a1f601", True)])
+
+    def test_optional_and_repeated_null_key(self):
+        self.check("r = {? null => int}", [("a0", True), ("a1f601", True), ("a1f6a0", False)])
+
+    def test_null_key_next_to_other_keys(self):
+        self.check("r = {null => int, a: tstr}", [
+            ("a2f60161616161", True), ("a1616161" "61", False), ("a1f601", False),
+        ])
+
+    def test_bare_null_is_the_text_key(self):
+        self.check("r = {null: int}", [("a164" "6e756c6c" "01", True), ("a1f601", False),
+                                       ("a0", False)])
+
+    def test_redefined_null_is_not_a_null_key(self):
+        self.check("r = {null => int}\nnull = 5", [("a10501", True), ("a1f601", False)])
+
+    def test_null_key_in_a_registered_label(self):
+        self.check("r = {&(flag: null) => int}", [("a0", False), ("a1f601", True)])
+
     def test_nested_and_in_arrays(self):
         self.check("r = [* m]\nm = {1.5 => int}", [
             ("82a1fb3ff800000000000001a1fb3ff800000000000002", True),

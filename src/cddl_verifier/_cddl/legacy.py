@@ -104,7 +104,7 @@ class LegacyTables:
                 label = registered_label(node)
                 if label is not None:
                     key = _literal_key(label[1], self._rule_names)
-                    if key is not None:
+                    if key is not NOT_A_KEY:
                         self.registered_params[key] = label[0]
 
     # ------------------------------------------------------------- rules
@@ -412,8 +412,8 @@ class LegacyTables:
             # '1: T', '"x": T', and literal keys written '1 => T' (#104)
             literal = key_node.value if key_node.kind == 'value' else key_node.type
             key = _literal_key(literal, self._rule_names)
-            name = member.comment or (_spelling(literal) if key is not None else None)
-        if key is None:
+            name = member.comment or (_spelling(literal) if key is not NOT_A_KEY else None)
+        if key is NOT_A_KEY:
             return None
         info = {'name': name,
                 'type': self._text(member.value, f'{owner}@{_path(key)}'),
@@ -951,15 +951,20 @@ def _occurs(partials, occurrence):
     return result
 
 
+#: What :func:`_literal_key` returns for a key that is not a literal. It is not
+#: ``None``, which is the dict key of a CBOR ``null`` key (#160).
+NOT_A_KEY = object()
+
+
 def _literal_key(node, rule_names=()):
-    """The CBOR map key a literal stands for, or ``None``.
+    """The CBOR map key a literal stands for, or :data:`NOT_A_KEY`.
 
     The key is the dict key the decoder gives the same CBOR value
     (:func:`~cddl_verifier._cbor.map_key`): ``1.5`` is ``CBORKey(1.5)``, a
     byte string is ``bytes``, and ``true``/``false`` written as a type
     (``true => int``; ``true: int`` is the text key ``"true"``) are
-    ``CBORKey(True)``/``CBORKey(False)``, unless the schema defines those
-    names itself (#142).
+    ``CBORKey(True)``/``CBORKey(False)``, and ``null``/``nil`` are ``None``,
+    unless the schema defines those names itself (#142, #160).
     """
     if isinstance(node, (IntLit, TextLit)):
         return node.value
@@ -968,7 +973,10 @@ def _literal_key(node, rule_names=()):
     if isinstance(node, Name) and not node.args and node.name in ('true', 'false') \
             and node.name not in rule_names:
         return map_key(node.name == 'true')
-    return None
+    if isinstance(node, Name) and not node.args and node.name in ('null', 'nil') \
+            and node.name not in rule_names:
+        return None
+    return NOT_A_KEY
 
 
 def _spelling(node) -> str:

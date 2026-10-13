@@ -17,8 +17,8 @@ Removing the text from the tables altogether is tracked in a follow-up to #111.
 from functools import lru_cache
 from typing import List, NamedTuple, Optional, Set, Tuple
 
-from .ast import (Array, BytesLit, ChoiceFrom, Control, FloatLit, GroupRef, IntLit, Member,
-                  Name, Paren, Range, Tag, TextLit, Type, walk)
+from .ast import (AnyItem, Array, BytesLit, ChoiceFrom, Control, FloatLit, GroupRef, IntLit, Member,
+                  Major, Name, Paren, Range, Tag, TextLit, Type, walk)
 from .errors import CDDLSyntaxError
 from .parser import parse_type_expr
 
@@ -171,6 +171,41 @@ def tag(text: str) -> Optional[Tuple[int, str]]:
     if not isinstance(node, Tag) or not isinstance(node.tag, int):
         return None
     return node.tag, parsed.slice(node.type)
+
+
+class ItemRef(NamedTuple):
+    """A reference to data items by their encoding: ``#``, ``#M``, ``#M.N``, ``#6(t)``.
+
+    *node* is the ``AnyItem``, ``Major`` or ``Tag`` node. For a tag, *tag_type*
+    is the text of ``<type>`` in ``#6.<type>(t)`` (``None`` for ``#6(t)``, any
+    tag) and *inner* the text of ``t``. For ``#7.<type>``, *tag_type* is the
+    text of ``<type>``.
+    """
+
+    node: object
+    tag_type: Optional[str] = None
+    inner: Optional[str] = None
+
+
+def item_ref(text: str) -> Optional[ItemRef]:
+    """The item reference *text* is, else ``None``.
+
+    A tag with a number (``#6.32(tstr)``) is not one: :func:`tag` gives that.
+    """
+    single = _single(text)
+    if single is None:
+        return None
+    parsed, node = single
+    if isinstance(node, Major):
+        info = None if node.info is None or isinstance(node.info, int) \
+            else parsed.slice(node.info)
+        return ItemRef(node, info)
+    if isinstance(node, AnyItem):
+        return ItemRef(node)
+    if isinstance(node, Tag) and not isinstance(node.tag, int):
+        tag_type = None if node.tag is None else parsed.slice(node.tag)
+        return ItemRef(node, tag_type, parsed.slice(node.type))
+    return None
 
 
 def cbor_control(text: str) -> Optional[Tuple[str, str]]:
