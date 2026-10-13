@@ -35,6 +35,7 @@ and the standard-library **unittest** runner with no code changes required.
 | `tests/test_ranges.py` | Numeric ranges (`0..10`, `0.0...1.0`, named bounds) at the root, in fields, array elements, choices, sockets, computed keys and generic arguments; integer vs float matching; malformed ranges; `.ge`/`.le` on floats in fields and arrays (#71) |
 | `tests/test_and_within.py` | `.and` / `.within` around generic structures (`non-empty<M>`) as a rule, field and array element; minimum counts of wildcard map members (`+ K => V`, `2*3 K => V`); an empty CoRIM `triples-map` (#120) |
 | `tests/test_check_version_bump.py` | `.github/scripts/check_version_bump.py`: one-step bumps pass, missing or larger bumps and malformed `_version.py` fail (#125) |
+| `tests/test_differential.py` | Differential testing against `pycddl` (the Rust `cddl` crate) (#81): every divergence on the conformance corpus and its mutants is explained in `docs/divergences.json`, stale explanations fail, minimized regression cases hold for this library; the `pycddl` part is skipped when it is not installed |
 
 ---
 
@@ -99,6 +100,52 @@ CDDL_VERIFIER_REQUIRE_INSTALLED=1 /tmp/venv/bin/python -m pytest tests/
 `cddl_verifier` would be imported from `src/` instead of the installation.
 
 ---
+
+## Differential testing
+
+`scripts/differential.py` validates the conformance corpus (every
+single-module probe in `docs/conformance.json`) and mutants of its valid
+examples (an item dropped, added or duplicated, a value replaced by one of
+another type) with this library and with
+[`pycddl`](https://pypi.org/project/pycddl/), the Rust `cddl` crate, which is
+the independent implementation available from PyPI. `pycddl` runs in a
+subprocess per schema because it can crash on recursive rules.
+
+Each disagreement is a *divergence* with a `kind`:
+
+| Kind | Meaning |
+|------|---------|
+| `parser` | one side rejects a schema the other accepts |
+| `validation` | both accept the schema and disagree about the data |
+| `crash` | `pycddl` crashed or timed out on the schema |
+
+`docs/divergences.json` explains each one with a `cause`: `their-unsupported`
+(the other implementation lacks the feature), `their-bug` (it contradicts the
+RFC), `spec-ambiguous`, or `our-bug` (needs an `issue`, and the conformance
+matrix lists that issue). An entry names divergences by `row`, `schema`,
+`data`, `kind`, `ours` and `theirs`, any of which may be a list. Entries with
+`fixture: true` are minimized cases with the RFC verdict in `expected`; they
+are checked against this library on every run, with or without `pycddl`.
+
+**What fails CI** (`tests/test_differential.py`, with `pycddl` installed as
+part of the test requirements):
+
+- a divergence that no entry explains;
+- an entry that matches no divergence any more (fix it or delete it), except
+  fixtures;
+- an entry without a cause or reason, or an `our-bug` without an issue;
+- a fixture on which this library disagrees with the RFC verdict.
+
+```bash
+pip install pycddl
+python scripts/differential.py report --untriaged   # new divergences
+python scripts/differential.py minimize             # shrink their data, then adjudicate against the RFC
+python scripts/differential.py check                # the CI policy; exit 1 on failure
+```
+
+When a divergence is new, decide who is right from the RFC (not from either
+implementation), fix this library if it is wrong or open an issue, and add an
+entry; add a `fixture` for a divergence worth pinning.
 
 ## Project layout
 

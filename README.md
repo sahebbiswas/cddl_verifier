@@ -148,6 +148,7 @@ of the problem. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/b
 | [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/API.md) | Python API: `validate`, `Validator`, CBOR and JSON helpers |
 | [docs/CDDL_SUPPORT.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CDDL_SUPPORT.md) | Supported CDDL syntax, types, and validation behaviour |
 | [docs/CONFORMANCE.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CONFORMANCE.md) | Conformance matrix: every construct, control and CBOR item by layer, with status and tests |
+| [docs/divergences.json](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/divergences.json) | Where this library and the independent `cddl` crate (`pycddl`) disagree on the conformance corpus, and who is right ([Differential testing](https://github.com/sahebbiswas/cddl_verifier/blob/main/TESTING.md#differential-testing)) |
 | [docs/CORIM_SUPPORT.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CORIM_SUPPORT.md) | CoRIM / CoSWID schema support |
 | [docs/CBOR_BUILDER_QUICK_REF.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CBOR_BUILDER_QUICK_REF.md), [docs/ITERATIVE_CONSTRUCTION.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/ITERATIVE_CONSTRUCTION.md) | `CBOR` builder API in depth |
 | [docs/CBOR_DIAGNOSTIC_DUMP.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CBOR_DIAGNOSTIC_DUMP.md) | Diagnostic dump format |
