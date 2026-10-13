@@ -49,6 +49,7 @@ cddl-verify --version
 | `-o / --output PATH` | Write EDN to a file instead of stdout |
 | `-t / --type TYPE` | Root CDDL type name; validation failures are fatal |
 | `--no-annotate` | Suppress field-name comments in EDN output |
+| `--unique-choices` | Fail when data matches more than one map, array or tag alternative of a choice |
 | `--edn-format {keyindex,keyname,both}` | EDN key format (default: `keyindex`) |
 | `-M DIR`, `--module-path DIR` | Directory searched for imported CDDL modules (`<name>.cddl`); repeatable. The schema file's own directory is always searched, last |
 | `--module NAME=FILE` | CDDL file for the imported module `NAME`; repeatable |

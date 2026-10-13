@@ -34,11 +34,11 @@ else:
         print(diagnostic.code, diagnostic.message)
 ```
 
-### `validate(schema, data, root_type=None, *, modules=None, module_path=()) -> ValidationResult`
+### `validate(schema, data, root_type=None, *, modules=None, module_path=(), unique_choices=False) -> ValidationResult`
 
-Shorthand for `Validator(schema, modules=modules, module_path=module_path).validate(data, root_type)`.
+Shorthand for `Validator(schema, modules=modules, module_path=module_path, unique_choices=unique_choices).validate(data, root_type)`.
 
-### `Validator(schema, *, modules=None, module_path=())`
+### `Validator(schema, *, modules=None, module_path=(), unique_choices=False)`
 
 Parses a schema once so it can check many items.
 
@@ -50,6 +50,10 @@ Parses a schema once so it can check many items.
   `PREFIX.<rule>` for an import with `as`, the rule's own name for an include.
 - `module_path`: directories searched for `NAME.cddl` when `modules` has no
   entry for `NAME`. When `schema` is a path, its directory is searched last.
+- `unique_choices`: reject data that matches more than one map, array or tag
+  alternative of a choice. By default any matching alternative is enough, as in
+  CDDL; EDN labels such data with the first match in schema order
+  ([CDDL_SUPPORT.md](CDDL_SUPPORT.md#type-choices)).
 - A module that is not found is not an error: the names used from it are not
   checked and match any value. `Validator.warnings` lists these imports (and
   each is also issued as a `UserWarning`).
