@@ -1,3 +1,5 @@
 # Testing dependencies (also available as: pip install -e ".[test]")
 pytest>=8.0
 pytest-github-actions-annotate-failures>=0.2.0
+# Independent CDDL implementation for differential testing (tests/test_differential.py, #81)
+pycddl>=0.6.4,<0.7

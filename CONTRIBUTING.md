@@ -17,6 +17,7 @@ work.
   [`docs/CONFORMANCE.md`](docs/CONFORMANCE.md) with
   `python scripts/render_conformance.py`. `tests/test_conformance.py` runs the
   examples in the matrix and fails when the code and the matrix disagree.
+- **Explain new differential divergences.** `tests/test_differential.py` compares the conformance probes with `pycddl`; a change that alters a verdict adds, edits or removes an entry in [`docs/divergences.json`](docs/divergences.json) (see [Differential testing](TESTING.md#differential-testing)).
 - **Describe the change in the pull request.** There is no changelog file; the
   pull request description is the record of what changed and why. Start any
   change that users can notice (different results, newly rejected input,
