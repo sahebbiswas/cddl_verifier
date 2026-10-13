@@ -8,7 +8,7 @@ Features:
 - Convert JSON to CBOR
 - Convert CBOR to JSON
 - Preserve CBOR-specific types (bytes, tags)
-- Handle special values (NaN, Infinity, -Infinity)
+- Handle special values (NaN, Infinity, -Infinity, undefined, simple values)
 - Pretty-printing support
 
 Usage:
@@ -27,6 +27,7 @@ import base64
 import math
 from typing import Any, Dict, List, Union
 from ._cbor import CBOR, CBORKey, cbor_encode, cbor_decode, map_key
+from ._cbor_values import UNDEFINED, CBORSimple
 
 
 class CBORJSONEncoder(json.JSONEncoder):
@@ -85,6 +86,12 @@ class CBORJSONEncoder(json.JSONEncoder):
                     return {"$cbor": "Infinity"} if self.typed else "Infinity"
                 else:
                     return {"$cbor": "-Infinity"} if self.typed else "-Infinity"
+        
+        # undefined and the other simple values (#168)
+        if obj is UNDEFINED:
+            return {"$cbor": "undefined"} if self.typed else None
+        if isinstance(obj, CBORSimple):
+            return {"$cbor": "simple", "$value": obj.number} if self.typed else obj.number
         
         return super().default(obj)
 
@@ -193,6 +200,13 @@ def _preprocess_for_json(obj: Any, typed: bool) -> Any:
             else:
                 return {"$cbor": "-Infinity"} if typed else "-Infinity"
     
+    # undefined and the other simple values (#168): untyped, JSON has no
+    # counterpart, so they become null and the simple value's number
+    if obj is UNDEFINED:
+        return {"$cbor": "undefined"} if typed else None
+    if isinstance(obj, CBORSimple):
+        return {"$cbor": "simple", "$value": obj.number} if typed else obj.number
+
     # Handle dicts recursively
     if isinstance(obj, dict):
         if typed and any(not isinstance(k, str) or k == "$cbor" for k in obj):
@@ -231,6 +245,8 @@ def _json_key(key: Any) -> str:
         return base64.b64encode(key).decode('ascii')
     if isinstance(key, (bool, int, float)) or key is None:
         return json.dumps(key)  # 0 → "0", True → "true", None → "null", 1.5 → "1.5"
+    if key is UNDEFINED or isinstance(key, CBORSimple):
+        return repr(key)  # "undefined", "simple(16)"
     return json.dumps(_preprocess_for_json(key, False), ensure_ascii=False)
 
 
@@ -297,6 +313,8 @@ def _process_cbor_annotations(obj: Any) -> Any:
         {"$cbor": "bytes", "$value": "base64"} → bytes
         {"$cbor": "tag", "$tag": N, "$value": V} → (N, V)
         {"$cbor": "map", "$value": [[K, V], ...]} → {K: V, ...}
+        {"$cbor": "undefined"} → UNDEFINED
+        {"$cbor": "simple", "$value": N} → CBORSimple(N)
         {"$cbor": "NaN"} → float('nan')
         {"$cbor": "Infinity"} → float('inf')
         {"$cbor": "-Infinity"} → float('-inf')
@@ -333,6 +351,12 @@ def _process_cbor_annotations(obj: Any) -> Any:
                         raise ValueError(f"Duplicate map key in $cbor map: {key!r}")
                     result[key] = _process_cbor_annotations(pair[1])
                 return result
+
+            elif cbor_type == "undefined":
+                return UNDEFINED
+
+            elif cbor_type == "simple" and "$value" in obj:
+                return CBORSimple(obj["$value"])
 
             elif cbor_type == "NaN":
                 return float('nan')

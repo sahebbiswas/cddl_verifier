@@ -8,7 +8,6 @@ root.
 """
 
 import sys
-import warnings
 from pathlib import Path
 
 try:
@@ -35,7 +34,10 @@ SAMPLES = {
     "true": HEX("f5"),
     "null": HEX("f6"),
     "float": HEX("f93c00"),
+    "float32": HEX("fa3fc00000"),
     "float64": HEX("fb3ff8000000000000"),
+    "undefined": HEX("f7"),
+    "simple": HEX("f0"),            # simple(16)
     "bignum": HEX("c249010000000000000000"),
 }
 
@@ -89,7 +91,8 @@ class TestMajorTypes(ItemRefTestCase):
         self.accepts("#6", {"tag", "bignum"})   # a bignum is tag 2 or 3
 
     def test_floats_and_simple_values(self):
-        self.accepts("#7", {"false", "true", "null", "float", "float64"})
+        self.accepts("#7", {"false", "true", "null", "float", "float32", "float64",
+                            "undefined", "simple"})
 
     def test_any_item(self):
         self.accepts("#", set(SAMPLES))
@@ -125,7 +128,12 @@ class TestAdditionalInformation(ItemRefTestCase):
     def test_small_values(self):
         for schema, data, expected in [
             ("r = #0.5", HEX("05"), True), ("r = #0.5", HEX("06"), False),
-            ("r = #0.5", HEX("1805"), True),   # another width; see width_is_not_kept
+            ("r = #0.5", HEX("1805"), False),  # 5 written with a 1-byte argument is #0.24
+            ("r = #0.24", HEX("1805"), True), ("r = #0.24", HEX("05"), False),
+            ("r = #0.24", HEX("1818"), True), ("r = #0.24", HEX("1819"), True),
+            ("r = #0.25", HEX("190100"), True), ("r = #0.26", HEX("1a00000005"), True),
+            ("r = #0.27", HEX("1b0000000000000005"), True),
+            ("r = #1.24", HEX("3805"), True), ("r = #1.24", HEX("20"), False),
             ("r = #1.0", HEX("20"), True), ("r = #1.0", HEX("21"), False),
             ("r = {a: #0.5}", HEX("a1616105"), True), ("r = {a: #0.5}", HEX("a1616106"), False),
         ]:
@@ -152,36 +160,56 @@ class TestAdditionalInformation(ItemRefTestCase):
         self.accepts("#7.21", {"true"})
         self.accepts("#7.22", {"null"})
 
-    def test_float_widths_are_floats(self):
-        # the decoder does not keep float widths (#169): all are 'float'
-        self.accepts("#7.25", {"float", "float64"})
-        self.accepts("#7.27", {"float", "float64"})
+    def test_float_widths_follow_the_encoding(self):
+        self.accepts("#7.25", {"float"})
+        self.accepts("#7.26", {"float32"})
+        self.accepts("#7.27", {"float64"})
 
-    def test_undefined_and_unassigned_simple_values_match_nothing(self):
-        # they cannot be decoded at all yet (#168)
-        self.accepts("#7.23", set())
+    def test_undefined_and_simple_values(self):
+        self.accepts("#7.23", {"undefined"})
+        self.accepts("#7.16", {"simple"})
         self.accepts("#7.19", set())
+        self.accepts("#7.255", set())
+        self.accepts("#7.24", set())   # not a simple value number
 
     def test_number_given_as_a_type(self):
         self.accepts("#7.<20..21>", {"false", "true"})
-        self.accepts("#7.<uint .ge 22>", {"null", "float", "float64"})
+        self.accepts("#7.<uint .ge 22>", {"null", "undefined", "float", "float32", "float64"})
+        self.accepts("#7.<16 / 23>", {"undefined", "simple"})
 
-    def test_width_is_not_kept(self):
-        for ref in ("#0.24", "#2.26", "#4.27", "#5.31"):
-            with self.subTest(ref=ref), warnings.catch_warnings(record=True):
-                warnings.simplefilter("always")
-                warned = Validator(f"r = {{a: {ref}}}").warnings
-                self.assertEqual(len(warned), 1, warned)
-                self.assertIn(f"'{ref}' is checked as '{ref[:2]}'", warned[0])
+    def test_lengths_by_head_width(self):
+        for schema, data, expected in [
+            ("r = #2.24", HEX("580101"), True), ("r = #2.24", HEX("4101"), False),
+            ("r = #3.25", HEX("79000161"), True), ("r = #3.1", HEX("79000161"), False),
+            ("r = #4.26", HEX("9a0000000101"), True),
+            ("r = #5.27", HEX("bb0000000000000000"), True), ("r = #5.0", HEX("a0"), True),
+            ("r = #5.0", HEX("b800"), False),
+        ]:
+            with self.subTest(schema=schema, data=data.hex()):
+                self.assertEqual(Validator(schema).validate(data).valid, expected)
 
-    def test_width_is_checked_as_the_major_type(self):
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            self.assertTrue(Validator("r = #0.24").validate(HEX("05")).valid)
-            self.assertFalse(Validator("r = #0.24").validate(HEX("6161")).valid)
+    def test_indefinite_length(self):
+        for schema, data, expected in [
+            ("r = #4.31", HEX("9f01ff"), True), ("r = #4.31", HEX("8101"), False),
+            ("r = #4.1", HEX("9f01ff"), False),
+            ("r = #5.31", HEX("bf616101ff"), True), ("r = #5.31", HEX("a1616101"), False),
+            ("r = #2.31", HEX("5f4101ff"), True), ("r = #3.31", HEX("7f6161ff"), True),
+            ("r = #3.31", HEX("6161"), False),
+            ("r = {a: #4.31}", HEX("a161619fff"), True),
+            ("r = [* #4.31]", HEX("819f01ff"), True), ("r = [* #4.31]", HEX("8180"), False),
+        ]:
+            with self.subTest(schema=schema, data=data.hex()):
+                self.assertEqual(Validator(schema).validate(data).valid, expected)
 
-    def test_no_warning_for_exact_values(self):
-        for ref in ("#0.5", "#7.25", "#7.20", "#6", "#"):
+    def test_values_given_as_python_objects_are_written_the_preferred_way(self):
+        self.assertTrue(validate("r = #0.5", 5).valid)
+        self.assertFalse(validate("r = #0.24", 5).valid)
+        self.assertTrue(validate("r = #0.24", 200).valid)
+        self.assertTrue(validate("r = #4.2", [1, 2]).valid)
+        self.assertTrue(validate("r = #3.2", "ab").valid)
+
+    def test_no_warnings(self):
+        for ref in ("#0.24", "#2.26", "#4.27", "#5.31", "#0.5", "#7.25", "#6", "#"):
             with self.subTest(ref=ref):
                 self.assertEqual(Validator(f"r = {ref}").warnings, ())
 

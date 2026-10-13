@@ -171,7 +171,7 @@ class Validator:
         if isinstance(data, _BYTES_TYPES):
             cbor_bytes = bytes(data)
             try:
-                data = CBOR.loads(cbor_bytes)
+                data = CBOR.loads(cbor_bytes, keep_encoding=True)
             except CBORDecodeError as e:
                 return ValidationResult(False, root, (decode_diagnostic(e, cbor_bytes),), None)
         analyzer = _analyzer.CBORAnalyzer(self._parser, unique_choices=self._unique_choices)
@@ -199,7 +199,7 @@ class Validator:
         if edn_format not in _EDN_FORMATS:
             raise ValueError(f"edn_format must be one of {_EDN_FORMATS}, not {edn_format!r}")
         if isinstance(data, _BYTES_TYPES):
-            data = CBOR.loads(bytes(data))
+            data = CBOR.loads(bytes(data), keep_encoding=True)
         root = root_type if root_type is not None else self.default_root_type
         generator = _analyzer.EDNGenerator(self._parser, edn_format=edn_format)
         return generator.generate(data, root, annotate)

@@ -1,40 +1,44 @@
-"""Matching a decoded value against ``#M`` and ``#M.N`` (RFC 8610 §3.6, #167).
+"""Matching a decoded value against ``#M`` and ``#M.N`` (RFC 8610 §3.6, #167, #171).
 
 ``#M`` is any data item of major type *M*, and ``#M.N`` one whose additional
 information is *N*. The decoder returns Python values, so the major type is
 read from the value:
 
-====  =========================================  ===============================
-Major Decoded value                              ``#M.N``
-====  =========================================  ===============================
-0     ``int`` from 0 to 2**64-1                  ``N`` below 24 is the value
-1     ``int`` from -2**64 to -1                  ``N`` below 24 is ``-1-N``
-2     ``bytes``                                  ``N`` below 24 is the length
-3     ``str``                                    ``N`` below 24 is the length
-4     ``list``                                   ``N`` below 24 is the length
-5     ``dict``                                   ``N`` below 24 is the length
-6     a ``(tag, item)`` tuple, or a bignum       ``N`` is the tag number
-7     ``bool``, ``None``, ``float``              20 ``false``, 21 ``true``,
-                                                 22 ``null``, 25-27 a float
-====  =========================================  ===============================
+====  ==========================================  ==============================
+Major Decoded value                               ``#M.N``
+====  ==========================================  ==============================
+0     ``int`` from 0 to 2**64-1                   ``N`` is the additional information
+1     ``int`` from -2**64 to -1                   (the width of the head: below 24
+2     ``bytes``                                   the value or length itself, 24
+3     ``str``                                     to 27 the width of its argument,
+4     ``list``                                    31 an indefinite length)
+5     ``dict``
+6     a ``(tag, item)`` tuple, or a bignum        ``N`` is the tag number
+7     ``bool``, ``None``, ``float``,              20 ``false``, 21 ``true``, 22
+      ``UNDEFINED``, ``CBORSimple``               ``null``, 23 ``undefined``, 25 to
+                                                  27 a float of that width, else
+                                                  the simple value ``N``
+====  ==========================================  ==============================
 
+The additional information of an integer, string, array, map or float is what
+the decoder kept of the head it was written with (see
+:func:`~cddl_verifier._cbor_values.head_info`); data decoded without that
+record, or given as Python values, is taken to be written the preferred way.
+A float with no record matches a width it can be written in without loss.
 For major types 6 and 7 the number is not additional information (RFC 9682):
-``#6.N`` is a tag with number ``N`` around any item, as ``#6.N(#)`` is, and
-``#7.N`` is a simple value (or, for 25 to 27, a float).
-
-What the decoder does not keep cannot be checked: the width an item was
-encoded in (``#0.26`` is checked as ``#0``, and ``#7.26`` as any float, as
-``float32`` is), see :func:`width_unchecked`. ``undefined`` and unassigned
-simple values are not decoded at all (#168), so nothing matches ``#7.23`` or
-``#7.<other>``.
+``#6.N`` is a tag with number ``N`` around any item, as ``#6.N(#)`` is.
 """
 
+import struct
 from typing import Any, Optional
+
+from .._cbor_values import UNDEFINED, CBORSimple, head_info
 
 MAJOR_NAMES = {0: 'unsigned integer', 1: 'negative integer', 2: 'byte string',
                3: 'text string', 4: 'array', 5: 'map', 6: 'tag', 7: 'float or simple value'}
 
 _UINT_LIMIT = 2 ** 64
+_FLOAT_FORMATS = {25: '>e', 26: '>f'}
 
 
 def is_tag(value: Any) -> bool:
@@ -64,15 +68,6 @@ def _is_bignum(value: Any) -> bool:
             and not -_UINT_LIMIT <= value < _UINT_LIMIT)
 
 
-def width_unchecked(major: int, info: Optional[int]) -> bool:
-    """Whether ``#M.N`` names an encoding detail the decoder does not keep.
-
-    That is the width of an integer or length (``N`` from 24 to 27), and an
-    indefinite length (31). They are checked as the major type alone.
-    """
-    return isinstance(info, int) and major < 6 and info >= 24
-
-
 def major_error(value: Any, major: int, info: Optional[int] = None) -> Optional[str]:
     """Why *value* is not ``#major`` / ``#major.info``, or ``None`` if it is."""
     if not _has_major(value, major):
@@ -82,20 +77,48 @@ def major_error(value: Any, major: int, info: Optional[int] = None) -> Optional[
     if major == 6:  # '#6.N': the tag number is N, whatever width it was encoded in
         number = tag_parts(value)[0]
         return None if number == info else f"expected tag {info} (#6.{info}), got tag {number}"
-    if width_unchecked(major, info):
-        return None
     if major == 7:
-        if ((info == 20 and value is False) or (info == 21 and value is True)
-                or (info == 22 and value is None)
-                or (info in (25, 26, 27) and isinstance(value, float))):
-            return None
-        return f"expected #7.{info}, got {_describe(value)}"
-    if major in (0, 1):
-        expected = info if major == 0 else -1 - info
-        return None if value == expected else f"expected {expected} (#{major}.{info}), got {value}"
-    length = len(value)
-    return None if length == info else (
-        f"expected {MAJOR_NAMES[major]} of length {info} (#{major}.{info}), got length {length}")
+        return None if _is_simple(value, info) else f"expected #7.{info}, got {_describe(value)}"
+    found = head_info(value)
+    if found == info:
+        return None
+    return f"expected #{major}.{info}, {_head_text(value, found)}"
+
+
+def _is_simple(value: Any, info: int) -> bool:
+    if info == 20:
+        return value is False
+    if info == 21:
+        return value is True
+    if info == 22:
+        return value is None
+    if info == 23:
+        return value is UNDEFINED
+    if info in _FLOAT_FORMATS or info == 27:
+        return isinstance(value, float) and float_width_fits(value, info)
+    return isinstance(value, CBORSimple) and value.number == info
+
+
+def float_width_fits(value: float, info: int) -> bool:
+    """Whether the float *value* is, or can be written as, one of width *info* (25 to 27)."""
+    written = getattr(value, 'info', None)
+    if written is not None:
+        return written == info
+    if info == 27 or value != value or value in (float('inf'), float('-inf')):
+        return True
+    try:
+        return struct.unpack(_FLOAT_FORMATS[info], struct.pack(_FLOAT_FORMATS[info], value))[0] \
+            == value
+    except OverflowError:
+        return False
+
+
+def _head_text(value: Any, found: Optional[int]) -> str:
+    if found is None:
+        return f"got {_describe(value)}"
+    if found == 31:
+        return "got an indefinite length"
+    return f"its head has additional information {found}"
 
 
 def _has_major(value: Any, major: int) -> bool:
@@ -117,10 +140,13 @@ def _has_major(value: Any, major: int) -> bool:
         return isinstance(value, list)
     if major == 5:
         return isinstance(value, dict)
-    return isinstance(value, (bool, float)) or value is None
+    return isinstance(value, (bool, float, CBORSimple)) or value is None or value is UNDEFINED
 
 
 def _describe(value: Any) -> str:
-    if isinstance(value, (bool, int, float)) or value is None:
-        return repr(value) if not isinstance(value, bool) else str(value).lower()
+    if isinstance(value, bool):
+        return str(value).lower()
+    if isinstance(value, (int, float)) or value is None or value is UNDEFINED \
+            or isinstance(value, CBORSimple):
+        return repr(value)
     return type(value).__name__

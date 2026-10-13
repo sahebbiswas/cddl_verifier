@@ -332,6 +332,8 @@ twice raises `ValueError`.
 #### Special Float Values
 
 ```json
+{"$cbor": "undefined"}                 // UNDEFINED (untyped JSON: null)
+{"$cbor": "simple", "$value": 16}     // CBORSimple(16) (untyped JSON: 16)
 {"$cbor": "NaN"}          // float('nan')
 {"$cbor": "Infinity"}     // float('inf')
 {"$cbor": "-Infinity"}    // float('-inf')
@@ -438,7 +440,7 @@ Actual CBOR: (send above JSON converted to CBOR)
 1. **JSON has no bytes type** - Must use annotations or lose type info
 2. **JSON has no tuple type** - Tagged values become objects  
 3. **JSON has limited numbers** - Very large integers may lose precision
-4. **Indefinite-length not supported** - Our CBOR library doesn't support it (decoding raises `CBORUnsupportedError`)
+4. **Indefinite lengths are not kept** - indefinite-length items decode, but convert to JSON and back as definite-length items
 5. **One item per input** - `cbor_decode()` rejects trailing bytes / CBOR sequences with `CBORTrailingDataError`
 
 ### Best Practices

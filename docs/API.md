@@ -285,8 +285,47 @@ detected, and `reason` holds the message without the offset.
 |-----------|------------|----------|
 | `CBORTruncatedError` | Empty input; input ending mid-item | Where more bytes were needed (`0` for empty input) |
 | `CBORTrailingDataError` | Bytes left after the item | First trailing byte |
-| `CBORUnsupportedError` | Indefinite-length items, `undefined` (also a `NotImplementedError`) | Initial byte of the item |
-| `CBORDecodeError` | Reserved additional info, invalid UTF-8, duplicate map keys, nesting too deep | Offending byte or key |
+| `CBORDecodeError` | Reserved additional info, invalid UTF-8, duplicate map keys, nesting too deep, and the malformed forms of indefinite-length items and simple values (below) | Offending byte or key |
+
+`CBORUnsupportedError` (a `CBORDecodeError` and a `NotImplementedError`) is kept
+for code that catches it, but nothing raises it now.
+
+### Indefinite-length items, `undefined` and simple values
+
+Indefinite-length byte strings, text strings, arrays and maps decode to the same
+`bytes`, `str`, `list` and `dict` as their definite-length forms (the chunks of
+a string are joined), and the encoder writes definite-length items only, so
+`encode(decode(x))` re-encodes them. These are rejected with `CBORDecodeError`:
+a break with no item to end, a missing break (`CBORTruncatedError`), a chunk
+that is not a definite-length string of the same type, a text chunk that is not
+UTF-8 by itself, a map that ends after a key, and an indefinite integer or tag.
+
+`undefined` decodes to `UNDEFINED` (the one instance of `CBORUndefined`) and
+every other simple value to `CBORSimple(n)` (`n` from 0 to 19 and 32 to 255;
+`false`, `true` and `null` stay `False`, `True` and `None`). Both encode back,
+are hashable, and work as map keys (as `CBORKey`). The two-byte form below 32
+(`f8 18`) and the reserved additional information 28 to 30 are not well-formed.
+
+### Keeping how an item was written
+
+```python
+from cddl_verifier.cbor import decode, head_info
+
+value = decode(bytes.fromhex("1805"), keep_encoding=True)   # 5 with a 1-byte argument
+value == 5              # True: it behaves as the plain int
+head_info(value)        # 24: the additional information of its initial byte
+head_info(5)            # 5: a plain value is taken to be written the shortest way
+```
+
+With `keep_encoding=True` (`decode`, `cbor_decode`, `CBOR.load`, `CBOR.loads`) a
+float always carries its width (`info` 25, 26 or 27), and an integer, string,
+array or map carries the additional information of its head when that is not
+the shortest one, or 31 for an indefinite length. They are instances of a
+subclass of the Python type (`type(x).__name__` is still `int`, `float`, ...)
+that compare, hash, print and encode as the plain value; copying or pickling
+gives the plain value. The validator decodes this way to check `float16`,
+`float32`, `float64` and `#M.N`. It is off by default so decoded values are
+plain Python values.
 
 A non-bytes argument raises `TypeError`.
 
@@ -415,6 +454,8 @@ With `typed=True`, CBOR values that have no JSON equivalent are kept as objects:
 |-----------|---------------------|
 | `b'\x01\x02'` | `{"$cbor": "bytes", "$value": "AQI="}` |
 | `(32, "https://…")` | `{"$cbor": "tag", "$tag": 32, "$value": "https://…"}` |
+| `UNDEFINED` | `{"$cbor": "undefined"}` |
+| `CBORSimple(16)` | `{"$cbor": "simple", "$value": 16}` |
 | `float('nan')` | `{"$cbor": "NaN"}` |
 | `float('inf')` | `{"$cbor": "Infinity"}` |
 | `{0: "a", "0": "b"}` (a map with any non-string key, or a `"$cbor"` key) | `{"$cbor": "map", "$value": [[0, "a"], ["0", "b"]]}` |

@@ -33,6 +33,8 @@ import struct
 import copy as copy_module
 from typing import Any, Union, Tuple, Dict, List, Optional
 
+from ._cbor_values import (INDEFINITE, UNDEFINED, CBORSimple, CBORUndefined, head_info,
+                           shortest_info, with_info)
 from ._version import __version__
 
 # CBOR Major Type Constants (RFC 8949)
@@ -49,6 +51,7 @@ MAJOR_TYPE_SIMPLE = 7    # Simple values (bool, null, float)
 SIMPLE_FALSE = 20
 SIMPLE_TRUE = 21
 SIMPLE_NULL = 22
+SIMPLE_UNDEFINED = 23
 SIMPLE_FLOAT16 = 25
 SIMPLE_FLOAT32 = 26
 SIMPLE_FLOAT64 = 27
@@ -85,8 +88,11 @@ class CBORTrailingDataError(CBORDecodeError):
 
 
 class CBORUnsupportedError(CBORDecodeError, NotImplementedError):
-    """Raised for well-formed encodings this decoder does not support
-    (indefinite-length items, ``undefined``).
+    """Raised for well-formed encodings this decoder does not support.
+
+    Nothing raises it at present: indefinite-length items, ``undefined`` and the
+    other simple values decode (#168). It stays so that code catching it keeps
+    working.
 
     Also a ``NotImplementedError`` for backward compatibility.
     """
@@ -114,6 +120,10 @@ def _key_identity(obj: Any) -> Any:
         return obj._identity
     if obj is None:
         return ('null',)
+    if obj is UNDEFINED:
+        return ('undefined',)
+    if isinstance(obj, CBORSimple):
+        return ('simple', obj.number)
     if isinstance(obj, bool):
         return ('bool', obj)
     if isinstance(obj, int):
@@ -319,7 +329,7 @@ class CBOR:
     # ========================================================================
     
     @classmethod
-    def load(cls, cbor_bytes: bytes) -> 'CBOR':
+    def load(cls, cbor_bytes: bytes, keep_encoding: bool = False) -> 'CBOR':
         """
         Load CBOR bytes and decode to Python object.
         
@@ -328,6 +338,13 @@ class CBOR:
         Args:
             cbor_bytes: CBOR encoded bytes (``bytes``, ``bytearray`` or
                 ``memoryview``)
+            keep_encoding: Keep how each item was encoded. A float, and an
+                integer, string, array or map written with a longer head than
+                needed (or with an indefinite length), come back as a subclass
+                of its Python type with an ``info`` attribute, the additional
+                information of its initial byte. They behave as the plain
+                value does. Off by default; the validator turns it on to check
+                ``float32`` and ``#0.26`` (#171).
             
         Returns:
             CBOR object with decoded data
@@ -344,12 +361,12 @@ class CBOR:
                 f"CBOR input must be bytes-like, not {type(cbor_bytes).__name__}"
             )
         obj = cls()
-        obj.data = obj._decode(cbor_bytes)
+        obj.data = obj._decode(cbor_bytes, keep_encoding)
         obj._cached_bytes = cbor_bytes
         return obj
     
     @classmethod
-    def loads(cls, cbor_bytes: bytes) -> Any:
+    def loads(cls, cbor_bytes: bytes, keep_encoding: bool = False) -> Any:
         """
         Decode exactly one CBOR data item directly to a Python object.
         
@@ -358,6 +375,7 @@ class CBOR:
         
         Args:
             cbor_bytes: CBOR encoded bytes
+            keep_encoding: See :meth:`load`.
             
         Returns:
             Decoded Python object
@@ -365,7 +383,7 @@ class CBOR:
         Raises:
             CBORDecodeError: See :meth:`load`.
         """
-        return cls.load(cbor_bytes).data
+        return cls.load(cbor_bytes, keep_encoding).data
     
     @classmethod
     def loads_with_locations(cls, cbor_bytes: bytes,
@@ -450,6 +468,10 @@ class CBOR:
         """Encode a single Python object to CBOR."""
         if isinstance(obj, CBORKey):
             return self._encode_item(obj._value)
+        if obj is UNDEFINED:
+            return bytes([0xf7])
+        if isinstance(obj, CBORSimple):
+            return bytes([0xe0 | obj.number]) if obj.number < 24 else bytes([0xf8, obj.number])
         # Handle tagged values (tag_num, value)
         if isinstance(obj, tuple) and len(obj) == 2 and isinstance(obj[0], int) and obj[0] >= 0:
             tag_num, value = obj
@@ -584,10 +606,11 @@ class CBOR:
     # DECODING - Convert CBOR bytes to Python objects
     # ========================================================================
     
-    def _decode(self, data: bytes) -> Any:
+    def _decode(self, data: bytes, keep_encoding: bool = False) -> Any:
         """Decode exactly one CBOR item spanning all of ``data``."""
         self._decode_data = data
         self._decode_pos = 0
+        self._keep_encoding = keep_encoding
         
         if not data:
             raise CBORTruncatedError("Empty CBOR data", 0)
@@ -629,29 +652,41 @@ class CBOR:
         major_type = (initial_byte >> 5) & 0x07
         additional_info = initial_byte & 0x1f
         
+        keep = self._keep_encoding
         if major_type == MAJOR_TYPE_UINT:
-            return self._decode_uint(additional_info)
-        elif major_type == MAJOR_TYPE_NINT:
             value = self._decode_uint(additional_info)
-            return -1 - value
+            if keep and additional_info != shortest_info(value):
+                value = with_info(value, additional_info)
+            return value
+        elif major_type == MAJOR_TYPE_NINT:
+            argument = self._decode_uint(additional_info)
+            value = -1 - argument
+            if keep and additional_info != shortest_info(argument):
+                value = with_info(value, additional_info)
+            return value
         elif major_type == MAJOR_TYPE_BSTR:
-            length = self._decode_length(additional_info)
-            return self._read_bytes(length)
+            if additional_info == INDEFINITE:
+                value = self._decode_chunks(MAJOR_TYPE_BSTR, b'')
+            else:
+                length = self._decode_uint(additional_info)
+                value = self._read_bytes(length)
+            return self._with_length_info(value, additional_info, len(value))
         elif major_type == MAJOR_TYPE_TSTR:
-            length = self._decode_length(additional_info)
-            start = self._decode_pos
-            bytes_data = self._read_bytes(length)
-            try:
-                return bytes_data.decode('utf-8')
-            except UnicodeDecodeError as e:
-                raise CBORDecodeError(
-                    f"Invalid UTF-8 in text string: {e.reason}", start + e.start
-                ) from None
+            if additional_info == INDEFINITE:
+                value = self._decode_chunks(MAJOR_TYPE_TSTR, '')
+                length = len(value.encode('utf-8'))
+            else:
+                length = self._decode_uint(additional_info)
+                value = self._decode_text(length)
+            return self._with_length_info(value, additional_info, length)
         elif major_type == MAJOR_TYPE_ARRAY:
             return self._decode_array(additional_info)
         elif major_type == MAJOR_TYPE_MAP:
             return self._decode_map(additional_info)
         elif major_type == MAJOR_TYPE_TAG:
+            if additional_info == INDEFINITE:
+                raise CBORDecodeError("A tag number cannot have an indefinite length",
+                                      self._decode_pos - 1)
             tag_num = self._decode_uint(additional_info)
             tagged_value = self._decode_item()
             if tag_num in (2, 3) and isinstance(tagged_value, bytes):
@@ -664,7 +699,60 @@ class CBOR:
             return (tag_num, tagged_value)
         else:  # MAJOR_TYPE_SIMPLE (major type is 3 bits, so 0-7 are exhaustive)
             return self._decode_simple(additional_info)
-    
+
+    def _with_length_info(self, value: Any, additional_info: int, length: int) -> Any:
+        """*value* with its head's additional information, if kept and not the shortest."""
+        if self._keep_encoding and additional_info != shortest_info(length):
+            return with_info(value, additional_info)
+        return value
+
+    def _decode_text(self, length: int) -> str:
+        start = self._decode_pos
+        bytes_data = self._read_bytes(length)
+        try:
+            return bytes_data.decode('utf-8')
+        except UnicodeDecodeError as e:
+            raise CBORDecodeError(
+                f"Invalid UTF-8 in text string: {e.reason}", start + e.start
+            ) from None
+
+    def _decode_chunks(self, major_type: int, joined):
+        """The chunks of an indefinite-length byte or text string, joined (RFC 8949 §3.2.3).
+
+        Every chunk is a definite-length string of the same major type, and a
+        text chunk is valid UTF-8 on its own.
+        """
+        name = 'byte' if major_type == MAJOR_TYPE_BSTR else 'text'
+        parts = []
+        while True:
+            if self._decode_pos >= len(self._decode_data):
+                raise CBORTruncatedError(
+                    f"Unexpected end of data in an indefinite-length {name} string "
+                    f"(no break)", self._decode_pos)
+            initial_byte = self._decode_data[self._decode_pos]
+            if initial_byte == 0xff:
+                self._decode_pos += 1
+                return joined.join(parts)
+            if initial_byte >> 5 != major_type or initial_byte & 0x1f == INDEFINITE:
+                raise CBORDecodeError(
+                    f"A chunk of an indefinite-length {name} string must be a "
+                    f"definite-length {name} string", self._decode_pos)
+            self._decode_pos += 1
+            length = self._decode_uint(initial_byte & 0x1f)
+            parts.append(self._read_bytes(length) if major_type == MAJOR_TYPE_BSTR
+                         else self._decode_text(length))
+
+    def _at_break(self) -> bool:
+        """Consume a break (``0xff``) if it is next; end of data is an error."""
+        if self._decode_pos >= len(self._decode_data):
+            raise CBORTruncatedError(
+                "Unexpected end of data in an indefinite-length item (no break)",
+                self._decode_pos)
+        if self._decode_data[self._decode_pos] == 0xff:
+            self._decode_pos += 1
+            return True
+        return False
+
     def _decode_uint(self, additional_info: int) -> int:
         """Decode unsigned integer."""
         if additional_info < 24:
@@ -683,33 +771,41 @@ class CBOR:
                 self._decode_pos - 1,
             )
     
-    def _decode_length(self, additional_info: int) -> int:
-        """Decode length value."""
-        if additional_info == 31:
-            raise CBORUnsupportedError(
-                "Indefinite-length items not supported", self._decode_pos - 1
-            )
-        return self._decode_uint(additional_info)
-    
     def _decode_array(self, additional_info: int) -> List[Any]:
         """Decode array."""
-        length = self._decode_length(additional_info)
+        indefinite = additional_info == INDEFINITE
+        length = None if indefinite else self._decode_uint(additional_info)
         array = []
         tracking = self._locations is not None
-        for index in range(length):
+        index = 0
+        while True:
+            if indefinite:
+                if self._at_break():
+                    break
+            elif index == length:
+                break
             if tracking:
                 self._loc_path.append(index)
             array.append(self._decode_item())
             if tracking:
                 self._loc_path.pop()
-        return array
+            index += 1
+        return self._with_length_info(array, additional_info, len(array))
     
     def _decode_map(self, additional_info: int) -> Dict[Any, Any]:
         """Decode map."""
-        length = self._decode_length(additional_info)
+        indefinite = additional_info == INDEFINITE
+        length = None if indefinite else self._decode_uint(additional_info)
         map_dict = {}
         locations = self._locations
-        for _ in range(length):
+        count = 0
+        while True:
+            if indefinite:
+                if self._at_break():
+                    break
+            elif count == length:
+                break
+            count += 1
             key_offset = self._decode_pos
             # Keys other than int/str/bytes/null become CBORKey, so that they
             # keep their CBOR type and only true duplicates collide (#88)
@@ -725,15 +821,23 @@ class CBOR:
                     if locations._spend(len(key_path) + 2):
                         locations._keys[(key_path, key)] = (key_offset, self._decode_pos)
                 self._loc_path.append(key)
-                value = self._decode_item()
+                value = self._decode_value_of_key(indefinite)
                 self._loc_path.pop()
             else:
                 key = map_key(self._decode_item())
-                value = self._decode_item()
+                value = self._decode_value_of_key(indefinite)
             if key in map_dict:
                 raise CBORDecodeError(f"Duplicate map key: {key!r}", key_offset)
             map_dict[key] = value
-        return map_dict
+        return self._with_length_info(map_dict, additional_info, len(map_dict))
+
+    def _decode_value_of_key(self, indefinite: bool) -> Any:
+        """The value after a map key; a break there leaves the key without one."""
+        if indefinite and self._decode_pos < len(self._decode_data) \
+                and self._decode_data[self._decode_pos] == 0xff:
+            raise CBORDecodeError("A map ends after a key with no value (break)",
+                                  self._decode_pos)
+        return self._decode_item()
     
     def _decode_simple(self, additional_info: int) -> Any:
         """Decode simple values."""
@@ -743,20 +847,35 @@ class CBOR:
             return True
         elif additional_info == SIMPLE_NULL:
             return None
-        elif additional_info == 23:
-            raise CBORUnsupportedError(
-                "Undefined value not supported", self._decode_pos - 1
-            )
+        elif additional_info == SIMPLE_UNDEFINED:
+            return UNDEFINED
+        elif additional_info < 20:
+            return CBORSimple(additional_info)
+        elif additional_info == 24:
+            start = self._decode_pos - 1
+            number = self._read_bytes(1)[0]
+            if number < 32:
+                raise CBORDecodeError(
+                    f"Simple value {number} must be written in one byte "
+                    f"(RFC 8949 §3.3: two-byte simple values start at 32)", start)
+            return CBORSimple(number)
         elif additional_info == SIMPLE_FLOAT16:
-            return struct.unpack('>e', self._read_bytes(2))[0]
+            return self._float(struct.unpack('>e', self._read_bytes(2))[0], additional_info)
         elif additional_info == SIMPLE_FLOAT32:
-            return struct.unpack('>f', self._read_bytes(4))[0]
+            return self._float(struct.unpack('>f', self._read_bytes(4))[0], additional_info)
         elif additional_info == SIMPLE_FLOAT64:
-            return struct.unpack('>d', self._read_bytes(8))[0]
+            return self._float(struct.unpack('>d', self._read_bytes(8))[0], additional_info)
+        elif additional_info == INDEFINITE:
+            raise CBORDecodeError("Unexpected break (no indefinite-length item to end)",
+                                  self._decode_pos - 1)
         else:
             raise CBORDecodeError(
-                f"Unknown simple value: {additional_info}", self._decode_pos - 1
+                f"Reserved additional information {additional_info} in major type 7 "
+                f"(not well-formed)", self._decode_pos - 1
             )
+
+    def _float(self, value: float, additional_info: int) -> float:
+        return with_info(value, additional_info) if self._keep_encoding else value
     
     def _read_bytes(self, n: int) -> bytes:
         """Read n bytes from decode data."""
@@ -841,6 +960,16 @@ class CBOR:
         major_type = (initial_byte >> 5) & 0x07
         additional_info = initial_byte & 0x1f
         
+        if major_type != MAJOR_TYPE_SIMPLE and (
+                additional_info in (28, 29, 30)
+                or (additional_info == INDEFINITE
+                    and major_type not in (MAJOR_TYPE_BSTR, MAJOR_TYPE_TSTR,
+                                           MAJOR_TYPE_ARRAY, MAJOR_TYPE_MAP))):
+            self._diag_add_line(start_pos, bytes([initial_byte]),
+                                f"{label}# ERROR: additional information {additional_info} is "
+                                f"not well-formed for major type {major_type}")
+            return
+
         # Dispatch based on major type
         if major_type == MAJOR_TYPE_UINT:
             self._diag_dump_uint(start_pos, additional_info, label)
@@ -884,6 +1013,8 @@ class CBOR:
     
     def _diag_dump_bstr(self, start_pos: int, additional_info: int, label: str) -> None:
         """Dump byte string."""
+        if additional_info == INDEFINITE:
+            return self._diag_dump_indefinite(start_pos, f"{label}bytes(*)", "chunk")
         length, length_end = self._diag_read_uint(additional_info)
         if length == -1:
             hex_bytes = self._diag_data[start_pos:length_end]
@@ -925,6 +1056,8 @@ class CBOR:
     
     def _diag_dump_tstr(self, start_pos: int, additional_info: int, label: str) -> None:
         """Dump text string."""
+        if additional_info == INDEFINITE:
+            return self._diag_dump_indefinite(start_pos, f"{label}text(*)", "chunk")
         length, length_end = self._diag_read_uint(additional_info)
         if length == -1:
             hex_bytes = self._diag_data[start_pos:length_end]
@@ -988,6 +1121,8 @@ class CBOR:
     
     def _diag_dump_array(self, start_pos: int, additional_info: int, label: str) -> None:
         """Dump array."""
+        if additional_info == INDEFINITE:
+            return self._diag_dump_indefinite(start_pos, f"{label}array(*)", "array")
         length, length_end = self._diag_read_uint(additional_info)
         if length == -1:
             hex_bytes = self._diag_data[start_pos:length_end]
@@ -1009,6 +1144,8 @@ class CBOR:
     
     def _diag_dump_map(self, start_pos: int, additional_info: int, label: str) -> None:
         """Dump map."""
+        if additional_info == INDEFINITE:
+            return self._diag_dump_indefinite(start_pos, f"{label}map(*)", "map")
         length, length_end = self._diag_read_uint(additional_info)
         if length == -1:
             hex_bytes = self._diag_data[start_pos:length_end]
@@ -1032,6 +1169,28 @@ class CBOR:
                 self._diag_dump_item("val: ")
             self._diag_current_indent -= 1
     
+    def _diag_dump_indefinite(self, start_pos: int, comment: str, kind: str) -> None:
+        """Dump an indefinite-length string (its chunks), array or map, up to the break."""
+        self._diag_add_line(start_pos, bytes([self._diag_data[start_pos]]), comment)
+        self._diag_current_indent += 1
+        index = 0
+        while True:
+            if self._diag_pos >= len(self._diag_data):
+                self._diag_add_line(self._diag_pos, b'', "# ERROR: Unexpected end of data (no break)")
+                break
+            if self._diag_data[self._diag_pos] == 0xff:
+                self._diag_add_line(self._diag_pos, b'\xff', "break")
+                self._diag_pos += 1
+                break
+            if kind == "map":
+                self._diag_dump_item("key: ")
+                if self._diag_pos < len(self._diag_data) and self._diag_data[self._diag_pos] != 0xff:
+                    self._diag_dump_item("val: ")
+            else:
+                self._diag_dump_item("chunk: " if kind == "chunk" else f"[{index}] ")
+            index += 1
+        self._diag_current_indent -= 1
+
     def _diag_dump_tag(self, start_pos: int, additional_info: int, label: str) -> None:
         """Dump tagged item."""
         tag_num, tag_end = self._diag_read_uint(additional_info)
@@ -1074,8 +1233,23 @@ class CBOR:
                 value = struct.unpack('>d', float_bytes)[0]
                 all_bytes = self._diag_data[start_pos:self._diag_pos]
                 self._diag_add_line(start_pos, all_bytes, f"{label}float64({value})")
+            elif additional_info == SIMPLE_UNDEFINED:
+                self._diag_add_line(start_pos, bytes([0xf7]), f"{label}undefined")
+            elif additional_info < 20:
+                self._diag_add_line(start_pos, bytes([0xe0 | additional_info]),
+                                    f"{label}simple({additional_info})")
+            elif additional_info == 24:
+                number = self._read_diag_bytes(1)[0]
+                all_bytes = self._diag_data[start_pos:self._diag_pos]
+                note = "" if number >= 32 else "  # ERROR: not well-formed, below 32"
+                self._diag_add_line(start_pos, all_bytes, f"{label}simple({number}){note}")
+            elif additional_info == INDEFINITE:
+                self._diag_add_line(start_pos, bytes([0xff]),
+                                    f"{label}# ERROR: break with no indefinite-length item")
             else:
-                self._diag_add_line(start_pos, bytes([0xe0 | additional_info]), f"{label}simple({additional_info})")
+                self._diag_add_line(start_pos, bytes([0xe0 | additional_info]),
+                                    f"{label}# ERROR: reserved additional information "
+                                    f"{additional_info}")
         except (IndexError, struct.error):
             all_bytes = self._diag_data[start_pos:]
             self._diag_add_line(start_pos, all_bytes, f"{label}simple(?)")
@@ -1625,9 +1799,9 @@ def cbor_encode(obj: Any, canonical: bool = False) -> bytes:
     return CBOR(obj).encode(canonical=canonical)
 
 
-def cbor_decode(data: bytes) -> Any:
+def cbor_decode(data: bytes, keep_encoding: bool = False) -> Any:
     """Decode exactly one CBOR item to a Python object (see ``CBOR.loads``)."""
-    return CBOR.loads(data)
+    return CBOR.loads(data, keep_encoding)
 
 
 def cbor_diag_dump(data: bytes, indent: str = "  ") -> str:

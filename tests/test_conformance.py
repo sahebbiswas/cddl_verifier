@@ -29,6 +29,7 @@ import unittest
 from cddl_verifier import CBORDecodeError, SchemaError, Validator
 from cddl_verifier import cbor as cbor_api
 from cddl_verifier import json_codec
+from cddl_verifier._cbor_values import UNDEFINED, CBORSimple
 from cddl_verifier._cddl.prelude import parse_prelude
 from cddl_verifier._cddl.resolve import KNOWN_CONTROLS
 
@@ -59,6 +60,10 @@ def value(node):
     if isinstance(node, dict):
         if "$bytes" in node:
             return bytes.fromhex(node["$bytes"])
+        if "$undefined" in node:
+            return UNDEFINED
+        if "$simple" in node:
+            return CBORSimple(node["$simple"])
         if "$float" in node:
             return float(node["$float"])
         if "$tag" in node:

@@ -25,7 +25,6 @@ from cddl_verifier._cbor import (
     CBORDecodeError,
     CBORTrailingDataError,
     CBORTruncatedError,
-    CBORUnsupportedError,
     cbor_decode,
     cbor_encode,
     load_cbor_bytes,
@@ -158,14 +157,6 @@ class TestMalformedRejected(unittest.TestCase):
         with self.assertRaises(CBORDecodeError) as cm:
             CBOR.loads(b'\xa2\x01\x02\x01\x03')
         self.assertEqual(cm.exception.offset, 3)
-
-    def test_unsupported_is_not_implemented(self):
-        for data, offset in ((b'\x9f\x01\xff', 0), (b'\x82\x01\xf7', 2)):
-            with self.subTest(data=data):
-                with self.assertRaises(CBORUnsupportedError) as cm:
-                    CBOR.loads(data)
-                self.assertIsInstance(cm.exception, NotImplementedError)
-                self.assertEqual(cm.exception.offset, offset)
 
     def test_deep_nesting_is_controlled(self):
         with self.assertRaises(CBORDecodeError):

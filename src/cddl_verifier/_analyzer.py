@@ -24,14 +24,18 @@ from ._cddl.ast import (BytesLit, FloatLit, GroupRef, InlineGroup, IntLit, Major
                         Paren, Range, Tag, TextLit, walk)
 from ._cddl.printer import format_node
 from ._cddl.legacy import LegacyTables
-from ._cddl.items import major_error, tag_parts, width_unchecked
+from ._cddl.items import float_width_fits, major_error, tag_parts
 from ._cddl.modules import ModuleLoader, link, unloaded_warnings
 from ._cddl.resolve import resolve
 from ._version import __version__
 
 from ._cbor import CBOR, CBORDecodeError, CBORKey
+from ._cbor_values import UNDEFINED, CBORSimple
 from ._diagnostics import (MAX_HEX_BYTES, Diagnostic, _Finding, classify_message, diagnostic_of,
                            expected_and_found)
+
+
+_FLOAT_WIDTHS = {'float16': 25, 'float32': 26, 'float64': 27}
 
 
 # Compatibility wrapper for existing code that uses SimpleCBORDecoder
@@ -42,7 +46,7 @@ class SimpleCBORDecoder:
 
     def decode(self, breadcrumb: str = "") -> Any:
         """Decode CBOR data using unified CBOR class."""
-        return CBOR.loads(self.data)
+        return CBOR.loads(self.data, keep_encoding=True)
 
 # ANSI color codes for terminal output
 class Colors:
@@ -235,11 +239,12 @@ class CDDLParser:
             'false': 'false',
             'nil': 'nil',
             'null': 'nil',
-            'undefined': 'undefined',
+            'undefined': '#7.23',
             'float': 'float',
-            'float16': 'float',
-            'float32': 'float',
-            'float64': 'float',
+            # float widths follow the encoding (#171), see _check_primitive_type
+            'float16': 'float16',
+            'float32': 'float32',
+            'float64': 'float64',
             'any': 'any',
             # Bignums decode to an int outside the 64-bit range, or to
             # (tag, bytes) inside it; 'biguint' / 'bignint' check both (#99).
@@ -297,8 +302,7 @@ class CDDLParser:
         self.ast = linked.schema
         self._origins = linked.origins
         self.resolved = resolve(self.ast, linked.imports)
-        self.warnings = (unloaded_warnings(linked, self.resolved.external)
-                         + _width_warnings(self.ast))
+        self.warnings = unloaded_warnings(linked, self.resolved.external)
         tables = LegacyTables(self.ast, self.resolved)
         self.types = tables.types
         self.groups = tables.groups
@@ -743,6 +747,10 @@ def _cbor_type_name(value: Any) -> str:
         return 'null'
     if isinstance(value, bool):
         return 'bool'
+    if value is UNDEFINED:
+        return 'undefined'
+    if isinstance(value, CBORSimple):
+        return repr(value)
     if isinstance(value, int):
         return 'uint' if value >= 0 else 'nint'
     if isinstance(value, float):
@@ -770,19 +778,6 @@ def _mismatch_category(base_type: str, value: Any) -> str:
     if base_type == 'tstr':
         return 'value' if isinstance(value, str) else 'type'
     return 'type'
-
-
-def _width_warnings(schema) -> List[str]:
-    """One warning per ``#M.N`` that names an encoding width the decoder does not keep (#167)."""
-    seen: List[str] = []
-    for node in walk(schema):
-        if isinstance(node, Major) and width_unchecked(node.major, node.info):
-            text = format_node(node)
-            if text not in seen:
-                seen.append(text)
-    return [f"'{text}' is checked as '#{text[1]}': the decoder does not keep the width an "
-            f"integer or length was encoded in, so the number after the dot is not enforced"
-            for text in seen]
 
 
 def _describe_value(value: Any) -> str:
@@ -1069,10 +1064,10 @@ class CBORAnalyzer:
     
     _ROOT_PRIMITIVES = frozenset(
         {'uint', 'int', 'nint', 'biguint', 'bignint', 'bool', 'nil', 'null', 'float',
-         'tstr', 'bstr', 'any'})
+         'tstr', 'bstr', 'any', 'float16', 'float32', 'float64'})
     #: Primitives the map-field and array-element code has no branch for, so
     #: they are checked by :meth:`_check_value` (#99).
-    _WHOLE_PRIMITIVES = frozenset({'nint', 'biguint', 'bignint'})
+    _WHOLE_PRIMITIVES = frozenset({'nint', 'biguint', 'bignint', 'float16', 'float32', 'float64'})
 
     def _validate_root_expression(self, data: Any, type_name: str) -> Optional[bool]:
         """Check what the structured-type path cannot: root tags and primitives.
@@ -1488,8 +1483,7 @@ class CBORAnalyzer:
                     # Normalize CDDL built-in aliases to their canonical base types
                     _alias_map = {
                         'text': 'tstr', 'bytes': 'bstr',
-                        'float16': 'float', 'float32': 'float', 'float64': 'float',
-                        'nil': 'null', 'undefined': 'null'
+                        'nil': 'null'
                     }
                     _base_type = _alias_map.get(_base_type, _base_type)
 
@@ -2001,6 +1995,11 @@ class CBORAnalyzer:
         if not self._check_primitive_type(value, base):
             got = value if isinstance(value, (int, float)) and not isinstance(value, bool) \
                 else type(value).__name__
+            if value is UNDEFINED or isinstance(value, CBORSimple):
+                got = repr(value)
+            elif isinstance(value, float) and base in _FLOAT_WIDTHS:
+                written = {25: 'float16', 26: 'float32', 27: 'float64'}.get(getattr(value, 'info', None))
+                got = f"{written} {value}" if written else value
             return [f"expected {base}, got {got}"]
         errors = []
         size_error = self.cddl.size_violation(value, base, self.cddl.extract_size_constraint(expr))
@@ -2298,7 +2297,7 @@ class CBORAnalyzer:
                 return [f"tag number {parts[0]} does not match {item.tag_type}: {errors[0]}"] \
                     if errors else []
             # '#7.<type>': the additional information is any number the type allows
-            for info in range(32):
+            for info in range(256):
                 if not self._check_value(info, item.tag_type, _depth + 1, True) \
                         and not major_error(value, node.major, info):
                     return []
@@ -2530,6 +2529,9 @@ class CBORAnalyzer:
             return value is None
         if t == 'float':
             return isinstance(value, float)
+        if t in ('float16', 'float32', 'float64'):
+            # the width it was written in, or one it fits without loss (#171)
+            return isinstance(value, float) and float_width_fits(value, _FLOAT_WIDTHS[t])
         if t == 'tstr':
             return isinstance(value, str)
         if t == 'bstr':
@@ -3228,7 +3230,7 @@ Examples:
     print(f"Loading CBOR data: {args.cbor_file}", file=sys.stderr)
     cbor_bytes = args.cbor_file.read_bytes()
     try:
-        cbor_data = CBOR.loads(cbor_bytes)
+        cbor_data = CBOR.loads(cbor_bytes, keep_encoding=True)
     except Exception as _e:  # noqa: BLE001 — loader raises CBORDecodeError (empty/truncated/trailing/malformed) or TypeError
         print(f"Error decoding CBOR: {_e}", file=sys.stderr)
         sys.exit(1)
