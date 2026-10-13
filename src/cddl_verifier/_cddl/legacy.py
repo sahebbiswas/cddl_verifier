@@ -87,11 +87,16 @@ class LegacyTables:
         self._sequences_building: set = set()
         self._rule_names = {rule.name for rule in schema.rules}
 
+        # '/=' extends a rule, so the rules it extends are built first
+        extensions = [r for r in schema.rules if isinstance(r, TypeRule) and r.assign == '/=']
         for rule in schema.rules:
             if isinstance(rule, TypeRule):
-                self._type_rule(rule)
+                if rule.assign != '/=':
+                    self._type_rule(rule)
             else:
                 self._group_rule(rule)
+        for rule in extensions:
+            self._type_rule(rule)
 
         # "IANA registered parameters" (&(name: N) => T) anywhere in the schema.
         for node in walk(schema):
@@ -107,6 +112,12 @@ class LegacyTables:
     def _type_rule(self, rule: TypeRule):
         name = rule.name
         if rule.assign == '/=':
+            if name not in self.type_choices and not name.startswith('$'):
+                # 'a = int' then 'a /= tstr': a is 'int / tstr', so the
+                # original definition becomes the first alternative (#86)
+                base = self._take_base(name)
+                if base is not None:
+                    self.type_choices[name] = [base]
             choices = self.type_choices.setdefault(name, [])
             for alt in rule.type.alternatives:
                 choices.append(self._text(Type((alt,)), f'{name}@{len(choices)}'))
@@ -133,6 +144,17 @@ class LegacyTables:
                 self._add_constraints(self.types[name], expanded, name)
         else:
             self.type_aliases[name] = self._text(ty, name)
+
+    def _take_base(self, name: str) -> Optional[str]:
+        """Move the definition of rule *name* out of its own name, and return where it went."""
+        if name in self.types:
+            moved, n = f'{name}@base', 2
+            while moved in self.types or moved in self._rule_names:
+                moved, n = f'{name}@base-{n}', n + 1  # '@base' may be an inline map of the rule
+            self.types[moved] = self.types.pop(name)
+            self.synthetic_types.add(moved)
+            return moved
+        return self.type_aliases.pop(name, None)
 
     def _is_group(self, rule: TypeRule) -> bool:
         """Whether a type rule the parser could not classify names a group."""

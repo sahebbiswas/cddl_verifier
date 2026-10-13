@@ -11,6 +11,12 @@ work.
   exactly once (see [Versioning](#versioning)).
 - **Update the docs** (README, `docs/`, `TESTING.md`) in the same pull request
   as the code they describe.
+- **Keep the conformance matrix true.** A change that adds a construct,
+  enforces a control, or fixes a known gap updates its row in
+  [`docs/conformance.json`](docs/conformance.json) and regenerates
+  [`docs/CONFORMANCE.md`](docs/CONFORMANCE.md) with
+  `python scripts/render_conformance.py`. `tests/test_conformance.py` runs the
+  examples in the matrix and fails when the code and the matrix disagree.
 - **Describe the change in the pull request.** There is no changelog file; the
   pull request description is the record of what changed and why. Start any
   change that users can notice (different results, newly rejected input,

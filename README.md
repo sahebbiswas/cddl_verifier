@@ -8,7 +8,9 @@ It is built for attestation formats such as CoRIM and CoSWID.
 
 > **Scope.** cddl-verifier supports a practical subset of CDDL and CBOR. It does
 > **not** claim full RFC 8610 or RFC 8949 conformance yet; see
-> [Limitations](#limitations) and [docs/CDDL_SUPPORT.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CDDL_SUPPORT.md).
+> [Limitations](#limitations), [docs/CDDL_SUPPORT.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CDDL_SUPPORT.md)
+> and the [conformance matrix](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CONFORMANCE.md),
+> which lists every construct and control with its status.
 
 | Surface | Name |
 |---------|------|
@@ -118,16 +120,22 @@ of the problem. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/b
   So do schemas that parse but do not make sense, such as an undefined name, a
   misused generic or an unknown control operator
   ([#70](https://github.com/sahebbiswas/cddl_verifier/issues/70)).
-  Validation covers a practical subset of what the grammar can express: parts
-  of group semantics and most controls are still to come
-  ([#72](https://github.com/sahebbiswas/cddl_verifier/issues/72)–[#76](https://github.com/sahebbiswas/cddl_verifier/issues/76)).
+  Validation covers a practical subset of what the grammar can express: the
+  control operators `.bits`, `.cborseq`, `.eq`, `.ne`, `.abnf`, `.abnfb` and the
+  RFC 9741 conversions are parsed but not enforced
+  ([#76](https://github.com/sahebbiswas/cddl_verifier/issues/76)), and major-type
+  references such as `#7.25` are not checked
+  ([#167](https://github.com/sahebbiswas/cddl_verifier/issues/167)). The
+  [conformance matrix](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CONFORMANCE.md)
+  has the full list.
 - **Canonical encoding**: implements the RFC 8949 §4.2.1 core deterministic
   profile (see [CANONICAL_AND_JSON.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CANONICAL_AND_JSON.md)).
   The optional §4.2.2 reduction of integral floats to integers is not applied,
   and non-canonical mode still writes floats as 8-byte doubles.
-- **CBOR**: indefinite-length items and `undefined` are not supported
-  (`CBORUnsupportedError`). CBOR sequences are rejected; a sequence API is not
-  available yet.
+- **CBOR**: indefinite-length items, `undefined` and other simple values are not
+  supported (`CBORUnsupportedError`,
+  [#168](https://github.com/sahebbiswas/cddl_verifier/issues/168)). CBOR
+  sequences are rejected; a sequence API is not available yet.
 - **Value types**: tags decode to `(tag, value)` tuples. This is provisional
   and expected to change
   ([#78](https://github.com/sahebbiswas/cddl_verifier/issues/78)). Map keys
@@ -142,6 +150,7 @@ of the problem. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/b
 | [docs/CLI.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CLI.md) | `cddl-verify` and JSON converter options, input rules, EDN output formats |
 | [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/API.md) | Python API: `validate`, `Validator`, CBOR and JSON helpers |
 | [docs/CDDL_SUPPORT.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CDDL_SUPPORT.md) | Supported CDDL syntax, types, and validation behaviour |
+| [docs/CONFORMANCE.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CONFORMANCE.md) | Conformance matrix: every construct, control and CBOR item by layer, with status and tests |
 | [docs/CORIM_SUPPORT.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CORIM_SUPPORT.md) | CoRIM / CoSWID schema support |
 | [docs/CBOR_BUILDER_QUICK_REF.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CBOR_BUILDER_QUICK_REF.md), [docs/ITERATIVE_CONSTRUCTION.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/ITERATIVE_CONSTRUCTION.md) | `CBOR` builder API in depth |
 | [docs/CBOR_DIAGNOSTIC_DUMP.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CBOR_DIAGNOSTIC_DUMP.md) | Diagnostic dump format |

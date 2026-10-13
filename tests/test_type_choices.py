@@ -16,7 +16,7 @@ except ImportError:
 
 import unittest
 
-from cddl_verifier import validate
+from cddl_verifier import Validator, validate
 from cddl_verifier._analyzer import CBORAnalyzer, CDDLParser
 from cddl_verifier.cbor import encode
 
@@ -447,6 +447,41 @@ class TestCorimChoices(unittest.TestCase):
             with self.subTest(data=data):
                 result = validate(schema, data, root_type="corim-entity-map")
                 self.assertEqual(result.valid, expected, result.errors)
+
+
+
+class TestTypeExtension(unittest.TestCase):
+    """``a = int`` then ``a /= tstr`` is ``a = int / tstr``: the original definition stays (#86)."""
+
+    def check(self, schema, valid, invalid):
+        v = Validator(schema)
+        for data in valid:
+            self.assertTrue(v.validate(data).valid, data)
+        for data in invalid:
+            self.assertFalse(v.validate(data).valid, data)
+
+    def test_alias_base(self):
+        self.check("r = a\na = int\na /= tstr", [1, "x"], [b"x"])
+
+    def test_extension_before_its_base(self):
+        self.check("r = a\na /= tstr\na = int", [1, "x"], [b"x"])
+
+    def test_map_base(self):
+        self.check("r = a\na = {x: int}\na /= tstr", [{"x": 1}, "x"], [{"x": "y"}, 1])
+
+    def test_several_extensions_and_a_choice_base(self):
+        self.check("r = [* a]\na = int / bool\na /= tstr\na /= nil", [[1, True, "s", None]], [[1.5]])
+
+    def test_as_field_type_and_through_an_alias(self):
+        self.check("r = {f: b}\na = uint\na /= tstr\nb = a", [{"f": 1}, {"f": "x"}], [{"f": -1}])
+
+    def test_base_with_an_inline_map_field(self):
+        # the field's inline map is already named 'a@base'
+        self.check("r = a\na = {base: {x: int}}\na /= tstr",
+                   [{"base": {"x": 1}}, "s"], [{"base": {"x": "no"}}, 1])
+
+    def test_sockets_still_start_empty(self):
+        self.check("r = $s\n$s /= int\n$s /= tstr", [1, "x"], [b"x"])
 
 
 if __name__ == "__main__":
