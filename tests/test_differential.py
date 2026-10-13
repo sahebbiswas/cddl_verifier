@@ -168,7 +168,9 @@ class Tools(Quiet):
         self.assertEqual(tool._worker_outcome(Proc("warning\n" + good), 1), json.loads(good))
         self.assertEqual(tool._worker_outcome(Proc('{"parse_error": "x"}'), 3), {"parse_error": "x"})
         for bad in (Proc("not json"), Proc(""), Proc("[]"), Proc(good, returncode=-11),
-                    Proc('{"results": []}')):
+                    Proc('{"results": []}'), Proc('{"results": null}'),
+                    Proc('{"results": [{}]}'), Proc('{"results": [{"valid": "yes"}]}'),
+                    Proc('{"results": [1]}')):
             with self.subTest(stdout=bad.stdout, rc=bad.returncode):
                 self.assertIsNone(tool._worker_outcome(bad, 1))
 

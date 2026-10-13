@@ -214,7 +214,8 @@ def _worker_outcome(proc, expected):
     """The worker's reply, or ``None`` when it is missing or malformed (a crash).
 
     The reply is the last line of stdout, so a warning printed before it does
-    not hide it; a reply with a different number of results is malformed.
+    not hide it; a reply whose results are not a list of the expected length of
+    ``{"valid": bool}`` entries is malformed.
     """
     lines = proc.stdout.strip().splitlines() if proc.returncode == 0 else []
     try:
@@ -223,7 +224,12 @@ def _worker_outcome(proc, expected):
         return None
     if not isinstance(outcome, dict):
         return None
-    if "parse_error" not in outcome and len(outcome.get("results", ())) != expected:
+    if "parse_error" in outcome:
+        return outcome
+    results = outcome.get("results")
+    if not isinstance(results, list) or len(results) != expected:
+        return None
+    if not all(isinstance(r, dict) and isinstance(r.get("valid"), bool) for r in results):
         return None
     return outcome
 
