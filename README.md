@@ -37,6 +37,7 @@ JSON conversion, and CI, see the [task-oriented recipes](docs/RECIPES.md).
 cddl-verify schema.cddl data.cbor --type corim-map                     # validate, print annotated EDN
 cddl-verify schema.cddl data.cbor --type corim-map --output data.edn   # write EDN to a file
 cddl-verify schema.cddl data.cbor --show-types                         # list the parsed CDDL types
+cddl-verify schema.cddl data.cbor -M modules/ --module rfc9393=coswid.cddl  # load imported CDDL modules
 ```
 
 The exit status is `1` when the CBOR cannot be decoded or, with `--type`, when

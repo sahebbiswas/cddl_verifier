@@ -21,12 +21,14 @@ of the first problem. It checks what the grammar cannot:
   occurrences ``n*m`` have ``n <= m``
 * no rule is defined only in terms of itself (``a = b``, ``b = a``)
 
-Names from other modules are not checked. A schema that declares an import
-in the comment syntax of the CDDL modules draft (draft-ietf-cbor-cddl-modules),
-``;# import rfc9393 as coswid``, may use ``coswid.anything``; one with an
-unprefixed ``;# import name`` or ``;# include name`` may use any undefined
-name. Such names are listed in ``ResolvedSchema.external`` and stand for
-unknown types, since the module is not loaded.
+Modules are linked before resolution (``modules.py``, #121): the rules of a
+module the schema imports in the comment syntax of the CDDL modules draft
+(draft-ietf-cbor-cddl-modules), ``;# import rfc9393 as coswid``, are part of
+the schema, named ``coswid.<rule>``. Names from a module that could not be
+found are not checked: a schema may use ``coswid.anything`` after an import
+with a prefix, or any undefined name after an unprefixed ``;# import name`` or
+``;# include name``. Such names are listed in ``ResolvedSchema.external`` and
+stand for unknown types.
 
 The resolved model maps every name to a :class:`RuleDef` (user rules first,
 then the prelude) and instantiates generics on demand, with memoization:
@@ -220,22 +222,50 @@ class ResolvedSchema:
 
 # ----------------------------------------------------------------- resolve
 
-def resolve(schema: Schema) -> ResolvedSchema:
+class Imports:
+    """The module imports of a schema that were *not* loaded.
+
+    Attributes:
+        prefixes: Prefixes of imports whose module is unavailable; any name
+            ``prefix.x`` is accepted.
+        any_name: Whether an unprefixed import or include is unavailable, so
+            any undefined name is accepted.
+        loaded:  ``prefix -> module name`` for modules that were merged in,
+            to explain a missing rule.
+    """
+
+    def __init__(self, prefixes: FrozenSet[str] = frozenset(), any_name: bool = False,
+                 loaded: Optional[Dict[str, str]] = None):
+        self.prefixes = prefixes
+        self.any_name = any_name
+        self.loaded = loaded or {}
+
+
+def resolve(schema: Schema, imports: Optional[Imports] = None) -> ResolvedSchema:
     """Check *schema* and return its resolved model.
+
+    Args:
+        imports: Which imports are unavailable (see :class:`Imports`). When
+            omitted, every import declared in the schema text is treated as
+            unavailable.
 
     Raises:
         CDDLSemanticError: (a ``SchemaError``) for the first problem found,
             with its line and column.
     """
-    return _Resolver(schema).run()
+    return _Resolver(schema, imports).run()
 
 
 class _Resolver:
-    def __init__(self, schema: Schema):
+    def __init__(self, schema: Schema, imports: Optional[Imports] = None):
         self.schema = schema
         self.source = schema.source
         self.rules: Dict[str, RuleDef] = {}
-        self.prefixes, self.import_all = _imports(schema.source.text if schema.source else '')
+        if imports is None:
+            prefixes, import_all = _imports(schema.source.text if schema.source else '')
+            imports = Imports(prefixes, import_all)
+        self.prefixes, self.import_all = imports.prefixes, imports.any_name
+        self.loaded_modules = imports.loaded
         self.external: Set[str] = set()
 
     def error(self, message: str, span: Span) -> CDDLSemanticError:
@@ -434,6 +464,10 @@ class _Resolver:
 
     def undefined(self, name: str, scope: Iterable[str]) -> str:
         message = f"undefined name '{name}'"
+        prefix, _, rule = name.partition('.')
+        if rule and prefix in self.loaded_modules:
+            return (message + f"; module '{self.loaded_modules[prefix]}' (imported as "
+                    f"'{prefix}') defines no rule '{rule}'")
         if '..' in name:
             low, _, high = name.partition('..')
             return message + f"; write '{low} .. {high}' for a range"
@@ -771,6 +805,20 @@ def _subst(node, env, wide: bool):
 
 _IMPORT = re.compile(r'^[ \t]*;#[ \t]*(import|include)[ \t]+([^\s;]+)'
                      r'(?:[ \t]+as[ \t]+([^\s;]+))?', re.MULTILINE)
+
+
+def parse_imports(text: str) -> List[Tuple[str, str, Optional[str]]]:
+    """``(kind, module, prefix)`` of each ``;# import`` / ``;# include`` comment.
+
+    ``kind`` is ``"import"`` or ``"include"``; ``prefix`` is the name after
+    ``as``, or ``None``. Repeats are dropped.
+    """
+    found: List[Tuple[str, str, Optional[str]]] = []
+    for match in _IMPORT.finditer(text):
+        item = (match.group(1), match.group(2), match.group(3))
+        if item not in found:
+            found.append(item)
+    return found
 
 
 def _imports(text: str) -> Tuple[FrozenSet[str], bool]:

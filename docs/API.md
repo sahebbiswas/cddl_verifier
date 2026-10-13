@@ -34,16 +34,25 @@ else:
         print(diagnostic.code, diagnostic.message)
 ```
 
-### `validate(schema, data, root_type=None) -> ValidationResult`
+### `validate(schema, data, root_type=None, *, modules=None, module_path=()) -> ValidationResult`
 
-Shorthand for `Validator(schema).validate(data, root_type)`.
+Shorthand for `Validator(schema, modules=modules, module_path=module_path).validate(data, root_type)`.
 
-### `Validator(schema)`
+### `Validator(schema, *, modules=None, module_path=())`
 
 Parses a schema once so it can check many items.
 
 - `schema`: CDDL text as a `str`, or a path as a `pathlib.Path` (any
   `os.PathLike`). A plain `str` is always schema text, never a file name.
+- `modules`: the modules the schema imports with `;# import NAME as PREFIX` or
+  `;# include NAME` (draft-ietf-cbor-cddl-modules), as a mapping of module name
+  to its CDDL text or to a path. Their rules are checked and join the schema:
+  `PREFIX.<rule>` for an import with `as`, the rule's own name for an include.
+- `module_path`: directories searched for `NAME.cddl` when `modules` has no
+  entry for `NAME`. When `schema` is a path, its directory is searched last.
+- A module that is not found is not an error: the names used from it are not
+  checked and match any value. `Validator.warnings` lists these imports (and
+  each is also issued as a `UserWarning`).
 - Raises `SchemaError` (a `ValueError`) when a schema file cannot be read, is
   not valid CDDL, or does not make sense (an undefined name, a generic given
   the wrong number of arguments, an unknown control operator; see

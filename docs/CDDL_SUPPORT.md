@@ -67,12 +67,30 @@ group, not a type, so nothing matches it and the error says why; in a choice
 ([#106](https://github.com/sahebbiswas/cddl_verifier/issues/106)). A map
 cannot splice an array (`{ ~hdr }` with `hdr = [ a: int ]` is rejected).
 
-Names from other modules are not checked when the schema imports the module in
-the comment syntax of the CDDL modules draft (draft-ietf-cbor-cddl-modules), as
-the CoRIM drafts do: after `;# import rfc9393 as coswid`, `coswid.tag-id` is
-accepted, and after an `;# import` or `;# include` without `as`, any undefined
-name is. The module is not loaded, so these names match any value
+### Modules
+
+A schema can import other CDDL files with the comment syntax of the CDDL
+modules draft (draft-ietf-cbor-cddl-modules), as the CoRIM drafts do:
+
+```cddl
+;# import rfc9393 as coswid
+;# include extra-types
+```
+
+Give `Validator` (or `cddl-verify`) the modules as text or files, or a search
+path, and each module is checked as a schema of its own and its rules join the
+schema: as `coswid.<rule>` for an import with `as`, under their own names for
+an include or an import without `as`. References inside a module are renamed
+with its rules, generic parameters keep shadowing them, sockets (`$x`, `$$x`)
+stay shared, and modules may import modules (a cycle is an error). A name a
+module does not define is an error that says so
 ([#121](https://github.com/sahebbiswas/cddl_verifier/issues/121)).
+
+A module that is not found does not stop the schema from loading. Names used
+from it (`coswid.tag-id`, or any undefined name after an import without `as`)
+are not checked and match any value, a group from it in a map allows any
+other entries, and `Validator.warnings` (the `Warning:` lines of `cddl-verify`)
+says which modules were missing. No RFC modules are bundled.
 
 ### Generics
 

@@ -6,11 +6,13 @@ can move to a standards-oriented CDDL AST without changing these signatures.
 """
 
 import os
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Mapping, Optional, Sequence, Tuple, Union
 
 from . import _analyzer
+from ._cddl.modules import ModuleLoader
 from ._cbor import CBOR, CBORDecodeError
 from ._diagnostics import (JSON_FORMAT_VERSION, Diagnostic, decode_diagnostic, render_json,
                            render_text)
@@ -90,6 +92,19 @@ class Validator:
         schema: CDDL schema text (``str``) or a path to a schema file
             (``pathlib.Path`` or other ``os.PathLike``). A plain ``str`` is
             always treated as schema text, never as a file name.
+        modules: Modules the schema imports with the comment syntax of the
+            CDDL modules draft (``;# import rfc9393 as coswid``): a mapping of
+            module name to its CDDL text (``str``) or to a path. Their rules
+            join the schema, as ``coswid.<rule>`` for an import with ``as``
+            and under their own names for an include.
+        module_path: Directories searched for ``<module name>.cddl`` when
+            *modules* has no entry for it. When *schema* is a path, its
+            directory is searched last.
+
+    Attributes:
+        warnings: What the schema relies on without checking: an import whose
+            module was not found keeps its names unchecked (they match any
+            value). The same messages are issued as ``UserWarning``.
 
     Raises:
         SchemaError: The schema file cannot be read or the schema cannot be
@@ -99,15 +114,24 @@ class Validator:
         TypeError: *schema* is neither ``str`` nor ``os.PathLike``.
     """
 
-    def __init__(self, schema: SchemaSource):
+    def __init__(self, schema: SchemaSource, *,
+                 modules: Optional[Mapping[str, SchemaSource]] = None,
+                 module_path: Sequence[Union[str, "os.PathLike[str]"]] = ()):
         text = _read_schema(schema)
         name = os.fspath(schema) if isinstance(schema, os.PathLike) else None
+        search = list(module_path)
+        if name is not None:
+            search.append(Path(name).parent)
+        loader = ModuleLoader(modules, search)
         try:
-            self._parser = _analyzer.CDDLParser(text, source_name=name)
+            self._parser = _analyzer.CDDLParser(text, source_name=name, loader=loader)
         except SchemaError:
             raise  # syntax errors already say where: "file:line:col: message"
         except Exception as e:  # noqa: BLE001 - anything else is a parser bug
             raise SchemaError(f"cannot parse CDDL schema: {e}") from e
+        self.warnings: Tuple[str, ...] = tuple(self._parser.warnings)
+        for message in self.warnings:
+            warnings.warn(message, UserWarning, stacklevel=2)
 
     @property
     def default_root_type(self) -> Optional[str]:
@@ -176,10 +200,12 @@ class Validator:
 
 
 def validate(schema: SchemaSource, data: Any,
-             root_type: Optional[str] = None) -> ValidationResult:
+             root_type: Optional[str] = None, *,
+             modules: Optional[Mapping[str, SchemaSource]] = None,
+             module_path: Sequence[Union[str, "os.PathLike[str]"]] = ()) -> ValidationResult:
     """Validate *data* against a CDDL *schema*.
 
     Shorthand for ``Validator(schema).validate(data, root_type)``; build a
     :class:`Validator` once to check many items against the same schema.
     """
-    return Validator(schema).validate(data, root_type)
+    return Validator(schema, modules=modules, module_path=module_path).validate(data, root_type)
