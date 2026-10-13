@@ -350,6 +350,19 @@ The root rule may also be a primitive with controls (`id = tstr .size 2`,
 `n = uint .le 5`), an inline choice (`n = uint / tstr`) or a range
 (`n = 0..255`).
 
+Every alternative is checked completely (tag number and content, fields,
+controls), and a choice is resolved by that check alone
+([#74](https://github.com/sahebbiswas/cddl_verifier/issues/74)): one matching
+alternative decides it, none is an error, and no alternative is assumed. EDN
+output uses the same resolution, so a value is labelled with the alternative it
+matches (`/ m2 /`), even for alternatives that share a tag or are all maps, and
+a value that matches none is left unlabelled. When data fits several
+alternatives, which CDDL allows, validation accepts it and EDN uses the first
+of them in schema order. `Validator(schema, unique_choices=True)` (or
+`--unique-choices`) turns that into an error when more than one map, array or
+tag alternative fits; overlapping primitives such as `uint / int` are not
+reported.
+
 A type socket (`$name`) is checked the same way as an inline choice of its
 `/=` alternatives, wherever it is used: `$role /= uint` and `$role /= tstr`
 make `role: $role` accept an unsigned integer or a text string and nothing

@@ -209,6 +209,7 @@ class CDDLParser:
         self.first_definition: Optional[str] = None  # First name defined in source order
         self.synthetic_types: set = set()  # names given to inline maps (r@a)
         self.ast = None
+        self._choice_checker = None  # a CBORAnalyzer, made on first use (#74)
         self.resolved = None  # ResolvedSchema (#70)
         self.parse()
 
@@ -539,128 +540,58 @@ class CDDLParser:
         """
         return query.tag(type_string)
 
-    def resolve_type_choice_for_data(self, choice_name: str, cbor_data: Any, validator=None) -> Optional[str]:
-        """Resolve a type choice by checking which alternative matches the CBOR data.
-        
-        Tries each alternative and picks the first one that validates successfully.
-        For CBOR tagged data, also tries to match based on tag numbers.
-        
-        Args:
-            choice_name: Name of the type choice
-            cbor_data: The CBOR data to match against
-            validator: Optional CBORAnalyzer instance for validation-based matching
-        
-        Returns:
-            The matching alternative type name, or None if no match
+    def choice_alternatives(self, expr: str) -> Optional[List[str]]:
+        """The alternatives *expr* chooses between, or ``None`` if it is not a choice.
+
+        *expr* is the name of a type choice (``$socket``) or the text of an
+        inline choice (``m1 / m2``).
         """
-        logger.debug(f"{Colors.CDDL}Resolving type choice '{choice_name}' for CBOR data{Colors.RESET}")
-        
-        alternatives = self.type_choices.get(choice_name)
+        alternatives = self.type_choices.get(expr)
+        if alternatives is not None:
+            return alternatives
+        parts = query.alternatives(expr) if expr else []
+        return parts if len(parts) > 1 else None
+
+    def choice_matches(self, choice_name: str, cbor_data: Any) -> List[str]:
+        """The alternatives of type choice *choice_name* that *cbor_data* matches.
+
+        Each alternative is checked completely (tag numbers, fields, controls),
+        so an alternative matches only if the data is valid for it. The result
+        is in schema order: empty when nothing matches, one name when the
+        choice is decided, several when the data fits more than one
+        alternative (#74).
+        """
+        alternatives = self.choice_alternatives(choice_name)
         if not alternatives:
-            logger.debug(f"  No alternatives found for {choice_name}")
+            return []
+        checker = self._choice_checker
+        if checker is None:
+            checker = self._choice_checker = CBORAnalyzer(self)
+        return [alt for alt in alternatives if not checker._check_value(cbor_data, alt)]
+
+    def resolve_type_choice_for_data(self, choice_name: str, cbor_data: Any,
+                                     validator=None) -> Optional[str]:
+        """The alternative of type choice *choice_name* that *cbor_data* matches.
+
+        When several alternatives match, the first in schema order is
+        returned (see :meth:`choice_matches` for all of them). When none
+        does, the result is ``None``: no alternative is assumed.
+
+        Args:
+            choice_name: Name of the type choice.
+            cbor_data: The decoded CBOR item (a tag is ``(number, value)``).
+            validator: Unused; kept for callers written before choices were
+                resolved by matching alone.
+        """
+        matches = self.choice_matches(choice_name, cbor_data)
+        if not matches:
+            logger.debug(f"  No alternative of {choice_name} matches")
             return None
-        
-        logger.debug(f"  Alternatives: {alternatives}")
-        logger.debug(f"  CBOR data type: {type(cbor_data).__name__}")
-        
-        # Check if cbor_data is a tagged value (tag_num, value)
-        actual_tag = None
-        actual_data = cbor_data
-        if isinstance(cbor_data, tuple) and len(cbor_data) == 2 and isinstance(cbor_data[0], int):
-            actual_tag = cbor_data[0]
-            actual_data = cbor_data[1]
-            logger.debug(f"  CBOR data is tagged: tag {actual_tag}")
-        
-        # Strategy 1: If we have a CBOR tag, try to match by tag number
-        if actual_tag is not None:
-            logger.debug(f"  Attempting tag-based matching for tag {actual_tag}")
-            for alt in alternatives:
-                # Get the alternative's type definition
-                alt_type_name = self.resolve_type_alias(alt)
-                
-                # Extract tag number from the type definition
-                tag_info = self.extract_cbor_tag(alt_type_name)
-                if tag_info:
-                    expected_tag, inner_type = tag_info
-                    if expected_tag == actual_tag:
-                        logger.debug(f"    {Colors.MATCH}[OK] Tag match:{Colors.RESET} {alt} expects tag {expected_tag}")
-                        return alt
-                    else:
-                        logger.debug(f"    [X] Tag mismatch: {alt} expects tag {expected_tag}, got {actual_tag}")
-        
-        # Strategy 2: For each alternative, try to get its type and check basic compatibility
-        compatible = []
-        for alt in alternatives:
-            logger.debug(f"  Checking alternative: {alt}")
-            
-            # Try to get the type definition for this alternative
-            alt_type = self.get_type(alt, actual_data)
-            if not alt_type:
-                logger.debug(f"    [X] Cannot resolve type definition")
-                continue
-            
-            # Check basic type compatibility (map vs array vs primitive)
-            expected_type = alt_type['type']
-            actual_type = type(actual_data).__name__
-            
-            if expected_type == 'map' and isinstance(actual_data, dict):
-                logger.debug(f"    {Colors.MATCH}[OK]{Colors.RESET} Compatible: map matches dict")
-                compatible.append(alt)
-            elif expected_type == 'array' and isinstance(actual_data, (list, tuple)):
-                logger.debug(f"    {Colors.MATCH}[OK]{Colors.RESET} Compatible: array matches list/tuple")
-                compatible.append(alt)
-            elif expected_type == 'bstr' and isinstance(actual_data, bytes):
-                logger.debug(f"    {Colors.MATCH}[OK]{Colors.RESET} Compatible: bstr matches bytes")
-                compatible.append(alt)
-            else:
-                logger.debug(f"    [X] Incompatible: {expected_type} vs {actual_type}")
-        
-        # If we have compatible alternatives, try validation-based matching if validator available
-        if compatible and validator:
-            logger.debug(f"  {len(compatible)} compatible alternatives, trying validation...")
-            
-            for alt in compatible:
-                logger.debug(f"  Attempting validation with: {alt}")
-                alt_type = self.get_type(alt, actual_data)
-                
-                # Try to validate against this alternative
-                # Save current validation state
-                saved_errors = validator.validation_errors.copy()
-                saved_breadcrumb = validator.breadcrumb.copy()
-                saved_path = validator._data_path.copy()
-                
-                # Attempt validation
-                try:
-                    result = validator._validate_type(actual_data, alt_type, alt)
-                    if result and len(validator.validation_errors) == len(saved_errors):
-                        logger.debug(f"    {Colors.MATCH}[OK] VALIDATION SUCCESS{Colors.RESET}: Selected '{alt}'")
-                        # Restore state and return
-                        validator.validation_errors = saved_errors
-                        validator.breadcrumb = saved_breadcrumb
-                        validator._data_path = saved_path
-                        return alt
-                    else:
-                        logger.debug(f"    [X] Validation failed")
-                except Exception as e:
-                    logger.debug(f"    [X] Validation error: {e}")
-                
-                # Restore state for next attempt
-                validator.validation_errors = saved_errors
-                validator.breadcrumb = saved_breadcrumb
-                validator._data_path = saved_path
-        
-        # Fallback: return first compatible alternative, or first alternative if none compatible
-        if compatible:
-            selected = compatible[0]
-            logger.debug(f"  {Colors.INFO}Selected: {selected} (first compatible){Colors.RESET}")
-            return selected
-        elif alternatives:
-            selected = alternatives[0]
-            logger.debug(f"  {Colors.WARNING}Selected: {selected} (first alternative, no validation){Colors.RESET}")
-            return selected
-        
-        return None
-    
+        if len(matches) > 1:
+            logger.debug(f"  {len(matches)} alternatives of {choice_name} match "
+                         f"({', '.join(matches)}); using the first")
+        return matches[0]
+
     def get_type(self, type_name: str, cbor_data: Any = None) -> Optional[Dict]:
         """Get type definition by name, resolving aliases and type choices if needed.
         
@@ -701,12 +632,9 @@ class CDDLParser:
                         logger.debug(f"  Resolved type choice to: {selected}")
                         # Recursively get the selected type
                         return self.get_type(selected, cbor_data)
-                else:
-                    # No data to help resolve, try first alternative
-                    alternatives = self.type_choices[resolved_name]
-                    if alternatives:
-                        logger.debug(f"  Using first alternative: {alternatives[0]}")
-                        return self.get_type(alternatives[0], cbor_data)
+                # A choice has no single definition: without data to choose by,
+                # or when no alternative matches, there is none (#74)
+                return None
         
         # Check if the original name is a type choice
         if type_name in self.type_choices:
@@ -715,10 +643,7 @@ class CDDLParser:
                 selected = self.resolve_type_choice_for_data(type_name, cbor_data)
                 if selected:
                     return self.get_type(selected, cbor_data)
-            else:
-                alternatives = self.type_choices[type_name]
-                if alternatives:
-                    return self.get_type(alternatives[0], cbor_data)
+            return None
         
         # Try extracting from CBOR tag notation (directly, or at the end of an alias chain)
         tag_info = self.extract_cbor_tag(type_name) or self.extract_cbor_tag(resolved_name)
@@ -876,13 +801,17 @@ class CBORAnalyzer:
     * Array element primitive types (for ``[ + type ]`` / ``[ * type ]``)
     """
 
-    def __init__(self, cddl_parser: CDDLParser):
+    def __init__(self, cddl_parser: CDDLParser, unique_choices: bool = False):
         """Initialise the analyzer with a parsed CDDL schema.
 
         Args:
             cddl_parser: A :class:`CDDLParser` instance holding the schema.
+            unique_choices: Report data that matches more than one structured
+                alternative (a map, array or tag) of a choice, instead of
+                accepting it (#74).
         """
         self.cddl = cddl_parser
+        self.unique_choices = unique_choices
         self.validation_errors: List[str] = []
         self.breadcrumb: List[str] = []  # Track CDDL path for logging
         self.cbor_bytes: Optional[bytes] = None  # Raw CBOR bytes for offset tracking
@@ -1298,10 +1227,8 @@ class CBORAnalyzer:
                             logger.info(f"{Colors.MATCH}Auto-selected: {selected}{Colors.RESET}")
                             return self._validate_root(data, selected)
                         
-                        self._report(
-                            f"Type '{type_name}' resolves to type choice '{resolved}' with alternatives: {', '.join(choices)}. "
-                            f"Could not auto-resolve. Please specify one of the concrete types."
-                        )
+                        for error in self._check_value(data, resolved):
+                            self._report(f"Value does not match type '{type_name}': {error}")
                     else:
                         logger.warning(f"'{resolved}' is not a concrete type definition")
                         self._report(
@@ -2212,6 +2139,12 @@ class CBORAnalyzer:
             self.validation_errors, self.breadcrumb = saved_errors, saved_breadcrumb
             self._data_path, self._rules = saved_path, saved_rules
 
+    def _is_structured(self, alt: str) -> bool:
+        """Whether choice alternative *alt* is a map, array or tag, by name or in full."""
+        resolved = self.cddl.resolve_type_alias(alt.strip())
+        return (resolved in self.cddl.types or query.tag(resolved) is not None
+                or query.is_array(resolved))
+
     def _check_value(self, value: Any, expr: str, _depth: int = 0,
                      strict: bool = False) -> List[str]:
         """Validate *value* against a CDDL type expression; return the errors.
@@ -2235,11 +2168,24 @@ class CBORAnalyzer:
                 return self._check_value(value, alternatives[0], _depth + 1, strict)
         if len(alternatives) > 1:
             failures = []
+            matched = []
             for alt in alternatives:
                 alt_errors = self._check_value(value, alt, _depth + 1, strict)
                 if not alt_errors:
-                    return []
-                failures.append(f"{alt}: {alt_errors[0]}")
+                    if not self.unique_choices:
+                        return []
+                    matched.append(alt)
+                else:
+                    failures.append(f"{alt}: {alt_errors[0]}")
+            if matched:
+                # Overlapping primitives ('uint / int') are ordinary; two
+                # structures that both fit are an ambiguous reading (#74).
+                structured = [alt for alt in matched if self._is_structured(alt)]
+                if len(structured) > 1:
+                    return [f"matches more than one alternative of "
+                            f"{expr if len(expr) < 60 else 'the choice'}: "
+                            f"{', '.join(structured)}"]
+                return []
             return [f"matches none of {' / '.join(alternatives)} ({'; '.join(failures)})"]
 
         paren = self._paren_parts(expr)
@@ -2664,12 +2610,12 @@ class EDNGenerator:
         logger.debug(f"EDN: _generate_value called with type_name='{type_name}'")
         
         # Resolve type choice to actual matched type
-        if type_name and type_name.startswith('$'):
-            # It's a type choice - resolve to the actual type that matches the data
+        if type_name and self.cddl.choice_alternatives(type_name) is not None:
+            # A choice ('$socket', 'm1 / m2'): the alternative the data matches,
+            # or no type when it matches none (#74)
             resolved = self.cddl.resolve_type_choice_for_data(type_name, value)
-            if resolved:
-                logger.debug(f"EDN: Resolved type choice {type_name} -> {resolved}")
-                type_name = resolved
+            logger.debug(f"EDN: Resolved type choice {type_name} -> {resolved}")
+            type_name = resolved
         elif type_name:
             # Check if this type is an alias and resolve to final type
             resolved = self.cddl.resolve_type_alias(type_name)
@@ -2919,6 +2865,7 @@ class EDNGenerator:
         # Check if type_name is an inline array definition: [ + type ] or [ * type ]
         element_type = None
         element_types_by_index = {}  # For structured arrays like [type1, type2]
+        repeat_index = None  # '[ int, * tstr ]': later elements repeat this entry's type
         
         if type_name:
             # Try inline array: [ + type ] or [ * type ]
@@ -2935,6 +2882,9 @@ class EDNGenerator:
                     # Check if it has element_types (structured array)
                     if 'element_types' in type_def and type_def['element_types']:
                         element_types_by_index = type_def.get('element_types', {})
+                        repeat_index = type_def.get('repeat')
+                        if repeat_index is None and type_def.get('occurrence') in ('*', '+'):
+                            repeat_index = 0  # '[* T]'
                         logger.debug(f"EDN: Structured array type '{type_name}' with element types: {element_types_by_index}")
                     else:
                         logger.debug(f"EDN: Array type '{type_name}' has no element_types")
@@ -2961,6 +2911,8 @@ class EDNGenerator:
             if element_types_by_index and i in element_types_by_index:
                 resolved_element_type = element_types_by_index[i]
                 logger.debug(f"EDN: Array element [{i}] has indexed type: {resolved_element_type}")
+            elif repeat_index is not None and i > repeat_index:
+                resolved_element_type = element_types_by_index.get(repeat_index)
             elif element_type:
                 # For uniform arrays, all elements have the same type
                 resolved_element_type = element_type
@@ -3123,6 +3075,9 @@ Examples:
     parser.add_argument('--module', action='append', default=[], metavar='NAME=FILE',
                         help='CDDL file for the imported module NAME (;# import NAME as P); '
                              'repeatable')
+    parser.add_argument('--unique-choices', action='store_true',
+                        help='Fail when data matches more than one map, array or tag '
+                             'alternative of a choice')
     parser.add_argument('--verbose', action='store_true',
                         help='Enable verbose logging of validation and type resolution')
     parser.add_argument('--show-types', action='store_true', 
@@ -3231,7 +3186,7 @@ Examples:
     # - Inferred type:   log errors as warnings, then continue to show EDN output.
     if root_type:
         print(f"Validating CBOR against CDDL (type: {root_type})...", file=sys.stderr)
-        analyzer = CBORAnalyzer(cddl)
+        analyzer = CBORAnalyzer(cddl, unique_choices=args.unique_choices)
 
         if analyzer.validate(cbor_data, root_type, cbor_bytes):
             print("[OK] Validation successful", file=sys.stderr)

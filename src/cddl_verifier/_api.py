@@ -100,6 +100,10 @@ class Validator:
         module_path: Directories searched for ``<module name>.cddl`` when
             *modules* has no entry for it. When *schema* is a path, its
             directory is searched last.
+        unique_choices: Reject data that matches more than one structured
+            (map, array or tag) alternative of a choice. By default a choice
+            accepts data that fits any alternative, as CDDL defines it; EDN
+            output labels such data with the first alternative that matches.
 
     Attributes:
         warnings: What the schema relies on without checking: an import whose
@@ -116,9 +120,11 @@ class Validator:
 
     def __init__(self, schema: SchemaSource, *,
                  modules: Optional[Mapping[str, SchemaSource]] = None,
-                 module_path: Sequence[Union[str, "os.PathLike[str]"]] = ()):
+                 module_path: Sequence[Union[str, "os.PathLike[str]"]] = (),
+                 unique_choices: bool = False):
         text = _read_schema(schema)
         name = os.fspath(schema) if isinstance(schema, os.PathLike) else None
+        self._unique_choices = unique_choices
         search = list(module_path)
         if name is not None:
             search.append(Path(name).parent)
@@ -168,7 +174,7 @@ class Validator:
                 data = CBOR.loads(cbor_bytes)
             except CBORDecodeError as e:
                 return ValidationResult(False, root, (decode_diagnostic(e, cbor_bytes),), None)
-        analyzer = _analyzer.CBORAnalyzer(self._parser)
+        analyzer = _analyzer.CBORAnalyzer(self._parser, unique_choices=self._unique_choices)
         ok = analyzer.validate(data, root, cbor_bytes)
         diagnostics = analyzer.get_diagnostics()
         return ValidationResult(bool(ok) and not diagnostics, root, diagnostics, data)
@@ -202,10 +208,12 @@ class Validator:
 def validate(schema: SchemaSource, data: Any,
              root_type: Optional[str] = None, *,
              modules: Optional[Mapping[str, SchemaSource]] = None,
-             module_path: Sequence[Union[str, "os.PathLike[str]"]] = ()) -> ValidationResult:
+             module_path: Sequence[Union[str, "os.PathLike[str]"]] = (),
+             unique_choices: bool = False) -> ValidationResult:
     """Validate *data* against a CDDL *schema*.
 
     Shorthand for ``Validator(schema).validate(data, root_type)``; build a
     :class:`Validator` once to check many items against the same schema.
     """
-    return Validator(schema, modules=modules, module_path=module_path).validate(data, root_type)
+    return Validator(schema, modules=modules, module_path=module_path,
+                     unique_choices=unique_choices).validate(data, root_type)
