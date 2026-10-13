@@ -113,8 +113,8 @@ validity-map = non-empty<{
 
 **Support:** ⚠ PARTIAL
 - Parses generic type definitions and instantiates them where they are used
-- Enforces `.and` / `.within` around a generic structure (`non-empty<M>`
-  rejects an empty map)
+- Enforces `.and` / `.within` / `.eq` / `.ne` on any target, including a generic
+  structure (`non-empty<M>` rejects an empty map)
 - Does NOT enforce other controls (`.size`, ...) around a generic structure
   ([#76](https://github.com/sahebbiswas/cddl_verifier/issues/76))
 
@@ -250,8 +250,8 @@ Note how IANA registered parameter keys (0, 1, 2, etc.) are displayed as their s
 ## Known Limitations
 
 1. **No Type Choice Expansion:** Type choices (`$name /= value`) are not fully expanded
-2. **No Constraint Validation:** Control operators (`.size`, `.within`) are not validated
-3. **Generic Controls:** Generics are instantiated, but only `.and` / `.within` around a structure are enforced
+2. **Partial Constraint Validation:** Some control operators, such as `.size` around a generic structure, are not validated
+3. **Generic Controls:** Generics are instantiated, and `.and` / `.within` / `.eq` / `.ne` are enforced around a generic structure
 4. **Basic Validation Only:** Structural validation only, not semantic validation
 
 ## Future Enhancements

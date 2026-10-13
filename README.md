@@ -121,7 +121,7 @@ of the problem. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/b
   misused generic or an unknown control operator
   ([#70](https://github.com/sahebbiswas/cddl_verifier/issues/70)).
   Validation covers a practical subset of what the grammar can express: the
-  control operators `.bits`, `.cborseq`, `.eq`, `.ne`, `.abnf`, `.abnfb` and the
+  control operators `.bits`, `.cborseq`, `.abnf`, `.abnfb` and the
   RFC 9741 conversions are parsed but not enforced
   ([#76](https://github.com/sahebbiswas/cddl_verifier/issues/76)). The
   [conformance matrix](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CONFORMANCE.md)

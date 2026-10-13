@@ -103,8 +103,8 @@ text string, as a rule, a map field or an array element. `opt<uint>`, with
 `opt<T> = T / nil`, is the choice `uint / nil`. Recursive generics such as
 `tree<T> = { v: T, ? l: tree<T> }` are checked at every depth. A generic can also be
 the argument of `.cbor` (`bstr .cbor pair<uint, tstr>`): the embedded item is
-checked against the instance. `.and` and `.within` around a generic
-structure are enforced: `non-empty<{ ? a: int }>`, with
+checked against the instance. `.and` and `.within` are enforced on any
+target, including a generic structure: `non-empty<{ ? a: int }>`, with
 `non-empty<M> = (M) .and ({ + any => any })`, is the map `{ ? a: int }` that
 must also match `{ + any => any }`, so `{}` is rejected. Other controls
 around a generic structure (`.size`, ...) are not enforced yet
@@ -274,8 +274,11 @@ map key (`* 0..9 => tstr`) and as a generic argument (`pair<0..3>`).
 - Errors name the range: "11 is outside 0..10", "expected an integer in
   0..10, got 5.0".
 - Controls on a parenthesized range apply to the number:
-  `(0..100) .le 50` takes 0 to 50. (`.eq` and `.ne` are not enforced yet on
-  any type: [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76).)
+  `(0..100) .le 50` takes 0 to 50.
+- `.eq` and `.ne` compare with one value and reject any other argument at
+  load time. `.and` and `.within` must match both operands, so
+  `(uint .ge 0) .le 150` and `{a: int} .and {a: 0..5}` are enforced
+  ([#181](https://github.com/sahebbiswas/cddl_verifier/issues/181)).
 
 The comparison controls `.ge`, `.gt`, `.le` and `.lt` work the same way on
 integers and floats, at the root, in map fields and in array elements:

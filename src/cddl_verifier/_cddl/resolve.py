@@ -46,7 +46,7 @@ from typing import Dict, FrozenSet, Iterable, List, Optional, Set, Tuple, Union
 from .ast import (AnyItem, Array, BytesLit, ChoiceFrom, Control, FloatLit, Group,
                   GroupChoice, GroupRef, GroupRule, InlineGroup, IntLit, Major, Map,
                   Member, Name, Occurrence, Paren, Range, Schema, Span, Tag, TextLit,
-                  Type, TypeRule, Unwrap)
+                  Type, TypeRule, Unwrap, walk)
 from .errors import CDDLSemanticError
 from .prelude import parse_prelude
 
@@ -512,6 +512,8 @@ class _Resolver:
                                  f"type; wrap it as '{{ {node.name} }}' or "
                                  f"'[ {node.name} ]'", node.span)
             self.check_args(node.args, scope)
+            if node.args and rule is not None and rule.kind == TYPE:
+                self.check_instance_controls(node, scope)
         elif isinstance(node, Paren):
             self.check_type(node.type, scope)
         elif isinstance(node, Map):
@@ -667,6 +669,25 @@ class _Resolver:
     def literal(self, node):
         return _literal(self.rules, node)
 
+    def check_instance_controls(self, node: Name, scope):
+        """Recheck the ``.eq`` / ``.ne`` arguments of ``node`` once its generic arguments are in.
+
+        In the definition ``g<T> = uint .eq T`` the argument ``T`` is unknown, so
+        ``g<(1 / 2)>`` passes there; here the substituted argument is checked.
+        Names are not followed, so a recursive generic ends.
+        """
+        rule = self.rules.get(node.name)
+        if rule is None or len(node.args) != len(rule.params):
+            return
+        body = substitute(rule.type(), dict(zip(rule.params, node.args)))
+        for sub in walk(body):
+            if isinstance(sub, Control) and sub.op in ('eq', 'ne') \
+                    and self.one_value(sub.arg, scope) is False:
+                raise self.error(f"the argument of '.{sub.op}' must be one value (a number, "
+                                 f"a string, true, false, null or undefined, or a rule that is "
+                                 f"one), not a type that matches several; '{node.name}' "
+                                 f"passes one that matches several", node.span)
+
     def check_control(self, node: Control, scope):
         op = node.op
         if op not in KNOWN_CONTROLS:
@@ -674,6 +695,10 @@ class _Resolver:
             hint = f"; did you mean '.{close[0]}'?" if close else ''
             raise self.error(f"unknown control operator '.{op}'{hint}", node.span)
         allowed_target, allowed_arg = _CONTROL_KINDS.get(op, (None, None))
+        if op in ('eq', 'ne') and self.one_value(node.arg, scope) is False:
+            raise self.error(f"the argument of '.{op}' must be one value (a number, a string, "
+                             f"true, false, null or undefined, or a rule that is one), "
+                             f"not a type that matches several", node.arg.span)
         if allowed_target is not None:
             kinds = self.kinds(node.target, scope)
             if kinds is not None and not kinds & allowed_target:
@@ -685,6 +710,39 @@ class _Resolver:
                 expected = _describe_kinds(allowed_arg, ' or ')
                 raise self.error(f"the argument of '.{op}' must be {expected}, "
                                  f"not {_describe_kinds(kinds)}", node.arg.span)
+
+    def one_value(self, node, scope, seen: Optional[Set[str]] = None) -> Optional[bool]:
+        """Whether *node* stands for exactly one value: ``None`` if not evident.
+
+        A literal, ``true``, ``false``, ``null`` or ``undefined`` is one value, so
+        is a rule (or parenthesized rule) whose only alternative is. A type
+        that matches many values (``uint``, a map, a range, a choice) is not.
+        A generic parameter, or a name the resolver does not know, is not evident.
+        """
+        seen = set() if seen is None else seen
+        if isinstance(node, Type):
+            if len(node.alternatives) != 1:
+                return False
+            return self.one_value(node.alternatives[0], scope, seen)
+        if isinstance(node, (IntLit, FloatLit, TextLit, BytesLit)):
+            return True
+        if isinstance(node, Paren):
+            return self.one_value(node.type, scope, seen)
+        if isinstance(node, Major):
+            return node.major == 7 and isinstance(node.info, int) and node.info in (20, 21, 22, 23)
+        if isinstance(node, Name):
+            if node.args or node.name in scope or node.name in seen \
+                    or len(seen) >= _MAX_ALIAS_DEPTH:
+                return None
+            rule = self.rules.get(node.name)
+            if rule is None or rule.kind != TYPE or rule.params:
+                return None
+            seen.add(node.name)
+            try:
+                return self.one_value(rule.type(), scope, seen)
+            finally:
+                seen.discard(node.name)
+        return False  # a range, map, array, tag, control, ...
 
     def kinds(self, node, scope, seen: Optional[Set[str]] = None) -> Optional[FrozenSet[str]]:
         """The kinds of data item *node* can match, or ``None`` if not evident."""
