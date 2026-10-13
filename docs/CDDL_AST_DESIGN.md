@@ -503,8 +503,17 @@ As implemented in #111, in two steps by agreement:
      and the methods it uses) reads nodes and builds nodes (`Control`, `Type`)
      where it used to build text; `as_type` at its entry still accepts text
      for the callers that have not moved.
-  2. **#176.** The structure validator (`_validate_type_checked`) and name
-     lookup (`get_type`) read nodes.
+  2. **#176 (done).** The structure validator and name lookup read nodes.
+     `get_type` takes a rule name or a type expression, as text or as a
+     `Type`, and the tag and `.cbor` cases come from `query.tag` and
+     `query.cbor_control`; `cbor_inner_type` is a `Type`. The field,
+     inline-array and array-element paths of `_validate_type_checked`, the
+     root path (`_validate_root_expression`, `validate`), `_peel_tagged_primitive`
+     and `_match_array` read the node a `TypeText` carries, and rule names
+     passed to `_validate_type` are still strings (`format_node` for an
+     expression). The three element paths keep their own messages and log
+     lines, so they are not merged. `CBORAnalyzer` no longer tests a type with
+     `startswith`, `==` or `in` on text.
   3. **#177.** The EDN generator reads nodes; `TypeText`, the text tables and
      the `query` text path are removed.
 

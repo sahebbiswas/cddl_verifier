@@ -568,13 +568,16 @@ class CDDLParser:
         """
         return query.tag(type_string)
 
-    def choice_alternatives(self, expr: str) -> Optional[List[str]]:
+    def choice_alternatives(self, expr) -> Optional[list]:
         """The alternatives *expr* chooses between, or ``None`` if it is not a choice.
 
-        *expr* is the name of a type choice (``$socket``) or the text of an
-        inline choice (``m1 / m2``).
+        *expr* is the name of a type choice (``$socket``) or an inline choice
+        (``m1 / m2``), as text or as a node. The alternatives of a named
+        choice are as the schema wrote them; those of an inline choice are
+        text for text and ``Type`` nodes for a node.
         """
-        alternatives = self.type_choices.get(expr)
+        name = expr if isinstance(expr, str) else bare_name(as_type(expr))
+        alternatives = self.type_choices.get(name)
         if alternatives is not None:
             return alternatives
         parts = query.alternatives(expr) if expr else []
@@ -620,36 +623,41 @@ class CDDLParser:
                          f"({', '.join(matches)}); using the first")
         return matches[0]
 
-    def get_type(self, type_name: str, cbor_data: Any = None) -> Optional[Dict]:
+    def get_type(self, type_name, cbor_data: Any = None) -> Optional[Dict]:
         """Get type definition by name, resolving aliases and type choices if needed.
-        
+
         Args:
-            type_name: Name of the type to look up
+            type_name: Name of the type to look up, or a type expression
+                (``#6.501(m)``, ``bstr .cbor m``) as text or as a ``Type`` node
             cbor_data: Optional CBOR data to help resolve type choices
-        
+
         Returns:
             Type definition dict or None if not found
         """
         if not type_name:
             return None
-        
-        logger.debug(f"Getting type: {type_name}")
-        
+
+        node = as_type(type_name)
+        name = bare_name(node)
+        label = type_name if isinstance(type_name, str) else format_node(node)
+        logger.debug(f"Getting type: {label}")
+
         # First try direct lookup
-        if type_name in self.types:
+        if name in self.types:
             logger.debug(f"  Found directly in types")
-            return self.types[type_name]
-        
+            return self.types[name]
+
         # Try resolving alias
-        resolved_name = self.resolve_type_alias(type_name)
-        if resolved_name != type_name:
-            logger.debug(f"  Resolved alias: {type_name} -> {resolved_name}")
-            
+        resolved = self.resolve_alias(node)
+        resolved_name = bare_name(resolved)
+        if resolved != node:
+            logger.debug(f"  Resolved alias: {label} -> {format_node(resolved)}")
+
             # Check if resolved name is in types
             if resolved_name in self.types:
                 logger.debug(f"  Found resolved type in types")
                 return self.types[resolved_name]
-            
+
             # Check if it's a type choice
             if resolved_name in self.type_choices:
                 logger.debug(f"  Resolved to type choice: {resolved_name}")
@@ -663,53 +671,43 @@ class CDDLParser:
                 # A choice has no single definition: without data to choose by,
                 # or when no alternative matches, there is none (#74)
                 return None
-        
+
         # Check if the original name is a type choice
-        if type_name in self.type_choices:
+        if name in self.type_choices:
             logger.debug(f"  Type is a type choice")
             if cbor_data is not None:
-                selected = self.resolve_type_choice_for_data(type_name, cbor_data)
+                selected = self.resolve_type_choice_for_data(name, cbor_data)
                 if selected:
                     return self.get_type(selected, cbor_data)
             return None
-        
+
         # Try extracting from CBOR tag notation (directly, or at the end of an alias chain)
-        tag_info = self.extract_cbor_tag(type_name) or self.extract_cbor_tag(resolved_name)
+        tag_info = query.tag(node) or query.tag(resolved)
         if tag_info:
             tag_num, inner_type = tag_info
-            logger.debug(f"  Extracted from tag notation: inner type = {inner_type}")
+            logger.debug(f"  Extracted from tag notation: inner type = {format_node(inner_type)}")
             return self._with_tag(self.get_type(inner_type, self._untag(cbor_data, tag_num)), tag_num)
-        
+
         # Try extracting .cbor control operator
-        cbor_control = self.extract_cbor_control(type_name)
+        cbor_control = query.cbor_control(node)
         if cbor_control:
             base_type, inner_type = cbor_control
-            logger.debug(f"  Extracted .cbor control: {base_type} containing {inner_type}")
+            logger.debug(f"  Extracted .cbor control: {base_type} containing {format_node(inner_type)}")
             # Return a synthetic type definition for bytes
             return {
                 'type': 'bstr',
                 'fields': {},
-                'cbor_inner_type': inner_type  # Store inner type for validation
+                'cbor_inner_type': inner_type  # Type node of the embedded item
             }
-        
-        # Check if type_name is an alias to CBOR tag notation
-        if type_name in self.type_aliases:
-            alias_value = self.type_aliases[type_name]
-            tag_info = self.extract_cbor_tag(alias_value)
-            if tag_info:
-                tag_num, inner_type = tag_info
-                logger.debug(f"  Type is alias to tag notation {tag_num}: inner type = {inner_type}")
-                return self._with_tag(self.get_type(inner_type, self._untag(cbor_data, tag_num)), tag_num)
 
         # If the name (or its resolved alias) is a known CDDL primitive there is
         # no structured type definition — that is correct and expected, not an error.
         _PRIMITIVES = {'uint', 'int', 'bool', 'nil', 'null', 'float', 'tstr', 'bstr', 'any'}
-        terminal = resolved_name if resolved_name != type_name else type_name
-        if query.head(terminal) in _PRIMITIVES:
-            logger.debug(f"  Resolved to primitive: {terminal}")
+        if query.head(resolved) in _PRIMITIVES:
+            logger.debug(f"  Resolved to primitive: {format_node(resolved)}")
             return None
 
-        logger.debug(f"  Type not found: {type_name}")
+        logger.debug(f"  Type not found: {label}")
         return None
     
     @staticmethod
@@ -1109,22 +1107,23 @@ class CBORAnalyzer:
             mismatch, ``True`` when a primitive root matches, and ``None`` when
             validation should continue on the structured-type path.
         """
-        name = type_name
+        node = as_type(type_name)
         value = data
         seen = set()
-        while name not in seen:
-            seen.add(name)
-            if name in self.cddl.type_choices or self._is_empty_socket(name):
+        while node not in seen:
+            seen.add(node)
+            name = bare_name(node)
+            if name in self.cddl.type_choices or self._is_empty_socket(node):
                 # '$s /= uint', '$s /= tstr': checked like a socket field
-                errors = self._check_value(value, name)
+                errors = self._check_value(value, node)
                 for error in errors:
                     self._report(f"Value does not match type '{type_name}': {error}")
                 return not errors
             if name in self.cddl.types:
                 return None
-            tag_info = self.cddl.extract_cbor_tag(name)
+            tag_info = query.tag(node)
             if tag_info:
-                expected_tag, name = tag_info[0], tag_info[1].strip()
+                expected_tag, node = tag_info
                 if not (isinstance(value, tuple) and len(value) == 2
                         and isinstance(value[0], int)):
                     self._report(
@@ -1140,21 +1139,20 @@ class CBORAnalyzer:
                     return False
                 value = value[1]
                 continue
-            stripped = name.strip()
             # Primitives (with controls), literals and inline choices are
             # checked by the same code as map fields and array elements.
-            first = query.head(stripped)
-            if (self._checked_as_whole(stripped)
-                    or self.cddl.resolve_type_alias(first) in self._ROOT_PRIMITIVES
-                    or self._literal_errors(value, stripped) is not None):
-                errors = self._check_value(value, stripped)
+            first = query.head(node)
+            if (self._checked_as_whole(node)
+                    or bare_name(self.cddl.resolve_alias(first)) in self._ROOT_PRIMITIVES
+                    or self._literal_errors(value, node) is not None):
+                errors = self._check_value(value, node)
                 for error in errors:
                     self._report(f"Value does not match type '{type_name}': {error}")
                 return not errors
-            next_name = self.cddl.type_aliases.get(name)
-            if next_name is None or next_name == name:
+            following = self.cddl.alias_node(name) if name is not None else None
+            if following is None or following == node:
                 return None
-            name = next_name
+            node = following
         return None
 
     def _validate_root(self, data: Any, type_name: str) -> bool:
@@ -1249,11 +1247,12 @@ class CBORAnalyzer:
                 logger.warning(f"Type '{type_name}' not found, attempting resolution...")
                 
                 # Try to provide helpful error message
-                resolved = self.cddl.resolve_type_alias(type_name)
-                if resolved != type_name:
+                resolved_node = self.cddl.resolve_alias(type_name)
+                resolved = format_node(resolved_node)
+                if resolved_node != as_type(type_name):
                     logger.info(f"Type '{type_name}' is an alias for '{resolved}'")
                     # It's an alias
-                    choices = self.cddl.type_choices.get(resolved)
+                    choices = self.cddl.type_choices.get(bare_name(resolved_node))
                     if choices:
                         logger.info(f"'{resolved}' is a type choice with alternatives: {choices}")
                         logger.info("Attempting to auto-resolve type choice...")
@@ -1367,7 +1366,8 @@ class CBORAnalyzer:
         
         # Check if this is a .cbor control type (bytes containing CBOR)
         if type_def.get('cbor_inner_type'):
-            inner_type = type_def['cbor_inner_type']
+            inner_node = type_def['cbor_inner_type']
+            inner_type = format_node(inner_node)
             logger.debug(f"{Colors.CDDL}[{breadcrumb}]{Colors.RESET} Type has .cbor control: contains {inner_type}")
             
             if not isinstance(data, bytes):
@@ -1384,7 +1384,7 @@ class CBORAnalyzer:
                 logger.debug(f"{Colors.MATCH}[{breadcrumb}]{Colors.RESET} Decoded nested CBOR successfully")
                 
                 # Validate the decoded data against the inner type
-                nested_type_def = self.cddl.get_type(inner_type, nested_data)
+                nested_type_def = self.cddl.get_type(inner_node, nested_data)
                 if nested_type_def:
                     logger.debug(f"{Colors.CDDL}[{breadcrumb}]{Colors.RESET} Validating nested CBOR against: {inner_type}")
                     self._push_breadcrumb("cbor")
@@ -1435,6 +1435,7 @@ class CBORAnalyzer:
                 field_name = field_info['name']
                 is_optional = field_info.get('optional', False)
                 field_type = field_info.get('type', 'unknown')
+                field_node = as_type(field_type) if field_type else None
                 
                 # Push field to breadcrumb
                 self._push_breadcrumb(field_name, step=key)
@@ -1452,10 +1453,10 @@ class CBORAnalyzer:
                     
                     # Check for .cbor control operator (bytes containing CBOR data)
                     # An inline choice ('bstr .cbor m / tstr') is checked as a whole below
-                    cbor_control = (self.cddl.extract_cbor_control(field_type)
-                                    if field_type and len(self._split_choice(field_type)) == 1 else None)
+                    cbor_control = query.cbor_control(field_node) if field_node else None
                     if cbor_control:
-                        base_type, inner_type = cbor_control
+                        base_type, inner_node = cbor_control
+                        inner_type = format_node(inner_node)
                         logger.debug(f"{Colors.CDDL}[{field_breadcrumb}]{Colors.RESET} Field has .cbor control: {base_type} .cbor {inner_type}")
                         
                         # Verify it's bytes
@@ -1472,14 +1473,14 @@ class CBORAnalyzer:
                                 logger.debug(f"{Colors.MATCH}[{field_breadcrumb}]{Colors.RESET} Decoded nested CBOR: {type(nested_data).__name__}")
                                 
                                 # Validate the decoded data against the inner type
-                                nested_type_def = self.cddl.get_type(inner_type, nested_data)
+                                nested_type_def = self.cddl.get_type(inner_node, nested_data)
                                 if nested_type_def:
                                     logger.debug(f"{Colors.CDDL}[{field_breadcrumb}]{Colors.RESET} Validating nested CBOR against: {inner_type}")
                                     with self._inside_embedded_cbor():
                                         self._validate_type(nested_data, nested_type_def, inner_type)
                                 else:
                                     # A primitive or other expression ('bstr .cbor uint')
-                                    for error in self._check_value(nested_data, inner_type):
+                                    for error in self._check_value(nested_data, inner_node):
                                         self._report(
                                             f"Embedded CBOR in field '{field_name}' of '{type_name}' "
                                             f"does not match '{inner_type}': {error}")
@@ -1488,7 +1489,11 @@ class CBORAnalyzer:
                                 self._report(f"Failed to decode nested CBOR in field '{field_name}': {e}")
                     
                     # Tagged primitive (``x: #6.1(uint)``): check the tag, then the value inside
-                    field_type, value, tag_error = self._peel_tagged_primitive(field_type, value)
+                    written_node = field_node
+                    field_node, value, tag_error = self._peel_tagged_primitive(field_node, value)
+                    # the type as text, for messages and for rule names
+                    field_type = (field_type if field_node is written_node
+                                  else format_node(field_node) if field_node else field_type)
                     if tag_error:
                         self._report(f"Field '{field_name}' in '{type_name}' {tag_error}")
                         self._pop_breadcrumb()
@@ -1496,11 +1501,11 @@ class CBORAnalyzer:
 
                     # field_type may contain user alias + annotation (e.g. 'my-text .size 16')
                     # Resolve alias first, then extract base type.
-                    _resolved = self.cddl.resolve_type_alias(field_type) if field_type else field_type
+                    _resolved = self.cddl.resolve_alias(field_node) if field_node else None
 
                     # Inline type choice ('c = uint / tstr', 'x: m / n'): any alternative may match
                     # (or a parenthesized type, whose controls apply to each alternative)
-                    if self._checked_as_whole(_resolved) or (_resolved or '').startswith('~'):  # '~m' (#106)
+                    if self._checked_as_whole(_resolved) or isinstance(query.base(_resolved), Unwrap):  # '~m' (#106)
                         for choice_error in self._check_value(value, _resolved):
                             self._report(
                                 f"Field '{field_name}' in '{type_name}' {choice_error}")
@@ -1558,7 +1563,7 @@ class CBORAnalyzer:
                         if not isinstance(value, float):
                             type_mismatch = True
                             logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected float, got {type(value).__name__}")
-                    elif field_type == 'tstr' or _base_type == 'tstr':
+                    elif (field_node and bare_name(field_node) == 'tstr') or _base_type == 'tstr':
                         if not isinstance(value, str):
                             type_mismatch = True
                             logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected tstr, got {type(value).__name__}")
@@ -1575,14 +1580,14 @@ class CBORAnalyzer:
                                     err_msg = f"Invalid .regexp pattern /{pattern}/ for field '{field_name}': {exc}"
                                     logger.error(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} {err_msg}")
                                     self._report(err_msg)
-                    elif field_type == 'bstr' or _base_type == 'bstr':
+                    elif (field_node and bare_name(field_node) == 'bstr') or _base_type == 'bstr':
                         if not isinstance(value, bytes):
                             type_mismatch = True
                             logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected bstr, got {type(value).__name__}")
 
-                    elif field_type and not field_type.startswith('$'):
+                    elif field_node and not self._is_dollar_type(field_node):
                         # It's a structured type - check basic structure
-                        nested_type_def = self.cddl.get_type(field_type)
+                        nested_type_def = self.cddl.get_type(field_node)
                         # Tagged rules are checked (tag, then structure) by _validate_type below
                         if nested_type_def and not nested_type_def.get('cbor_tags'):
                             if nested_type_def['type'] == 'map' and not isinstance(value, dict):
@@ -1605,19 +1610,19 @@ class CBORAnalyzer:
                                 f"Field '{field_name}' in '{type_name}' violates .size: {size_error}")
                     
                     # Recursively validate nested structures
-                    if field_type and field_type not in ['tstr', 'uint', 'int', 'bstr', 'bool', 'float', 'any']:
+                    if field_node and bare_name(field_node) not in ('tstr', 'uint', 'int', 'bstr', 'bool', 'float', 'any'):
                         # Check if field_type is an inline array definition: [ + type ] or [ * type ]
                         # Other inline arrays ('[ a, * b ]') are named types of
                         # their own (#133) and are checked as such.
-                        array_match = query.inline_array(field_type) or (
-                            ('', None) if query.is_array(field_type) else None)
+                        array_match = query.inline_array(field_node) or (
+                            ('', None) if query.is_array(field_node) else None)
                         if array_match:
                             # It's an inline array definition
                             # quantifier is '+', '*' or ''; element_type is None
                             # for an array with several entries
                             quantifier, element_type = array_match
                             
-                            logger.debug(f"{Colors.CDDL}[{field_breadcrumb}]{Colors.RESET} Field is inline array: [{quantifier} {element_type}]")
+                            logger.debug(f"{Colors.CDDL}[{field_breadcrumb}]{Colors.RESET} Field is inline array: [{quantifier} {format_node(element_type) if element_type else element_type}]")
                             
                             if not isinstance(value, (list, tuple)):
                                 logger.error(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Expected array, got {type(value).__name__}")
@@ -1640,26 +1645,27 @@ class CBORAnalyzer:
                                         continue
 
                                     # Check if element type is a type choice
-                                    if element_type.startswith('$') and not self._checked_as_whole(element_type):
-                                        logger.debug(f"{Colors.CDDL}[{item_breadcrumb}]{Colors.RESET} Element type is a choice: {element_type}")
-                                        selected_type = self.cddl.resolve_type_choice_for_data(element_type, item, validator=self)
+                                    if self._is_dollar_type(element_type) and not self._checked_as_whole(element_type):
+                                        element_text = format_node(element_type)
+                                        logger.debug(f"{Colors.CDDL}[{item_breadcrumb}]{Colors.RESET} Element type is a choice: {element_text}")
+                                        selected_type = self.cddl.resolve_type_choice_for_data(element_text, item, validator=self)
                                         if selected_type:
                                             logger.debug(f"{Colors.MATCH}[{item_breadcrumb}]{Colors.RESET} Resolved choice to: {selected_type}")
                                             nested_type_def = self.cddl.get_type(selected_type)
                                             if nested_type_def:
                                                 self._validate_type(item, nested_type_def, selected_type)
                                         else:
-                                            logger.warning(f"{Colors.WARNING}[{item_breadcrumb}]{Colors.RESET} Could not resolve type choice: {element_type}")
+                                            logger.warning(f"{Colors.WARNING}[{item_breadcrumb}]{Colors.RESET} Could not resolve type choice: {element_text}")
                                     else:
                                         # Regular element type: primitive (with .size) or named type
-                                        resolved_elem = self.cddl.resolve_type_alias(element_type)
+                                        resolved_elem = self.cddl.resolve_alias(element_type)
                                         if self._checked_as_whole(resolved_elem):
                                             for choice_error in self._check_value(item, resolved_elem):
                                                 self._report(
                                                     f"Element [{i}] of field '{field_name}' {choice_error}")
                                             self._pop_breadcrumb()
                                             continue
-                                        if self.cddl.extract_cbor_control(resolved_elem):
+                                        if query.cbor_control(resolved_elem):
                                             for cbor_error in self._check_value(item, resolved_elem):
                                                 self._report(
                                                     f"Element [{i}] of field '{field_name}' {cbor_error}")
@@ -1680,12 +1686,12 @@ class CBORAnalyzer:
                                         else:
                                             nested_type_def = self.cddl.get_type(element_type)
                                             if nested_type_def:
-                                                self._validate_type(item, nested_type_def, element_type)
+                                                self._validate_type(item, nested_type_def, format_node(element_type))
                                     
                                     self._pop_breadcrumb()
                         
                         # Check if field_type is a type choice
-                        elif field_type.startswith('$'):
+                        elif self._is_dollar_type(field_node):
                             # It's a type choice - need to resolve it
                             choice_name = field_type
                             logger.debug(f"{Colors.CDDL}[{field_breadcrumb}]{Colors.RESET} Field type is a choice: {choice_name}")
@@ -1702,7 +1708,7 @@ class CBORAnalyzer:
                                 logger.warning(f"{Colors.WARNING}[{field_breadcrumb}]{Colors.RESET} Could not resolve type choice: {choice_name}")
                         else:
                             # Regular type - try to get nested type definition
-                            nested_type_def = self.cddl.get_type(field_type)
+                            nested_type_def = self.cddl.get_type(field_node)
                             # 'bstr .cbor m' was checked above; checking again repeats its errors
                             if nested_type_def and not cbor_control:
                                 logger.debug(f"{Colors.CDDL}[{field_breadcrumb}]{Colors.RESET} Recursing into nested type: {field_type}")
@@ -1838,20 +1844,20 @@ class CBORAnalyzer:
                 # Check element type: per-index pattern takes precedence over repeating
                 elem_type = element_types.get(i) if i in element_types else repeating_type
                 if elem_type:
-                    elem_type, item, tag_error = self._peel_tagged_primitive(elem_type, item)
+                    elem_node, item, tag_error = self._peel_tagged_primitive(as_type(elem_type), item)
                     if tag_error:
                         self._report(f"Array element [{i}] of '{type_name}' {tag_error}")
                         self._pop_breadcrumb()
                         continue
                     # Resolve user alias first
-                    resolved_elem = self.cddl.resolve_type_alias(elem_type) if elem_type else elem_type
+                    resolved_elem = self.cddl.resolve_alias(elem_node)
                     if self._checked_as_whole(resolved_elem):
                         for choice_error in self._check_value(item, resolved_elem):
                             self._report(
                                 f"Array element [{i}] of '{type_name}' {choice_error}")
                         self._pop_breadcrumb()
                         continue
-                    if resolved_elem and self.cddl.extract_cbor_control(resolved_elem):
+                    if query.cbor_control(resolved_elem):
                         # 'bstr .cbor T': decode the bytes and check the item inside
                         for cbor_error in self._check_value(item, resolved_elem):
                             self._report(
@@ -1859,7 +1865,7 @@ class CBORAnalyzer:
                         self._pop_breadcrumb()
                         continue
                     # Extract base type and any .size constraint
-                    base_elem_type = query.head(resolved_elem) if resolved_elem else ''
+                    base_elem_type = query.head(resolved_elem)
                     size_constraint = self.cddl.extract_size_constraint(resolved_elem)
 
                     # Check primitive type first
@@ -1882,8 +1888,8 @@ class CBORAnalyzer:
                     elif elem_valid is None:
                         # Look up the rule by name first: a tagged rule resolves
                         # to '#6.n(...)', whose first token is not a type name.
-                        elem_name = elem_type
-                        nested_type_def = self.cddl.get_type(elem_type, item)
+                        elem_name = format_node(elem_node)
+                        nested_type_def = self.cddl.get_type(elem_node, item)
                         if not nested_type_def:
                             elem_name = base_elem_type
                             nested_type_def = self.cddl.get_type(base_elem_type, item)
@@ -1891,34 +1897,36 @@ class CBORAnalyzer:
                             logger.debug(f"{Colors.CDDL}[{item_breadcrumb}]{Colors.RESET} Recursing into nested type: {elem_name}")
                             self._validate_type(item, nested_type_def, elem_name)
                         else:
-                            logger.warning(f"{Colors.WARNING}[{item_breadcrumb}]{Colors.RESET} Unknown element type: {elem_type}")
+                            logger.warning(f"{Colors.WARNING}[{item_breadcrumb}]{Colors.RESET} Unknown element type: {format_node(elem_node)}")
 
                 self._pop_breadcrumb()
         
         return len(self.validation_errors) == 0
     
-    def _peel_tagged_primitive(self, type_str: str, value: Any) -> Tuple[str, Any, Optional[str]]:
+    def _peel_tagged_primitive(self, expr, value: Any) -> Tuple[Type, Any, Optional[str]]:
         """Strip the tags of a tagged primitive type such as ``#6.7(uint)``.
 
         Tagged structured types are checked by :meth:`_validate_type`; this
         covers tags around primitives, which have no type definition.
 
-        Returns ``(inner_type, inner_value, error)``. When *type_str* is not a
-        tagged primitive both are returned unchanged with ``error`` ``None``.
-        On a missing or wrong tag ``error`` describes it.
+        Returns ``(inner_type, inner_value, error)``, the type as a node. When
+        *expr* is not a tagged primitive the type is returned as it was (the
+        same object) with ``error`` ``None``. On a missing or wrong tag
+        ``error`` describes it.
         """
-        if not type_str or self.cddl.get_type(type_str) is not None:
-            return type_str, value, None
+        node = as_type(expr) if expr else expr
+        if not node or self.cddl.get_type(node) is not None:
+            return node, value, None
         while True:
-            tag_info = self.cddl.extract_cbor_tag(self.cddl.resolve_type_alias(type_str))
+            tag_info = query.tag(self.cddl.resolve_alias(node))
             if not tag_info:
-                return type_str, value, None
+                return node, value, None
             expected_tag, inner = tag_info
             if not self._is_tagged(value):
-                return type_str, value, f"requires CBOR tag {expected_tag}, but the data is not tagged"
+                return node, value, f"requires CBOR tag {expected_tag}, but the data is not tagged"
             if value[0] != expected_tag:
-                return type_str, value, f"requires CBOR tag {expected_tag}, got tag {value[0]}"
-            type_str, value = inner.strip(), value[1]
+                return node, value, f"requires CBOR tag {expected_tag}, got tag {value[0]}"
+            node, value = inner, value[1]
 
     @staticmethod
     def _split_choice(expr: str) -> List[str]:
@@ -2059,8 +2067,8 @@ class CBORAnalyzer:
         element, else an error naming the first element none gets past.
         """
         count = len(data)
-        fits: Dict[Tuple[int, str], bool] = {}
-        tried: Dict[int, List[Tuple[str, str]]] = {}
+        fits: Dict[Tuple[int, Type], bool] = {}
+        tried: Dict[int, List[Tuple[Type, str]]] = {}
         furthest = [0]
         # Ends found so far for a group reference being followed, by (reference,
         # positions), and those of them that were entered again meanwhile.
@@ -2100,17 +2108,17 @@ class CBORAnalyzer:
                 finally:
                     del approximate[visit]
                     reentered.discard(visit)
-            text = entry['type']
+            node = as_type(entry['type'])
             ends = set()
             for pos in starts:
                 if pos >= count:
                     continue
-                key = (pos, text)
+                key = (pos, node)
                 if key not in fits:
-                    errors = self._check_value(data[pos], text)
+                    errors = self._check_value(data[pos], node)
                     fits[key] = not errors
                     if errors:
-                        tried.setdefault(pos, []).append((text, errors[0]))
+                        tried.setdefault(pos, []).append((node, errors[0]))
                 if fits[key]:
                     ends.add(pos + 1)
                     furthest[0] = max(furthest[0], pos + 1)
@@ -2164,7 +2172,7 @@ class CBORAnalyzer:
             return (f"Array type '{type_name}' is missing element [{count}]: "
                     f"the array ends before its required entries")
         if index in tried:
-            reasons = '; '.join(f"{text}: {error}" for text, error in tried[index][:3])
+            reasons = '; '.join(f"{format_node(node)}: {error}" for node, error in tried[index][:3])
             return f"Array element [{index}] of '{type_name}' matches no entry ({reasons})"
         return f"Array type '{type_name}' has unexpected element [{index}]"
 
@@ -2480,6 +2488,12 @@ class CBORAnalyzer:
         return True
 
     @staticmethod
+    def _is_dollar_type(expr) -> bool:
+        """True for a type built on a ``$name`` (a socket or type choice), controls included."""
+        base = query.base(expr)
+        return isinstance(base, Name) and base.name.startswith('$')
+
+    @staticmethod
     def _is_socket(expr) -> bool:
         """True for a bare type socket name (``$name``)."""
         name = bare_name(as_type(expr))
@@ -2791,7 +2805,7 @@ class EDNGenerator:
                 type_def = self.cddl.get_type(type_name, inner_value)
                 if type_def and type_def.get('cbor_inner_type'):
                     # Decode nested CBOR and generate EDN for it
-                    inner_type = type_def['cbor_inner_type']
+                    inner_type = format_node(type_def['cbor_inner_type'])
                     if isinstance(inner_value, bytes):
                         try:
                             logger.debug(f"EDN: Decoding nested CBOR ({len(inner_value)} bytes) for type {inner_type}")
