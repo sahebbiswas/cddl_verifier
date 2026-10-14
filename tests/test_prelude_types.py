@@ -18,6 +18,7 @@ import unittest
 
 from cddl_verifier import validate
 from cddl_verifier._analyzer import CDDLParser
+from cddl_verifier.cbor import CBORTag
 
 B = 2**64  # the first value that needs a bignum
 
@@ -44,11 +45,11 @@ class TestTaggedTextTypes(PreludeTestCase):
 
     def test_uri(self):
         self.check_type("uri", [
-            ((32, "https://example.com"), True),
+            (CBORTag(32, "https://example.com"), True),
             ([1], False),                    # was accepted
             ("https://example.com", False),  # tag 32 is required
-            ((33, "https://example.com"), False),
-            ((32, b"https://example.com"), False),
+            (CBORTag(33, "https://example.com"), False),
+            (CBORTag(32, b"https://example.com"), False),
         ])
 
     def test_other_tagged_text(self):
@@ -59,16 +60,16 @@ class TestTaggedTextTypes(PreludeTestCase):
                                 ("mime-message", 36, "x")):
             with self.subTest(type=name):
                 self.check_type(name, [
-                    ((tag, text), True),
+                    (CBORTag(tag, text), True),
                     (text, False),
-                    ((tag, 5), False),
-                    ((tag + 100, text), False),
+                    (CBORTag(tag, 5), False),
+                    (CBORTag(tag + 100, text), False),
                 ])
 
     def test_encoded_cbor(self):
         self.check_type("encoded-cbor", [
-            ((24, b"\x01"), True),
-            ((24, "x"), False),
+            (CBORTag(24, b"\x01"), True),
+            (CBORTag(24, "x"), False),
             (b"\x01", False),
         ])
 
@@ -77,10 +78,10 @@ class TestTaggedTextTypes(PreludeTestCase):
                           ("cbor-any", 55799)):
             with self.subTest(type=name):
                 self.check_type(name, [
-                    ((tag, [1, "a"]), True),
-                    ((tag, 5), True),
+                    (CBORTag(tag, [1, "a"]), True),
+                    (CBORTag(tag, 5), True),
                     ([1, "a"], False),
-                    ((tag + 1, 5), False),
+                    (CBORTag(tag + 1, 5), False),
                 ])
 
 
@@ -97,21 +98,21 @@ class TestNumberTypes(PreludeTestCase):
 
     def test_time(self):
         self.check_type("time", [
-            ((1, 1700000000), True),
-            ((1, 1700000000.5), True),
+            (CBORTag(1, 1700000000), True),
+            (CBORTag(1, 1700000000.5), True),
             (1700000000, False),  # tag 1 is required
-            ((1, "2020"), False),
+            (CBORTag(1, "2020"), False),
         ])
 
     def test_decfrac_and_bigfloat(self):
         for name, tag in (("decfrac", 4), ("bigfloat", 5)):
             with self.subTest(type=name):
                 self.check_type(name, [
-                    ((tag, [-2, 27315]), True),
-                    ((tag, [-2, B]), True),      # the mantissa is an 'integer'
-                    ((tag, ["a", 1]), False),    # was accepted
-                    ((tag, [1, 1.5]), False),
-                    ((tag, 5), False),
+                    (CBORTag(tag, [-2, 27315]), True),
+                    (CBORTag(tag, [-2, B]), True),      # the mantissa is an 'integer'
+                    (CBORTag(tag, ["a", 1]), False),    # was accepted
+                    (CBORTag(tag, [1, 1.5]), False),
+                    (CBORTag(tag, 5), False),
                     ([-2, 27315], False),
                 ])
 
@@ -139,27 +140,27 @@ class TestIntegerTypes(PreludeTestCase):
     def test_biguint(self):
         self.check_type("biguint", [
             (B, True),
-            ((2, b"\x01"), True),   # a bignum that fits stays tagged
+            (CBORTag(2, b"\x01"), True),   # a bignum that fits stays tagged
             (B - 1, False),         # a uint
             (5, False),
             (-B - 1, False),
-            ((3, b"\x00"), False),
+            (CBORTag(3, b"\x00"), False),
         ])
 
     def test_bignint(self):
         self.check_type("bignint", [
             (-B - 1, True),
-            ((3, b"\x00"), True),
+            (CBORTag(3, b"\x00"), True),
             (-B, False),            # an nint
             (B, False),
-            ((2, b"\x01"), False),
+            (CBORTag(2, b"\x01"), False),
         ])
 
     def test_bigint(self):
         self.check_type("bigint", [
             (B, True),
             (-B - 1, True),
-            ((2, b"\x01"), True),
+            (CBORTag(2, b"\x01"), True),
             (5, False),
             (-5, False),
         ])
@@ -190,7 +191,7 @@ class TestSchemaRulesWin(PreludeTestCase):
     def test_schema_redefines_prelude_names(self):
         self.check([
             ("r = {o: uri}\nuri = tstr", {"o": "x"}, True),
-            ("r = {o: uri}\nuri = tstr", {"o": (32, "x")}, False),
+            ("r = {o: uri}\nuri = tstr", {"o": CBORTag(32, "x")}, False),
             ("r = {o: uri}\nuri = {a: 1}", {"o": {"a": 1}}, True),
             ("r = {o: decfrac}\ndecfrac = tstr", {"o": "x"}, True),
             ("r = {o: nint}\nnint = tstr", {"o": "x"}, True),
@@ -207,10 +208,10 @@ class TestSchemaRulesWin(PreludeTestCase):
         # while also using the prelude's 'decfrac'.
         schema = "r = {o: decfrac, p: decfrac@tag}\ndecfrac@tag = tstr"
         self.check([
-            (schema, {"o": (4, [1, 2]), "p": "x"}, True),
-            (schema, {"o": (4, [1, 2]), "p": [1, 2]}, False),
-            (schema, {"o": (4, "x"), "p": "x"}, False),
-            (schema, {"o": (4, ["a", 1]), "p": "x"}, False),
+            (schema, {"o": CBORTag(4, [1, 2]), "p": "x"}, True),
+            (schema, {"o": CBORTag(4, [1, 2]), "p": [1, 2]}, False),
+            (schema, {"o": CBORTag(4, "x"), "p": "x"}, False),
+            (schema, {"o": CBORTag(4, ["a", 1]), "p": "x"}, False),
         ])
 
 

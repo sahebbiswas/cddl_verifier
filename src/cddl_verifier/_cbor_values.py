@@ -1,7 +1,7 @@
 """Values for CBOR items Python has no type for, and the record of how an item was written.
 
 ``undefined`` and the other simple values decode to :data:`UNDEFINED` and
-:class:`CBORSimple` (#168).
+:class:`CBORSimple` (#168). A tag decodes to a :class:`CBORTag` (#78).
 
 The decoder keeps *how* an item was encoded only when asked (the validator
 does, #171): the additional information of its initial byte, which says the
@@ -80,6 +80,77 @@ class CBORSimple:
 
     def __reduce__(self):
         return (CBORSimple, (self.number,))
+
+
+class CBORTag:
+    """A tagged item (RFC 8949 section 3.4): tag number *tag* and the tagged *value*.
+
+    The decoder gives every tag as a ``CBORTag``, and the encoder writes one as
+    a tag. It is immutable and equal only to another ``CBORTag`` with the same
+    tag number and an equal value, so a plain two-element tuple, which Python
+    code also uses for an array, is never a tag.
+
+    Unpacking works: ``tag, value = CBORTag(1, 100)``.
+
+    Example:
+        >>> CBORTag(1, 1700000000)
+        CBORTag(1, 1700000000)
+        >>> encode(CBORTag(32, "https://example.com")).hex()[:4]
+        'd820'
+    """
+
+    __slots__ = ('tag', 'value')
+
+    def __init__(self, tag: int, value: Any):
+        """
+        Raises:
+            TypeError: *tag* is not an ``int`` (a ``bool`` is not).
+            ValueError: *tag* is outside 0 to 2**64 - 1.
+        """
+        if isinstance(tag, bool) or not isinstance(tag, int):
+            raise TypeError(f"a tag number is an int, not {type(tag).__name__}")
+        if not 0 <= tag < 2 ** 64:
+            raise ValueError(f"a tag number is 0 to 2**64 - 1, not {tag}")
+        object.__setattr__(self, 'tag', tag)
+        object.__setattr__(self, 'value', value)
+
+    def __setattr__(self, name, value):
+        raise AttributeError("CBORTag is immutable")
+
+    def __delattr__(self, name):
+        raise AttributeError("CBORTag is immutable")
+
+    def __eq__(self, other):
+        if isinstance(other, CBORTag):
+            return self.tag == other.tag and self.value == other.value
+        return NotImplemented
+
+    def __hash__(self):
+        return hash(('tag', self.tag, self.value))
+
+    def __iter__(self):
+        yield self.tag
+        yield self.value
+
+    def __repr__(self) -> str:
+        return f'CBORTag({self.tag!r}, {self.value!r})'
+
+    def __reduce__(self):
+        return (CBORTag, (self.tag, self.value))
+
+
+def tag_tuple_error(obj: Any) -> Optional[TypeError]:
+    """The error for a tuple shaped like the old tag form, or ``None``.
+
+    Before #78 a ``(tag, value)`` tuple was a tag, so ``(1, 2)`` could not be
+    an array of two integers. It is now neither: say which was meant.
+    """
+    if (isinstance(obj, tuple) and len(obj) == 2 and isinstance(obj[0], int)
+            and not isinstance(obj[0], bool) and obj[0] >= 0):
+        return TypeError(
+            f"{obj!r} is ambiguous: write CBORTag({obj[0]}, ...) for a tag, or use a list "
+            f"for an array (a (tag, value) tuple stopped being a tag in 0.24.0)")
+    return None
 
 
 def shortest_info(argument: int) -> int:

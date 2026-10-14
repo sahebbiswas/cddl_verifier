@@ -19,6 +19,7 @@ import unittest
 
 from cddl_verifier import validate
 from cddl_verifier.cbor import encode
+from cddl_verifier.cbor import CBORTag
 
 PAIR = "pair<A, B> = [A, B]\n"
 OPT = "opt<T> = T / nil\n"
@@ -34,7 +35,7 @@ class TestFieldArgument(unittest.TestCase):
         ("r = { o: bstr .cbor { a: uint } }", {"a": 1}, {"a": "x"}),
         ("r = { o: bstr .cbor [uint, tstr] }", [1, "a"], [1, 2]),
         ("r = { o: bstr .cbor [+ pair<uint, tstr>] }\n" + PAIR, [[1, "a"]], [[1, 2]]),
-        ("r = { o: bstr .cbor #6.7(pair<uint, tstr>) }\n" + PAIR, (7, [1, "a"]), (7, [1, 2])),
+        ("r = { o: bstr .cbor #6.7(pair<uint, tstr>) }\n" + PAIR, CBORTag(7, [1, "a"]), CBORTag(7, [1, 2])),
         ("r = { o: bstr .cbor [+ p] }\np = [uint, tstr]", [[1, "a"]], [[1, 2]]),
         ("r = { o: bstr .cbor [+ p] }\np = [uint, tstr]", [[1, "a"]], []),
         ("r = { o: bstr .cbor [* uint] }", [1, 2], [1, "x"]),

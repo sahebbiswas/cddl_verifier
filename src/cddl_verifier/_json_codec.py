@@ -27,7 +27,7 @@ import base64
 import math
 from typing import Any, Dict, List, Union
 from ._cbor import CBOR, CBORKey, cbor_encode, cbor_decode, map_key
-from ._cbor_values import UNDEFINED, CBORSimple
+from ._cbor_values import UNDEFINED, CBORSimple, CBORTag
 
 
 class CBORJSONEncoder(json.JSONEncoder):
@@ -63,10 +63,9 @@ class CBORJSONEncoder(json.JSONEncoder):
                 # Without typing, use base64 string directly
                 return base64.b64encode(obj).decode('ascii')
         
-        # Handle tagged values (tuple of tag_num, value)
-        # Check this BEFORE general tuple handling
-        if isinstance(obj, tuple) and len(obj) == 2 and isinstance(obj[0], int) and obj[0] >= 0:
-            tag_num, value = obj
+        # Handle tagged values
+        if isinstance(obj, CBORTag):
+            tag_num, value = obj.tag, obj.value
             if self.typed:
                 return {
                     "$cbor": "tag",
@@ -159,7 +158,7 @@ def _preprocess_for_json(obj: Any, typed: bool) -> Any:
     
     Converts:
     - bytes → base64 string or typed annotation
-    - tagged tuples → value or typed annotation
+    - CBORTag → value or typed annotation
     - nested structures recursively
     """
     if isinstance(obj, CBORKey):
@@ -176,10 +175,9 @@ def _preprocess_for_json(obj: Any, typed: bool) -> Any:
         else:
             return base64.b64encode(obj).decode('ascii')
     
-    # Handle tagged values (tag_num, value) tuples
-    if isinstance(obj, tuple) and len(obj) == 2 and isinstance(obj[0], int) and obj[0] >= 0:
-        
-        tag_num, value = obj
+    # Handle tagged values
+    if isinstance(obj, CBORTag):
+        tag_num, value = obj.tag, obj.value
         processed_value = _preprocess_for_json(value, typed)
         if typed:
             return {
@@ -311,7 +309,7 @@ def _process_cbor_annotations(obj: Any) -> Any:
     
     Converts:
         {"$cbor": "bytes", "$value": "base64"} → bytes
-        {"$cbor": "tag", "$tag": N, "$value": V} → (N, V)
+        {"$cbor": "tag", "$tag": N, "$value": V} → CBORTag(N, V)
         {"$cbor": "map", "$value": [[K, V], ...]} → {K: V, ...}
         {"$cbor": "undefined"} → UNDEFINED
         {"$cbor": "simple", "$value": N} → CBORSimple(N)
@@ -330,10 +328,12 @@ def _process_cbor_annotations(obj: Any) -> Any:
                 return base64.b64decode(obj["$value"])
             
             elif cbor_type == "tag" and "$tag" in obj and "$value" in obj:
-                # Create tagged value tuple
                 tag_num = obj["$tag"]
                 value = _process_cbor_annotations(obj["$value"])
-                return (tag_num, value)
+                try:
+                    return CBORTag(tag_num, value)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(f"Invalid $tag in a $cbor tag annotation: {exc}") from exc
             
             elif cbor_type == "map":
                 # [[key, value], ...]: a map whose keys are not all strings (#91)

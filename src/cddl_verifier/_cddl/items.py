@@ -13,7 +13,7 @@ Major Decoded value                               ``#M.N``
 3     ``str``                                     to 27 the width of its argument,
 4     ``list``                                    31 an indefinite length)
 5     ``dict``
-6     a ``(tag, item)`` tuple, or a bignum        ``N`` is the tag number
+6     a ``CBORTag``, or a bignum                  ``N`` is the tag number
 7     ``bool``, ``None``, ``float``,              20 ``false``, 21 ``true``, 22
       ``UNDEFINED``, ``CBORSimple``               ``null``, 23 ``undefined``, 25 to
                                                   27 a float of that width, else
@@ -32,7 +32,7 @@ For major types 6 and 7 the number is not additional information (RFC 9682):
 import struct
 from typing import Any, Optional
 
-from .._cbor_values import UNDEFINED, CBORSimple, head_info
+from .._cbor_values import UNDEFINED, CBORSimple, CBORTag, head_info
 
 MAJOR_NAMES = {0: 'unsigned integer', 1: 'negative integer', 2: 'byte string',
                3: 'text string', 4: 'array', 5: 'map', 6: 'tag', 7: 'float or simple value'}
@@ -43,9 +43,7 @@ _FLOAT_FORMATS = {25: '>e', 26: '>f'}
 
 def is_tag(value: Any) -> bool:
     """A decoded tag, or an integer too big for major type 0 or 1 (a bignum)."""
-    return (isinstance(value, tuple) and len(value) == 2
-            and isinstance(value[0], int) and not isinstance(value[0], bool)) \
-        or _is_bignum(value)
+    return isinstance(value, CBORTag) or _is_bignum(value)
 
 
 def tag_parts(value: Any):
@@ -58,8 +56,8 @@ def tag_parts(value: Any):
         magnitude = value if value >= 0 else -1 - value
         return (2 if value >= 0 else 3), magnitude.to_bytes((magnitude.bit_length() + 7) // 8,
                                                              'big')
-    if is_tag(value):
-        return value
+    if isinstance(value, CBORTag):
+        return value.tag, value.value
     return None
 
 
@@ -124,7 +122,7 @@ def _head_text(value: Any, found: Optional[int]) -> str:
 def _has_major(value: Any, major: int) -> bool:
     if major == 6:
         return is_tag(value)
-    if isinstance(value, tuple) and is_tag(value):
+    if isinstance(value, CBORTag):
         return False  # a tag is not the item inside it
     if major == 0:
         return isinstance(value, int) and not isinstance(value, bool) \

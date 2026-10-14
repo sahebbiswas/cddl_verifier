@@ -32,12 +32,18 @@ from ._cddl.resolve import resolve
 from ._version import __version__
 
 from ._cbor import CBOR, CBORDecodeError, CBORKey
-from ._cbor_values import UNDEFINED, CBORSimple
+from ._cbor_values import UNDEFINED, CBORSimple, CBORTag, tag_tuple_error
 from ._diagnostics import (MAX_HEX_BYTES, Diagnostic, _Finding, classify_message, diagnostic_of,
                            expected_and_found)
 
 
 _FLOAT_WIDTHS = {'float16': 25, 'float32': 26, 'float64': 27}
+
+
+def _tuple_hint(value: Any) -> str:
+    """What to add to "the data is not tagged" when *value* is a tuple shaped like the old tag."""
+    return (" (a (tag, value) tuple is not a tag: use CBORTag)"
+            if tag_tuple_error(value) is not None else "")
 
 
 # Compatibility wrapper for existing code that uses SimpleCBORDecoder
@@ -251,7 +257,7 @@ class CDDLParser:
             'float64': 'float64',
             'any': 'any',
             # Bignums decode to an int outside the 64-bit range, or to
-            # (tag, bytes) inside it; 'biguint' / 'bignint' check both (#99).
+            # a CBORTag of bytes inside it; 'biguint' / 'bignint' check both (#99).
             'biguint': 'biguint',
             'bignint': 'bignint',
         }
@@ -737,9 +743,8 @@ class CDDLParser:
     @staticmethod
     def _untag(cbor_data: Any, tag_num: int) -> Any:
         """Strip tag *tag_num* from decoded data if present (for choice resolution)."""
-        if (isinstance(cbor_data, tuple) and len(cbor_data) == 2
-                and cbor_data[0] == tag_num):
-            return cbor_data[1]
+        if isinstance(cbor_data, CBORTag) and cbor_data.tag == tag_num:
+            return cbor_data.value
         return cbor_data
 
     def get_field_name(self, type_name: str, key: Any) -> Optional[str]:
@@ -816,7 +821,7 @@ def _cbor_type_name(value: Any) -> str:
     if isinstance(value, dict):
         return 'map'
     if CBORAnalyzer._is_tagged(value):
-        return f'tag {value[0]}'
+        return f'tag {value.tag}'
     if isinstance(value, (list, tuple)):
         return 'array'
     return type(value).__name__
@@ -1153,26 +1158,25 @@ class CBORAnalyzer:
             tag_info = query.tag(node)
             if tag_info:
                 expected_tag, node = tag_info
-                if not (isinstance(value, tuple) and len(value) == 2
-                        and isinstance(value[0], int)):
+                if not isinstance(value, CBORTag):
                     self._report(
                         f"Type '{type_name}' requires CBOR tag {expected_tag}, "
-                        f"but the data is not tagged", 'tag', expected=f"tag {expected_tag}",
+                        f"but the data is not tagged{_tuple_hint(value)}", 'tag', expected=f"tag {expected_tag}",
                         actual=_describe_value(value), rule=type_name)
                     return False
-                if value[0] != expected_tag:
+                if value.tag != expected_tag:
                     self._report(
                         f"Type '{type_name}' requires CBOR tag {expected_tag}, "
-                        f"got tag {value[0]}", 'tag', expected=f"tag {expected_tag}",
-                        actual=f"tag {value[0]}", rule=type_name)
+                        f"got tag {value.tag}", 'tag', expected=f"tag {expected_tag}",
+                        actual=f"tag {value.tag}", rule=type_name)
                     return False
-                content_error = tagcontent.content_error(expected_tag, value[1])
+                content_error = tagcontent.content_error(expected_tag, value.value)
                 if content_error:
                     self._report(f"Type '{type_name}': {content_error}", 'tag',
                                  expected=f"valid tag {expected_tag} content",
-                                 actual=_describe_value(value[1]), rule=type_name)
+                                 actual=_describe_value(value.value), rule=type_name)
                     return False
-                value = value[1]
+                value = value.value
                 continue
             # Primitives (with controls), literals and inline choices are
             # checked by the same code as map fields and array elements.
@@ -1221,7 +1225,7 @@ class CBORAnalyzer:
 
         Args:
             data:       Decoded CBOR data (``dict``, ``list``, scalar, or
-                        tagged ``(tag_num, value)`` tuple).
+                        a :class:`CBORTag`).
             type_name:  Root CDDL type name.  If ``None`` the call returns
                         ``True`` immediately (no-op).
             cbor_bytes: Optional raw CBOR bytes used only for offset
@@ -1337,9 +1341,8 @@ class CBORAnalyzer:
     
     @staticmethod
     def _is_tagged(data: Any) -> bool:
-        """True for a decoded CBOR tag, which is a ``(tag_number, value)`` tuple."""
-        return (isinstance(data, tuple) and len(data) == 2
-                and isinstance(data[0], int) and not isinstance(data[0], bool))
+        """True for a decoded CBOR tag, which is a :class:`CBORTag`."""
+        return isinstance(data, CBORTag)
 
     def _validate_type(self, data: Any, type_def: Dict, type_name: str, cbor_offset: int = None) -> bool:
         """Validate data against a specific type definition (see :meth:`_validate_type_checked`)."""
@@ -1367,33 +1370,33 @@ class CBORAnalyzer:
         for expected_tag in type_def.get('cbor_tags', ()):
             if not self._is_tagged(data):
                 error_msg = (f"Type '{type_name}' requires CBOR tag {expected_tag}, "
-                             f"but the data is not tagged")
+                             f"but the data is not tagged{_tuple_hint(data)}")
                 logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
                 self._report(error_msg, 'tag', expected=f"tag {expected_tag}",
                              actual=_describe_value(data))
                 return False
-            if data[0] != expected_tag:
+            if data.tag != expected_tag:
                 error_msg = (f"Type '{type_name}' requires CBOR tag {expected_tag}, "
-                             f"got tag {data[0]}")
+                             f"got tag {data.tag}")
                 logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
                 self._report(error_msg, 'tag', expected=f"tag {expected_tag}",
-                             actual=f"tag {data[0]}")
+                             actual=f"tag {data.tag}")
                 return False
-            content_error = tagcontent.content_error(expected_tag, data[1])
+            content_error = tagcontent.content_error(expected_tag, data.value)
             if content_error:
                 error_msg = f"Type '{type_name}': {content_error}"
                 logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
                 self._report(error_msg, 'tag', expected=f"valid tag {expected_tag} content",
-                             actual=_describe_value(data[1]))
+                             actual=_describe_value(data.value))
                 return False
-            data = data[1]
+            data = data.value
             logger.debug(f"{Colors.CBOR}[{breadcrumb}] Unwrapped expected CBOR tag {expected_tag}{Colors.RESET}")
         if self._is_tagged(data):
             error_msg = (f"Type '{type_name}' expects an untagged {type_def.get('type', 'value')}, "
-                         f"but the data has CBOR tag {data[0]}")
+                         f"but the data has CBOR tag {data.tag}")
             logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
             self._report(error_msg, 'tag', expected=f"untagged {type_def.get('type', 'value')}",
-                         actual=f"tag {data[0]}")
+                         actual=f"tag {data.tag}")
             return False
         
         logger.debug(f"{offset_str}{Colors.CDDL}[{breadcrumb}]{Colors.RESET} Validating type '{type_name}'")
@@ -1963,13 +1966,13 @@ class CBORAnalyzer:
                 return node, value, None
             expected_tag, inner = tag_info
             if not self._is_tagged(value):
-                return node, value, f"requires CBOR tag {expected_tag}, but the data is not tagged"
-            if value[0] != expected_tag:
-                return node, value, f"requires CBOR tag {expected_tag}, got tag {value[0]}"
-            content_error = tagcontent.content_error(expected_tag, value[1])
+                return node, value, f"requires CBOR tag {expected_tag}, but the data is not tagged{_tuple_hint(value)}"
+            if value.tag != expected_tag:
+                return node, value, f"requires CBOR tag {expected_tag}, got tag {value.tag}"
+            content_error = tagcontent.content_error(expected_tag, value.value)
             if content_error:
                 return node, value, content_error
-            node, value = inner, value[1]
+            node, value = inner, value.value
 
     def _bound_literal(self, bound) -> Optional[Any]:
         """The ``IntLit``/``FloatLit`` a range bound stands for, following names."""
@@ -2322,13 +2325,13 @@ class CBORAnalyzer:
         if tag_info:
             expected_tag, inner = tag_info
             if not self._is_tagged(value):
-                return [f"requires CBOR tag {expected_tag}, but the data is not tagged"]
-            if value[0] != expected_tag:
-                return [f"requires CBOR tag {expected_tag}, got tag {value[0]}"]
-            content_error = tagcontent.content_error(expected_tag, value[1])
+                return [f"requires CBOR tag {expected_tag}, but the data is not tagged{_tuple_hint(value)}"]
+            if value.tag != expected_tag:
+                return [f"requires CBOR tag {expected_tag}, got tag {value.tag}"]
+            content_error = tagcontent.content_error(expected_tag, value.value)
             if content_error:
                 return [content_error]
-            return self._check_value(value[1], inner, _depth + 1, strict)
+            return self._check_value(value.value, inner, _depth + 1, strict)
 
         item = query.item_ref(expr)
         if item is not None:  # '#', '#1', '#7.25', '#6.<uint>(tstr)' (#167)
@@ -2706,11 +2709,11 @@ class CBORAnalyzer:
                 return False
             return -2**64 <= value < 0
         if t in ('biguint', 'bignint'):
-            # '#6.2(bstr)' / '#6.3(bstr)': in-range bignums stay (tag, bytes);
+            # '#6.2(bstr)' / '#6.3(bstr)': in-range bignums stay a CBORTag of bytes;
             # the decoder turns out-of-range ones into ints
             tag_num = 2 if t == 'biguint' else 3
             if self._is_tagged(value):
-                return value[0] == tag_num and isinstance(value[1], bytes)
+                return value.tag == tag_num and isinstance(value.value, bytes)
             if not isinstance(value, int) or isinstance(value, bool):
                 return False
             return value >= 2**64 if t == 'biguint' else value < -2**64
@@ -2833,7 +2836,7 @@ class EDNGenerator:
 
         Args:
             data:       Decoded CBOR data — ``dict``, ``list``, scalar, bytes,
-                        or a ``(tag_num, value)`` tuple for tagged items.
+                        or a :class:`CBORTag` for tagged items.
             type_name:  Root CDDL type name used to look up field annotations.
                         Pass ``None`` to generate plain unannotated EDN.
             annotate:   When ``False``, suppress all field-name comments.
@@ -2882,10 +2885,10 @@ class EDNGenerator:
                                  f"{_text_of(resolved)} -> {_text_of(final_resolved)}")
                     type_name = final_resolved
         
-        # Handle CBOR tagged tuples (tag_num, value)
-        if isinstance(value, tuple) and len(value) == 2 and isinstance(value[0], int):
-            tag_num = value[0]
-            inner_value = value[1]
+        # Handle CBOR tags
+        if isinstance(value, CBORTag):
+            tag_num = value.tag
+            inner_value = value.value
             
             # Determine the actual tag type name and inner type name
             # If type_name is a tagged type definition, extract the inner type
@@ -3176,10 +3179,8 @@ class EDNGenerator:
             # For inline arrays with type choices, resolve the type for each element
             if resolved_element_type is not None and _is_dollar_type(resolved_element_type):
                 # It's a type choice - need to resolve it
-                # Unwrap tagged tuple for type resolution
+                # A tag stays a CBORTag for type resolution (tag matching)
                 resolution_data = value
-                if isinstance(value, tuple) and len(value) == 2 and isinstance(value[0], int):
-                    resolution_data = value  # Keep tuple for tag matching
                 
                 # Try to resolve the type choice based on the actual data
                 resolved = self.cddl.resolve_type_choice_for_data(resolved_element_type, resolution_data)

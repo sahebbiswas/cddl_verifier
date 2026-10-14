@@ -25,6 +25,7 @@ from cddl_verifier._cbor import CBOR, CBORKey, CBORTruncatedError, CBORUnsupport
 from cddl_verifier._cbor_values import UNDEFINED, CBORSimple, head_info
 from cddl_verifier._json_codec import cbor_to_json, json_to_cbor
 from cddl_verifier.cbor import decode, diag_dump, encode
+from cddl_verifier.cbor import CBORTag
 
 HEX = bytes.fromhex
 
@@ -211,7 +212,7 @@ class TestKeptEncoding(unittest.TestCase):
                             ([1, 2], 2), ({}, 0), (b"a" * 24, 24), ("é", 2)]:
             with self.subTest(value=value):
                 self.assertEqual(head_info(value), info)
-        for value in (1.5, True, None, 2 ** 70, UNDEFINED, (1, "a")):
+        for value in (1.5, True, None, 2 ** 70, UNDEFINED, CBORTag(1, "a")):
             with self.subTest(value=value):
                 self.assertIsNone(head_info(value))
 

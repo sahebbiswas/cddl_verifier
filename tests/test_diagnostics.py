@@ -21,6 +21,7 @@ from cddl_verifier import (CBORDecodeError, Diagnostic, ValidationResult, Valida
                            render_json, render_text, validate)
 from cddl_verifier._cbor import CBOR, MAX_LOCATION_STEPS, CBORKey
 from cddl_verifier._diagnostics import CATEGORIES, MAX_HEX_BYTES, SEVERITIES
+from cddl_verifier.cbor import CBORTag
 
 SCHEMA = """\
 measurement = {
@@ -179,7 +180,7 @@ class TestDiagnosticFields(unittest.TestCase):
         self.assertEqual(diag.category, "tag")
         self.assertEqual(diag.expected, "tag 501")
         self.assertEqual(diag.actual, "map")
-        wrong = validate(schema, cbor.encode((7, {0: "a"}))).diagnostics[0]
+        wrong = validate(schema, cbor.encode(CBORTag(7, {0: "a"}))).diagnostics[0]
         self.assertEqual((wrong.category, wrong.actual), ("tag", "tag 7"))
 
     def test_root_type_mismatch(self):

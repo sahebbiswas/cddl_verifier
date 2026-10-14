@@ -22,6 +22,7 @@ import unittest
 from cddl_verifier import Validator, validate
 from cddl_verifier._analyzer import CDDLParser
 from ._tables import as_text
+from cddl_verifier.cbor import CBORTag
 
 SCHEMAS = Path(__file__).resolve().parent.parent / "cddl-schemas"
 
@@ -147,14 +148,14 @@ class TestInlineMaps(unittest.TestCase):
         self.assertTrue(validate("r = [ + { d: tstr } ]", [{"d": "x"}]).valid)
         self.assertFalse(validate("r = { a: { b: int } / tstr }", {"a": {"b": "x"}}).valid)
         self.assertTrue(validate("r = { a: { b: int } / tstr }", {"a": "x"}).valid)
-        self.assertTrue(validate("r = { t: #6.9({ x: int }) }", {"t": (9, {"x": 1})}).valid)
-        self.assertFalse(validate("r = { t: #6.9({ x: int }) }", {"t": (9, {"x": "y"})}).valid)
-        self.assertFalse(validate("r = { t: #6.9({ x: int }) }", {"t": (8, {"x": 1})}).valid)
+        self.assertTrue(validate("r = { t: #6.9({ x: int }) }", {"t": CBORTag(9, {"x": 1})}).valid)
+        self.assertFalse(validate("r = { t: #6.9({ x: int }) }", {"t": CBORTag(9, {"x": "y"})}).valid)
+        self.assertFalse(validate("r = { t: #6.9({ x: int }) }", {"t": CBORTag(8, {"x": 1})}).valid)
 
     def test_tagged_structure_rule(self):
         schema = "m = #6.563([ value: bytes, mask: bytes ])"
-        self.assertTrue(validate(schema, (563, [b"a", b"b"])).valid)
-        self.assertFalse(validate(schema, (563, [b"a", 1])).valid)
+        self.assertTrue(validate(schema, CBORTag(563, [b"a", b"b"])).valid)
+        self.assertFalse(validate(schema, CBORTag(563, [b"a", 1])).valid)
         self.assertFalse(validate(schema, [b"a", b"b"]).valid)
 
     def test_synthetic_names(self):

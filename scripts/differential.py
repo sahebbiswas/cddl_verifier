@@ -47,7 +47,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from cddl_verifier import SchemaError, Validator  # noqa: E402
 from cddl_verifier import cbor  # noqa: E402
 from cddl_verifier._cbor import map_key  # noqa: E402
-from cddl_verifier._cbor_values import UNDEFINED, CBORSimple  # noqa: E402
+from cddl_verifier._cbor_values import UNDEFINED, CBORSimple, CBORTag  # noqa: E402
 
 MATRIX = ROOT / "docs" / "conformance.json"
 RECORD = ROOT / "docs" / "divergences.json"
@@ -100,7 +100,7 @@ def probe_value(node):
         if "$float" in node:
             return float(node["$float"])
         if "$tag" in node:
-            return (node["$tag"], probe_value(node["$value"]))
+            return CBORTag(node["$tag"], probe_value(node["$value"]))
         if "$map" in node:
             return {map_key(probe_value(k)): probe_value(v) for k, v in node["$map"]}
         raise ValueError(f"unknown probe value {node!r}")
@@ -149,11 +149,11 @@ def mutants(value):
                 if _kind_of(other) != _kind_of(value[key]):
                     add({**value, key: other})
         add({**value, 99999: 0})
-    elif isinstance(value, tuple) and len(value) == 2 and isinstance(value[0], int):
-        add(value[1])
-        add((value[0] + 1, value[1]))
-        for inner in mutants(value[1])[:4]:
-            add((value[0], inner))
+    elif isinstance(value, CBORTag):
+        add(value.value)
+        add(CBORTag(value.tag + 1, value.value))
+        for inner in mutants(value.value)[:4]:
+            add(CBORTag(value.tag, inner))
     return seen
 
 
@@ -344,9 +344,9 @@ def shrinks(value):
                 for smaller in shrinks(key):
                     if isinstance(smaller, (int, str, bytes)) and smaller not in value:
                         out.append({(smaller if k == key else k): v for k, v in value.items()})
-    elif isinstance(value, tuple) and len(value) == 2 and isinstance(value[0], int):
-        out.append(value[1])
-        out += [(value[0], s) for s in shrinks(value[1])]
+    elif isinstance(value, CBORTag):
+        out.append(value.value)
+        out += [CBORTag(value.tag, s) for s in shrinks(value.value)]
     elif isinstance(value, str) and value:
         out.append("")
     elif isinstance(value, bytes) and value:

@@ -21,6 +21,7 @@ import struct
 import unittest
 
 from cddl_verifier._cbor import cbor_decode, cbor_encode
+from cddl_verifier.cbor import CBORTag
 
 # RFC 8949 Appendix A: integers
 RFC8949_INTEGERS = [
@@ -69,13 +70,13 @@ RFC8949_OTHER = [
     (False, "f4"),
     (True, "f5"),
     (None, "f6"),
-    ((0, "2013-03-21T20:04:00Z"),
+    (CBORTag(0, "2013-03-21T20:04:00Z"),
      "c074323031332d30332d32315432303a30343a30305a"),
-    ((1, 1363896240), "c11a514b67b0"),
-    ((1, 1363896240.5), "c1fb41d452d9ec200000"),
-    ((23, b"\x01\x02\x03\x04"), "d74401020304"),
-    ((24, b"dIETF"), "d818456449455446"),
-    ((32, "http://www.example.com"),
+    (CBORTag(1, 1363896240), "c11a514b67b0"),
+    (CBORTag(1, 1363896240.5), "c1fb41d452d9ec200000"),
+    (CBORTag(23, b"\x01\x02\x03\x04"), "d74401020304"),
+    (CBORTag(24, b"dIETF"), "d818456449455446"),
+    (CBORTag(32, "http://www.example.com"),
      "d82076687474703a2f2f7777772e6578616d706c652e636f6d"),
     (b"", "40"),
     (b"\x01\x02\x03\x04", "4401020304"),
@@ -223,16 +224,16 @@ class TestBignumDecoding(unittest.TestCase):
 
     def test_in_range_bignum_stays_tagged(self):
         # 5 as a bignum is not a major type 0 integer; keep it distinguishable
-        for hex_in, expected in (("c24105", (2, b"\x05")),
-                                 ("c3420000", (3, b"\x00\x00")),
-                                 ("c24900ffffffffffffffff", (2, b"\x00" + b"\xff" * 8))):
+        for hex_in, expected in (("c24105", CBORTag(2, b"\x05")),
+                                 ("c3420000", CBORTag(3, b"\x00\x00")),
+                                 ("c24900ffffffffffffffff", CBORTag(2, b"\x00" + b"\xff" * 8))):
             with self.subTest(hex_in=hex_in):
                 decoded = cbor_decode(bytes.fromhex(hex_in))
                 self.assertEqual(decoded, expected)
                 self.assertEqual(cbor_encode(decoded).hex(), hex_in)
 
     def test_tag_2_with_non_bytes_stays_tagged(self):
-        self.assertEqual(cbor_decode(bytes.fromhex("c201")), (2, 1))
+        self.assertEqual(cbor_decode(bytes.fromhex("c201")), CBORTag(2, 1))
 
     def test_out_of_range_ints_do_not_validate_as_uint_or_int(self):
         from cddl_verifier import validate

@@ -26,6 +26,7 @@ from cddl_verifier._cddl.printer import format_node  # noqa: E402
 from cddl_verifier._cddl.typeexpr import as_type  # noqa: E402
 
 from .test_type_nodes import schemas  # noqa: E402
+from cddl_verifier.cbor import CBORTag
 
 SCHEMA = """
 root = #6.7(inner)
@@ -111,14 +112,14 @@ class PeelTags(Quiet):
         self.assertEqual((value, error), (5, None))
 
     def test_a_tagged_primitive_is_peeled_to_a_node(self):
-        peeled, value, error = self.analyzer._peel_tagged_primitive("alias", (9, 5))
+        peeled, value, error = self.analyzer._peel_tagged_primitive("alias", CBORTag(9, 5))
         self.assertIsInstance(peeled, Type)
         self.assertEqual((format_node(peeled), value, error), ("n", 5, None))
 
     def test_a_missing_or_wrong_tag_is_described(self):
         _, _, error = self.analyzer._peel_tagged_primitive(as_type("alias"), 5)
         self.assertIn("not tagged", error)
-        _, _, error = self.analyzer._peel_tagged_primitive(as_type("alias"), (8, 5))
+        _, _, error = self.analyzer._peel_tagged_primitive(as_type("alias"), CBORTag(8, 5))
         self.assertIn("got tag 8", error)
 
 
@@ -128,11 +129,11 @@ class Validation(Quiet):
         return analyzer.validate(data, name), analyzer.get_errors()
 
     def test_roots_through_aliases_and_tags(self):
-        self.assertEqual(self.check((9, 5), "alias"), (True, []))
-        ok, errors = self.check((8, 5), "alias")
+        self.assertEqual(self.check(CBORTag(9, 5), "alias"), (True, []))
+        ok, errors = self.check(CBORTag(8, 5), "alias")
         self.assertFalse(ok)
         self.assertIn("requires CBOR tag 9", errors[0])
-        self.assertEqual(self.check((7, {1: "x"}), "root"), (True, []))
+        self.assertEqual(self.check(CBORTag(7, {1: "x"}), "root"), (True, []))
 
     def test_an_unknown_root_is_reported_by_name(self):
         ok, errors = self.check(1, "nope")

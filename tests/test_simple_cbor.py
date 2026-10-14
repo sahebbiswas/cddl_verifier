@@ -25,6 +25,7 @@ from cddl_verifier._cbor import (
     cbor_decode,
     cbor_diag_dump
 )
+from cddl_verifier.cbor import CBORTag
 
 
 class TestCBOREncoding(unittest.TestCase):
@@ -120,11 +121,11 @@ class TestCBOREncoding(unittest.TestCase):
     def test_encode_tagged_value(self):
         """Test encoding tagged values"""
         # Tag 32 (URI)
-        result = cbor_encode((32, "http://example.com"))
+        result = cbor_encode(CBORTag(32, "http://example.com"))
         self.assertTrue(result.startswith(b'\xd8\x20'))  # Tag 32
         
         # Tag 501 (CoRIM)
-        result = cbor_encode((501, {0: "test"}))
+        result = cbor_encode(CBORTag(501, {0: "test"}))
         self.assertTrue(result.startswith(b'\xd9\x01\xf5'))  # Tag 501
     
     def test_encode_bool(self):
@@ -200,11 +201,11 @@ class TestCBORDecoding(unittest.TestCase):
         """Test decoding tagged values"""
         # Tag 32 with string
         result = cbor_decode(b'\xd8\x20\x65hello')
-        self.assertEqual(result, (32, 'hello'))
+        self.assertEqual(result, CBORTag(32, 'hello'))
         
         # Tag 501 with map
         result = cbor_decode(b'\xd9\x01\xf5\xa1\x00\x01')
-        self.assertEqual(result, (501, {0: 1}))
+        self.assertEqual(result, CBORTag(501, {0: 1}))
     
     def test_decode_bool(self):
         """Test decoding booleans"""
@@ -301,7 +302,7 @@ class TestRoundTrip(unittest.TestCase):
                 1: False,
                 2: None
             },
-            3: (32, "http://example.com")  # Tagged value
+            3: CBORTag(32, "http://example.com")  # Tagged value
         }
         
         encoded = cbor_encode(data)
@@ -366,7 +367,7 @@ class TestDiagnosticDump(unittest.TestCase):
     
     def test_dump_tagged_value(self):
         """Test diagnostic dump of tagged value"""
-        data = cbor_encode((32, "http://example.com"))
+        data = cbor_encode(CBORTag(32, "http://example.com"))
         dump = cbor_diag_dump(data)
         
         self.assertIn('tag(32)', dump)
@@ -753,14 +754,14 @@ class TestUnhashableKeys(unittest.TestCase):
         """Test map with a tagged array as a key"""
         # { 1([1]): 2 } -- tag decodes to (1, [1]), kept whole in a CBORKey
         cbor_data = bytes([0xa1, 0xc1, 0x81, 0x01, 0x02])
-        self.assertEqual(cbor_decode(cbor_data), {CBORKey((1, [1])): 2})
+        self.assertEqual(cbor_decode(cbor_data), {CBORKey(CBORTag(1, [1])): 2})
 
     def test_array_and_tag_keys_stay_distinct(self):
         """An array key and a tag key with the same content are different keys (#88)"""
         # { [1, [2]]: 0, 1([2]): 1 }
         cbor_data = bytes([0xa2, 0x82, 0x01, 0x81, 0x02, 0x00, 0xc1, 0x81, 0x02, 0x01])
         decoded = cbor_decode(cbor_data)
-        self.assertEqual(decoded, {CBORKey([1, [2]]): 0, CBORKey((1, [2])): 1})
+        self.assertEqual(decoded, {CBORKey([1, [2]]): 0, CBORKey(CBORTag(1, [2])): 1})
         self.assertEqual(cbor_encode(decoded), cbor_data)
 
     def test_equivalent_dict_keys_with_mixed_types(self):

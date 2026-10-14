@@ -28,6 +28,7 @@ from cddl_verifier._json_codec import (
     cbor_to_json, json_to_cbor, 
     CBORJSONEncoder, _process_cbor_annotations
 )
+from cddl_verifier.cbor import CBORTag
 
 
 class TestCanonicalEncoding(unittest.TestCase):
@@ -206,7 +207,7 @@ class TestJSONToCBOR(unittest.TestCase):
         cbor_bytes = json_to_cbor(json_str)
         decoded = cbor_decode(cbor_bytes)
         
-        self.assertEqual(decoded, {"uri": (32, "http://example.com")})
+        self.assertEqual(decoded, {"uri": CBORTag(32, "http://example.com")})
     
     def test_canonical_from_json(self):
         """Test canonical encoding from JSON"""
@@ -256,7 +257,7 @@ class TestCBORToJSON(unittest.TestCase):
     
     def test_tagged_value_without_typing(self):
         """Test tagged value conversion without type preservation"""
-        data = {"uri": (32, "http://example.com")}
+        data = {"uri": CBORTag(32, "http://example.com")}
         cbor_bytes = cbor_encode(data)
         json_str = cbor_to_json(cbor_bytes, typed=False)
         
@@ -266,7 +267,7 @@ class TestCBORToJSON(unittest.TestCase):
     
     def test_tagged_value_with_typing(self):
         """Test tagged value conversion with type preservation"""
-        data = {"uri": (32, "http://example.com")}
+        data = {"uri": CBORTag(32, "http://example.com")}
         cbor_bytes = cbor_encode(data)
         json_str = cbor_to_json(cbor_bytes, typed=True)
         
@@ -315,7 +316,7 @@ class TestRoundTrip(unittest.TestCase):
         original_data = {
             "text": "hello",
             "bytes": b'\x01\x02\x03',
-            "tag": (32, "http://example.com"),
+            "tag": CBORTag(32, "http://example.com"),
         }
         
         # Encode to CBOR

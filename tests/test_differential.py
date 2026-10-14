@@ -24,6 +24,7 @@ except ImportError:
     sys.path.insert(0, str(ROOT / "src"))
 
 from cddl_verifier import Validator, cbor
+from cddl_verifier.cbor import CBORTag
 
 
 def load_tool():
@@ -146,7 +147,7 @@ class Tools(Quiet):
     def test_mutants_of_maps_and_tags(self):
         self.assertIn({}, tool.mutants({1: 2}))
         self.assertIn({1: 2, 99999: 0}, tool.mutants({1: 2}))
-        self.assertIn(5, tool.mutants((6, 5)))
+        self.assertIn(5, tool.mutants(CBORTag(6, 5)))
 
     def test_shrinks_are_smaller_and_end(self):
         value = {1: [1, "abc"], 2: 300}

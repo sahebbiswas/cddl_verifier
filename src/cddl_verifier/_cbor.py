@@ -34,8 +34,8 @@ import struct
 import copy as copy_module
 from typing import Any, Union, Tuple, Dict, List, Optional
 
-from ._cbor_values import (INDEFINITE, UNDEFINED, CBORSimple, CBORUndefined, head_info,
-                           shortest_info, with_info)
+from ._cbor_values import (INDEFINITE, UNDEFINED, CBORSimple, CBORTag, CBORUndefined, head_info,
+                           shortest_info, tag_tuple_error, with_info)
 from ._version import __version__
 
 # CBOR Major Type Constants (RFC 8949)
@@ -103,12 +103,6 @@ class CBORUnsupportedError(CBORDecodeError, NotImplementedError):
 # MAP KEYS
 # ============================================================================
 
-def _is_tag(obj: Any) -> bool:
-    """True for a ``(tag_number, value)`` tuple, the way the encoder reads it."""
-    return (isinstance(obj, tuple) and len(obj) == 2 and isinstance(obj[0], int)
-            and 0 <= obj[0] < 2**64)
-
-
 def _key_identity(obj: Any) -> Any:
     """A hashable value equal for two items exactly when CBOR sees them as equal.
 
@@ -135,8 +129,8 @@ def _key_identity(obj: Any) -> Any:
         return ('tstr', obj)
     if isinstance(obj, bytes):
         return ('bstr', obj)
-    if _is_tag(obj):
-        return ('tag', obj[0], _key_identity(obj[1]))
+    if isinstance(obj, CBORTag):
+        return ('tag', obj.tag, _key_identity(obj.value))
     if isinstance(obj, (list, tuple)):
         return ('array', tuple(_key_identity(item) for item in obj))
     if isinstance(obj, dict):
@@ -519,12 +513,12 @@ class CBOR:
             return bytes([0xf7])
         if isinstance(obj, CBORSimple):
             return bytes([0xe0 | obj.number]) if obj.number < 24 else bytes([0xf8, obj.number])
-        # Handle tagged values (tag_num, value)
-        if isinstance(obj, tuple) and len(obj) == 2 and isinstance(obj[0], int) and obj[0] >= 0:
-            tag_num, value = obj
-            if tag_num < 2**64:  # Valid tag range
-                return self._encode_tag(tag_num, value)
-        
+        if isinstance(obj, CBORTag):
+            return self._encode_tag(obj.tag, obj.value)
+        error = tag_tuple_error(obj)
+        if error is not None:
+            raise error
+
         # Handle by type
         if obj is None:
             return bytes([0xf6])
@@ -738,12 +732,12 @@ class CBOR:
             tagged_value = self._decode_item()
             if tag_num in (2, 3) and isinstance(tagged_value, bytes):
                 # Bignums beyond the 64-bit range decode to int so encode()
-                # round-trips. In-range bignums stay (tag, bytes): they are not
+                # round-trips. In-range bignums stay a CBORTag of bytes: they are not
                 # major type 0/1 integers and must not match CDDL uint/int.
                 magnitude = int.from_bytes(tagged_value, 'big')
                 if magnitude >= 2**64:
                     return magnitude if tag_num == 2 else -1 - magnitude
-            return (tag_num, tagged_value)
+            return CBORTag(tag_num, tagged_value)
         else:  # MAJOR_TYPE_SIMPLE (major type is 3 bits, so 0-7 are exhaustive)
             return self._decode_simple(additional_info)
 

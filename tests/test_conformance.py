@@ -29,7 +29,7 @@ import unittest
 from cddl_verifier import CBORDecodeError, SchemaError, Validator
 from cddl_verifier import cbor as cbor_api
 from cddl_verifier import json_codec
-from cddl_verifier._cbor_values import UNDEFINED, CBORSimple
+from cddl_verifier._cbor_values import UNDEFINED, CBORSimple, CBORTag
 from cddl_verifier._cddl.prelude import parse_prelude
 from cddl_verifier._cddl.resolve import KNOWN_CONTROLS
 
@@ -67,7 +67,7 @@ def value(node):
         if "$float" in node:
             return float(node["$float"])
         if "$tag" in node:
-            return (node["$tag"], value(node["$value"]))
+            return CBORTag(node["$tag"], value(node["$value"]))
         if "$map" in node:
             return {key_of(value(k)): value(v) for k, v in node["$map"]}
         raise AssertionError(f"unknown probe value {node!r}")

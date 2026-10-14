@@ -32,6 +32,7 @@ from cddl_verifier import (
     validate,
 )
 from cddl_verifier import cbor, json_codec
+from cddl_verifier.cbor import CBORTag
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCHEMAS = REPO_ROOT / "cddl-schemas"
@@ -144,17 +145,17 @@ class TestValidate(unittest.TestCase):
 
     def test_tagged_root_checks_tag_number(self):
         schema = "root = #6.501(inner)\ninner = { a: uint }\n"
-        self.assertTrue(validate(schema, (501, {"a": 1})).valid)
-        wrong = validate(schema, (502, {"a": 1}))
+        self.assertTrue(validate(schema, CBORTag(501, {"a": 1})).valid)
+        wrong = validate(schema, CBORTag(502, {"a": 1}))
         self.assertFalse(wrong.valid)
         self.assertIn("501", wrong.errors[0])
         self.assertFalse(validate(schema, {"a": 1}).valid)
-        self.assertFalse(validate(schema, (501, {"a": "x"})).valid)
+        self.assertFalse(validate(schema, CBORTag(501, {"a": "x"})).valid)
 
     def test_tagged_primitive_root(self):
-        self.assertTrue(validate("r = #6.1(uint)", (1, 5)).valid)
-        self.assertFalse(validate("r = #6.1(uint)", (1, "x")).valid)
-        self.assertFalse(validate("r = #6.1(uint)", (2, 5)).valid)
+        self.assertTrue(validate("r = #6.1(uint)", CBORTag(1, 5)).valid)
+        self.assertFalse(validate("r = #6.1(uint)", CBORTag(1, "x")).valid)
+        self.assertFalse(validate("r = #6.1(uint)", CBORTag(2, 5)).valid)
 
     def test_tagged_root_from_cbor_bytes(self):
         result = validate(SCHEMAS / "unified.cddl",

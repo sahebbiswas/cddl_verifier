@@ -31,6 +31,7 @@ from cddl_verifier._cbor import (
 )
 import cddl_verifier
 from cddl_verifier import __version__, cbor as public_cbor
+from cddl_verifier.cbor import CBORTag
 
 
 # (description, encoded item, expected decoded value)
@@ -44,9 +45,9 @@ VALID_ITEMS = [
     ("float64", b'\xfb\x3f\xf8\x00\x00\x00\x00\x00\x00', 1.5),
     ("array", b'\x83\x01\x02\x03', [1, 2, 3]),
     ("map", b'\xa2\x00\x61a\x01\x61b', {0: 'a', 1: 'b'}),
-    ("tag", b'\xd8\x20\x65hello', (32, 'hello')),
-    ("nested", cbor_encode({1: [1, {2: b'\x00'}, (24, [True])], "k": {"x": -1}}),
-     {1: [1, {2: b'\x00'}, (24, [True])], "k": {"x": -1}}),
+    ("tag", b'\xd8\x20\x65hello', CBORTag(32, 'hello')),
+    ("nested", cbor_encode({1: [1, {2: b'\x00'}, CBORTag(24, [True])], "k": {"x": -1}}),
+     {1: [1, {2: b'\x00'}, CBORTag(24, [True])], "k": {"x": -1}}),
 ]
 
 
@@ -126,7 +127,7 @@ class TestEmptyAndTruncatedRejected(unittest.TestCase):
                 self.assertIn("Unexpected end of data", cm.exception.reason)
 
     def test_every_strict_prefix_is_truncated(self):
-        data = cbor_encode({1: [1, b'xyz', "str"], 2: (1, {"a": 1.5})})
+        data = cbor_encode({1: [1, b'xyz', "str"], 2: CBORTag(1, {"a": 1.5})})
         for cut in range(1, len(data)):
             with self.subTest(cut=cut):
                 with self.assertRaises(CBORTruncatedError):
