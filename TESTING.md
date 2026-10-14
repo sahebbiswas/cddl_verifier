@@ -26,6 +26,7 @@ and the standard-library **unittest** runner with no code changes required.
 | `tests/test_diagnostics.py` | Structured diagnostics (#75): decoder item locations, data path, byte offsets and bounded hex, categories, expected/found, rule and schema location, embedded CBOR, `render_text` and `render_json` |
 | `tests/test_strict_decoding.py` | Strict single-item decoding, error offsets, CLI `--version` |
 | `tests/test_literal_types.py` | Literal types (`1`, `1.5`, `"a"`, `h'01'`, `true`) in map fields, arrays, inline arrays, named rules and the root (#73) |
+| `tests/test_tag_content.py` | what the content of tags 0, 24, 32, 33, 34 and 35 must be (RFC 3339, URI reference, base64, regular expression, embedded CBOR), and that the check runs at the root, in fields, elements, choices and nested tags (#169) |
 | `tests/test_prelude_types.py` | RFC 8610 prelude types: `uri`, `tdate`, `time`, `number`, `decfrac` and other tagged rules (#130); `nint` and the bignum types `biguint`, `bignint`, `bigint`, `integer`, `unsigned` at the 64-bit boundaries (#99) |
 | `tests/test_set_nested.py` | `set_nested` path creation and errors |
 | `tests/test_cbor_diag_dump_extra.py` | Diagnostic dump edge cases and truncated input |

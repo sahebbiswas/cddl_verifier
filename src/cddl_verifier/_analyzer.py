@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from ._cddl import parse_cddl, parse_prelude, query, xsd_regex
+from ._cddl import parse_cddl, parse_prelude, query, tagcontent, xsd_regex
 from ._cddl.typeexpr import as_type, bare_name, rename
 from ._cddl.ast import (BytesLit, Control, FloatLit, GroupRef, InlineGroup, IntLit, Major, Member,
                         Name, Paren, Range, Tag, TextLit, Type, Unwrap, walk)
@@ -1167,6 +1167,12 @@ class CBORAnalyzer:
                         f"got tag {value[0]}", 'tag', expected=f"tag {expected_tag}",
                         actual=f"tag {value[0]}", rule=type_name)
                     return False
+                content_error = tagcontent.content_error(expected_tag, value[1])
+                if content_error:
+                    self._report(f"Type '{type_name}': {content_error}", 'tag',
+                                 expected=f"valid tag {expected_tag} content",
+                                 actual=_describe_value(value[1]), rule=type_name)
+                    return False
                 value = value[1]
                 continue
             # Primitives (with controls), literals and inline choices are
@@ -1373,6 +1379,13 @@ class CBORAnalyzer:
                 logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
                 self._report(error_msg, 'tag', expected=f"tag {expected_tag}",
                              actual=f"tag {data[0]}")
+                return False
+            content_error = tagcontent.content_error(expected_tag, data[1])
+            if content_error:
+                error_msg = f"Type '{type_name}': {content_error}"
+                logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
+                self._report(error_msg, 'tag', expected=f"valid tag {expected_tag} content",
+                             actual=_describe_value(data[1]))
                 return False
             data = data[1]
             logger.debug(f"{Colors.CBOR}[{breadcrumb}] Unwrapped expected CBOR tag {expected_tag}{Colors.RESET}")
@@ -1954,6 +1967,9 @@ class CBORAnalyzer:
                 return node, value, f"requires CBOR tag {expected_tag}, but the data is not tagged"
             if value[0] != expected_tag:
                 return node, value, f"requires CBOR tag {expected_tag}, got tag {value[0]}"
+            content_error = tagcontent.content_error(expected_tag, value[1])
+            if content_error:
+                return node, value, content_error
             node, value = inner, value[1]
 
     def _bound_literal(self, bound) -> Optional[Any]:
@@ -2310,6 +2326,9 @@ class CBORAnalyzer:
                 return [f"requires CBOR tag {expected_tag}, but the data is not tagged"]
             if value[0] != expected_tag:
                 return [f"requires CBOR tag {expected_tag}, got tag {value[0]}"]
+            content_error = tagcontent.content_error(expected_tag, value[1])
+            if content_error:
+                return [content_error]
             return self._check_value(value[1], inner, _depth + 1, strict)
 
         item = query.item_ref(expr)

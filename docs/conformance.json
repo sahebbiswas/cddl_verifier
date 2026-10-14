@@ -3589,20 +3589,19 @@
    "area": "prelude",
    "construct": "`tdate`, `time`",
    "spec": "RFC 8610 Appendix D",
-   "status": "partial",
+   "status": "supported",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "partial",
+    "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "The tag number and the type of the content are checked, not the date text (#169).",
-   "issues": [
-    169
-   ],
+   "notes": "`tdate` is tag 0 around an RFC 3339 date-time: the calendar must be valid (no 2021-02-29, no month 13), the time `hh:mm:ss` valid, the offset `Z` or `+hh:mm`. Second 60 is accepted only as 23:59:60 UTC at the end of March, June, September or December. `time` is tag 1 around a number.",
+   "issues": [],
    "tests": [
-    "tests/test_prelude_types.py"
+    "tests/test_prelude_types.py",
+    "tests/test_tag_content.py"
    ],
    "covers": [
     "tdate",
@@ -3622,12 +3621,14 @@
        "$tag": 1,
        "$value": "2020-01-01T00:00:00Z"
       },
-      "x"
-     ],
-     "accepted_but_invalid": [
+      "x",
       {
        "$tag": 0,
        "$value": "not a date"
+      },
+      {
+       "$tag": 0,
+       "$value": "2021-02-29T00:00:00Z"
       }
      ]
     },
@@ -3772,30 +3773,28 @@
   {
    "id": "prelude.tagged-text",
    "area": "prelude",
-   "construct": "`encoded-cbor`, `uri`, `b64url`, `b64legacy`, `regexp`, `mime-message`",
+   "construct": "`encoded-cbor`, `uri`, `b64url`, `b64legacy`, `regexp`",
    "spec": "RFC 8610 Appendix D",
-   "status": "partial",
+   "status": "supported",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "partial",
+    "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "The tag number and the type of the content are checked, not its meaning: `uri` accepts any text and `encoded-cbor` any byte string (#169).",
-   "issues": [
-    169
-   ],
+   "notes": "The tag number, the type of the content and what the content means: `encoded-cbor` is one well-formed CBOR item, `uri` an RFC 3986 URI reference, `b64url` base64url text without padding, `b64legacy` base64 text with padding; for both the unused bits of the last character are 0. `regexp` is checked as a Python `re` pattern (with `(?<name>...)` and `\\k<name>` accepted), which approximates PCRE and ECMA-262 but does not accept every construct of either.",
+   "issues": [],
    "tests": [
-    "tests/test_prelude_types.py"
+    "tests/test_prelude_types.py",
+    "tests/test_tag_content.py"
    ],
    "covers": [
     "encoded-cbor",
     "uri",
     "b64url",
     "b64legacy",
-    "regexp",
-    "mime-message"
+    "regexp"
    ],
    "probes": [
     {
@@ -3804,6 +3803,10 @@
       {
        "$tag": 32,
        "$value": "http://a"
+      },
+      {
+       "$tag": 32,
+       "$value": "/a/b?q=1#f"
       }
      ],
      "invalid": [
@@ -3811,12 +3814,14 @@
        "$tag": 32,
        "$value": 5
       },
-      "http://a"
-     ],
-     "accepted_but_invalid": [
+      "http://a",
       {
        "$tag": 32,
        "$value": "::not uri"
+      },
+      {
+       "$tag": 32,
+       "$value": "a b"
       }
      ]
     },
@@ -3834,14 +3839,118 @@
       {
        "$tag": 24,
        "$value": "a"
-      }
-     ],
-     "accepted_but_invalid": [
+      },
       {
        "$tag": 24,
        "$value": {
         "$bytes": "ffff"
        }
+      },
+      {
+       "$tag": 24,
+       "$value": {
+        "$bytes": "0102"
+       }
+      }
+     ]
+    },
+    {
+     "schema": "r = b64url",
+     "valid": [
+      {
+       "$tag": 33,
+       "$value": "YQ"
+      }
+     ],
+     "invalid": [
+      {
+       "$tag": 33,
+       "$value": "YQ=="
+      },
+      {
+       "$tag": 33,
+       "$value": "YR"
+      }
+     ]
+    },
+    {
+     "schema": "r = b64legacy",
+     "valid": [
+      {
+       "$tag": 34,
+       "$value": "YQ=="
+      }
+     ],
+     "invalid": [
+      {
+       "$tag": 34,
+       "$value": "YQ"
+      },
+      {
+       "$tag": 34,
+       "$value": "YR=="
+      }
+     ]
+    },
+    {
+     "schema": "r = regexp",
+     "valid": [
+      {
+       "$tag": 35,
+       "$value": "a+"
+      }
+     ],
+     "invalid": [
+      {
+       "$tag": 35,
+       "$value": "("
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "prelude.mime-message",
+   "area": "prelude",
+   "construct": "`mime-message`",
+   "spec": "RFC 8610 Appendix D",
+   "status": "partial",
+   "layers": {
+    "parser": "supported",
+    "ast": "supported",
+    "resolver": "supported",
+    "validator": "partial",
+    "edn": "n/a"
+   },
+   "notes": "The tag number and the type of the content (text) are checked. The text is not parsed as a MIME message (RFC 2045): that needs a MIME parser, so tag 36 is shape-only by design.",
+   "issues": [
+    187
+   ],
+   "tests": [
+    "tests/test_prelude_types.py",
+    "tests/test_tag_content.py"
+   ],
+   "covers": [
+    "mime-message"
+   ],
+   "probes": [
+    {
+     "schema": "r = mime-message",
+     "valid": [
+      {
+       "$tag": 36,
+       "$value": "Content-Type: text/plain\r\n\r\nhi"
+      }
+     ],
+     "invalid": [
+      {
+       "$tag": 36,
+       "$value": 5
+      },
+      "x",
+      {
+       "$tag": 35,
+       "$value": "x"
       }
      ]
     }

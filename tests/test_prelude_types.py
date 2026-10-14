@@ -52,14 +52,17 @@ class TestTaggedTextTypes(PreludeTestCase):
         ])
 
     def test_other_tagged_text(self):
-        for name, tag in (("tdate", 0), ("b64url", 33), ("b64legacy", 34),
-                          ("regexp", 35), ("mime-message", 36)):
+        # the tag number and the type of the content; what the text means is
+        # checked in tests/test_tag_content.py (#169)
+        for name, tag, text in (("tdate", 0, "2020-01-01T00:00:00Z"), ("b64url", 33, "YQ"),
+                                ("b64legacy", 34, "YQ=="), ("regexp", 35, "a+"),
+                                ("mime-message", 36, "x")):
             with self.subTest(type=name):
                 self.check_type(name, [
-                    ((tag, "x"), True),
-                    ("x", False),
+                    ((tag, text), True),
+                    (text, False),
                     ((tag, 5), False),
-                    ((tag + 100, "x"), False),
+                    ((tag + 100, text), False),
                 ])
 
     def test_encoded_cbor(self):
