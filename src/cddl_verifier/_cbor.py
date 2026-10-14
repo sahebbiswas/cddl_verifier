@@ -427,6 +427,48 @@ class CBOR:
         return items
 
     @classmethod
+    def loads_sequence_with_locations(cls, cbor_bytes: bytes,
+                                      max_steps: int = MAX_LOCATION_STEPS
+                                      ) -> Tuple[List[Any], 'CBORLocations']:
+        """Decode a CBOR sequence like :meth:`loads_sequence` and also return where each item sits.
+
+        The sequence is addressed as an array: item *i* has the path ``(i,)``,
+        and the items below it continue from there. The root, ``()``, is the
+        whole input.
+
+        Raises:
+            CBORDecodeError: An item is malformed or truncated.
+            TypeError: The input is not bytes-like.
+        """
+        if isinstance(cbor_bytes, (bytearray, memoryview)):
+            cbor_bytes = bytes(cbor_bytes)
+        elif not isinstance(cbor_bytes, bytes):
+            raise TypeError(
+                f"CBOR input must be bytes-like, not {type(cbor_bytes).__name__}"
+            )
+        obj = cls()
+        locations = CBORLocations(max_steps)
+        obj._locations = locations
+        obj._decode_data = cbor_bytes
+        obj._decode_pos = 0
+        obj._keep_encoding = False
+        items: List[Any] = []
+        while obj._decode_pos < len(cbor_bytes):
+            obj._loc_path = [len(items)]
+            try:
+                items.append(obj._decode_item())
+            except RecursionError:
+                raise CBORDecodeError(
+                    f"item {len(items)} of the sequence: Nesting too deep",
+                    obj._decode_pos) from None
+            except CBORDecodeError as exc:
+                raise type(exc)(f"item {len(items)} of the sequence: {exc.reason}",
+                                exc.offset) from None
+        obj._locations = None
+        locations._items[()] = (0, len(cbor_bytes))
+        return items, locations
+
+    @classmethod
     def loads_with_locations(cls, cbor_bytes: bytes,
                              max_steps: int = MAX_LOCATION_STEPS) -> Tuple[Any, 'CBORLocations']:
         """Decode like :meth:`loads` and also return where each item sits.

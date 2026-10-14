@@ -33,7 +33,7 @@ from ._version import __version__
 
 from ._cbor import CBOR, CBORDecodeError, CBORKey
 from ._cbor_values import UNDEFINED, CBORSimple, CBORTag, tag_tuple_error
-from ._diagnostics import (MAX_HEX_BYTES, Diagnostic, _Finding, classify_message, diagnostic_of,
+from ._diagnostics import (MAX_ALTERNATIVES, MAX_HEX_BYTES, Diagnostic, _Finding, classify_message, diagnostic_of,
                            expected_and_found)
 
 
@@ -799,6 +799,58 @@ _UNKNOWN_TYPE = Type((Name('unknown'),))
 _NO_STEP = object()
 
 
+class _CheckError(str):
+    """An error found by :meth:`CBORAnalyzer._check_value`, with what is known about it (#153).
+
+    It is a ``str``, so code that only formats or compares the message keeps
+    working. The other attributes let a caller report it as a finding of its
+    own, at the right item and with its own expected and actual, instead of
+    wrapping the text in a message of its own.
+
+    Attributes:
+        expected, actual: What the schema asks for and what the data has.
+        category: A category from ``_diagnostics.CATEGORIES``; guessed from the
+            message when ``None``.
+        path: Steps from the value that was checked to the item at fault
+            (the key or index of each step); empty for the value itself.
+        schema_path, rule: The rules entered below the one that was checked,
+            and the innermost one; set for errors found by checking a named type.
+        span: Byte span of the item in the input, when it is known
+            (``located``); otherwise it is found from the path when reported.
+        alternatives: For a value that matches none of a choice's
+            alternatives: ``(alternative, error)`` for each one that was tried,
+            or, for an error found by a nested run, their finished diagnostics.
+    """
+
+    expected: Optional[str]
+    actual: Optional[str]
+    category: Optional[str]
+    path: Tuple[Any, ...]
+    schema_path: Tuple[str, ...]
+    rule: Optional[str]
+    span: Optional[Tuple[int, int]]
+    located: bool
+    alternatives: Tuple[Any, ...]
+
+    def __new__(cls, message: str, *, expected: Optional[str] = None, actual: Optional[str] = None,
+                category: Optional[str] = None, path: Tuple[Any, ...] = (),
+                schema_path: Tuple[str, ...] = (), rule: Optional[str] = None,
+                span: Optional[Tuple[int, int]] = None, located: bool = False,
+                alternatives: Tuple[Any, ...] = ()):
+        obj = super().__new__(cls, message)
+        obj.expected, obj.actual, obj.category = expected, actual, category
+        obj.path, obj.schema_path, obj.rule = tuple(path), tuple(schema_path), rule
+        obj.span, obj.located, obj.alternatives = span, located, tuple(alternatives)
+        return obj
+
+    def reworded(self, message: str) -> '_CheckError':
+        """The same finding under a new message (a caller's wording of it)."""
+        return _CheckError(message, expected=self.expected, actual=self.actual,
+                           category=self.category, path=self.path, schema_path=self.schema_path,
+                           rule=self.rule, span=self.span, located=self.located,
+                           alternatives=self.alternatives)
+
+
 class _EmbeddedFrame(NamedTuple):
     """A byte string whose embedded CBOR is being checked (#154)."""
     depth: int  # steps in the data path up to the byte string
@@ -964,8 +1016,11 @@ class CBORAnalyzer:
         return frame.span if fallback else None
 
     @contextlib.contextmanager
-    def _inside_embedded_cbor(self, payload: bytes):
-        """Report offsets inside the byte string *payload* while checking the CBOR in it."""
+    def _inside_embedded_cbor(self, payload: bytes, sequence: bool = False):
+        """Report offsets inside the byte string *payload* while checking the CBOR in it.
+
+        *sequence* is for ``.cborseq``: the items are addressed as an array.
+        """
         path = self._current_path()
         span = self._item_span(path)  # where to point when the bytes can't be located
         own = self._item_span(path, fallback=False)  # the byte string's own span, if indexed
@@ -974,7 +1029,8 @@ class CBORAnalyzer:
             start = own[1] - len(payload)  # the content is the end of the byte string item
             if start >= own[0] and self.cbor_bytes[start:own[1]] == payload:
                 try:
-                    locations = CBOR.loads_with_locations(payload)[1]
+                    locations = (CBOR.loads_sequence_with_locations(payload)[1] if sequence
+                                 else CBOR.loads_with_locations(payload)[1])
                     base = start
                 except (CBORDecodeError, TypeError):
                     locations = None
@@ -988,7 +1044,8 @@ class CBORAnalyzer:
     def _report(self, message: str, category: Optional[str] = None, *,
                 expected: Optional[str] = None, actual: Optional[str] = None,
                 rule: Optional[str] = None, at_parent: bool = False,
-                extra_path: Tuple[Any, ...] = (), key: Any = _NO_STEP) -> None:
+                extra_path: Tuple[Any, ...] = (), key: Any = _NO_STEP,
+                finding: Optional[_CheckError] = None) -> None:
         """Record a validation error as a message with its structured diagnostic.
 
         The message is appended to :attr:`validation_errors` unchanged; the
@@ -1008,16 +1065,45 @@ class CBORAnalyzer:
             extra_path: Steps below the current item.
             key:       Point at the member with this key of the map at the current
                        item: the path ends at it and the offset is that of its key.
+            finding:   The error from :meth:`_check_value` that *message* words:
+                       the diagnostic takes its path below the current item,
+                       its category, expected and actual from it, unless given.
         """
         path = self._current_path()
         if at_parent and path:
             path = path[:-1]
         path = path + tuple(extra_path)
+        diagnostic = self._diagnostic(message, path, category, expected, actual, rule, key, finding)
+        self.validation_errors.append(_Finding(message, diagnostic))
+
+    def _diagnostic(self, message: str, path: Tuple[Any, ...], category: Optional[str],
+                    expected: Optional[str], actual: Optional[str], rule: Optional[str],
+                    key: Any, finding: Optional[_CheckError],
+                    schema_path: Optional[Tuple[str, ...]] = None) -> Diagnostic:
+        """The diagnostic for *message* at *path*, below the schema path (the current one by default)."""
+        schema_path = tuple(self.breadcrumb) if schema_path is None else schema_path
+        alternatives = ()
+        if finding is not None:
+            path = path + finding.path
+            schema_path = schema_path + finding.schema_path
+            # the alternatives were checked on the same value: they continue from here
+            alternatives = tuple(
+                item if isinstance(item, Diagnostic)  # already complete (from a nested run)
+                else self._diagnostic(f"{item[0]}: {item[1]}", path, None, None, None, None,
+                                      _NO_STEP, item[1], schema_path)
+                for item in finding.alternatives[:MAX_ALTERNATIVES])
+            category = category or finding.category
+            rule = rule or finding.rule
+            if expected is None and actual is None:
+                expected, actual = finding.expected, finding.actual
         if category is None:
             category = classify_message(message)
         if expected is None and actual is None:
             expected, actual = expected_and_found(message)
-        span = self._item_span(path, key)
+        if finding is not None and finding.located:
+            span = finding.span  # found when it was checked, inside embedded CBOR or not
+        else:
+            span = self._item_span(path, key)
         if key is not _NO_STEP:
             path = path + (key,)  # the member's own path; the offset is that of its key
         offset = end = hex_text = None
@@ -1029,14 +1115,13 @@ class CBORAnalyzer:
                 hex_text = excerpt.hex(' ')
                 truncated = end - offset > MAX_HEX_BYTES
         rule_name = rule if rule is not None else (self._rules[-1] if self._rules else None)
-        diagnostic = Diagnostic(
+        return Diagnostic(
             message=message, code="validation", severity="error", offset=offset,
-            category=category, path=path, schema_path=tuple(self.breadcrumb),
+            category=category, path=path, schema_path=schema_path,
             rule=rule_name,
             schema_location=self.cddl.rule_location(rule_name) if rule_name else None,
             expected=expected, actual=actual, end_offset=end, hex=hex_text,
-            hex_truncated=truncated)
-        self.validation_errors.append(_Finding(message, diagnostic))
+            hex_truncated=truncated, alternatives=alternatives)
     
     def _get_breadcrumb(self) -> str:
         """Get the current CDDL path as a string."""
@@ -1195,7 +1280,7 @@ class CBORAnalyzer:
                 # '$s /= uint', '$s /= tstr': checked like a socket field
                 errors = self._check_value(value, node)
                 for error in errors:
-                    self._report(f"Value does not match type '{type_name}': {error}")
+                    self._report(f"Value does not match type '{type_name}': {error}", finding=error)
                 return not errors
             if name in self.cddl.types:
                 return None
@@ -1230,7 +1315,7 @@ class CBORAnalyzer:
                     or self._literal_errors(value, node) is not None):
                 errors = self._check_value(value, node)
                 for error in errors:
-                    self._report(f"Value does not match type '{type_name}': {error}")
+                    self._report(f"Value does not match type '{type_name}': {error}", finding=error)
                 return not errors
             following = self.cddl.alias_node(name) if name is not None else None
             if following is None or following == node:
@@ -1347,7 +1432,7 @@ class CBORAnalyzer:
                             return self._validate_root(data, selected)
                         
                         for error in self._check_value(data, resolved):
-                            self._report(f"Value does not match type '{type_name}': {error}")
+                            self._report(f"Value does not match type '{type_name}': {error}", finding=error)
                     else:
                         logger.warning(f"'{resolved}' is not a concrete type definition")
                         self._report(
@@ -1451,7 +1536,7 @@ class CBORAnalyzer:
             for error in self._check_value(data, constraint):
                 error_msg = f"Type '{type_name}' does not satisfy its control operand '{format_node(constraint)}': {error}"
                 logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
-                self._report(error_msg)
+                self._report(error_msg, finding=error)
         
         # Check if this is a .cbor control type (bytes containing CBOR)
         if type_def.get('cbor_inner_type'):
@@ -1539,6 +1624,7 @@ class CBORAnalyzer:
                     
                     # Basic type checking for primitives
                     type_mismatch = False
+                    mismatch_detail = None  # (expected, actual) when a control, not the type, failed
                     
                     # Check for .cbor control operator (bytes containing CBOR data)
                     # An inline choice ('bstr .cbor m / tstr') is checked as a whole below
@@ -1569,10 +1655,11 @@ class CBORAnalyzer:
                                         self._validate_type(nested_data, nested_type_def, inner_type)
                                 else:
                                     # A primitive or other expression ('bstr .cbor uint')
-                                    for error in self._check_value(nested_data, inner_node):
+                                    for error in self._check_embedded(value, nested_data, inner_node):
                                         self._report(
                                             f"Embedded CBOR in field '{field_name}' of '{type_name}' "
-                                            f"does not match '{inner_type}': {error}")
+                                            f"does not match '{inner_type}': {error}",
+                                            'nested', finding=error)
                             except Exception as e:
                                 logger.error(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Failed to decode nested CBOR: {e}")
                                 self._report(f"Failed to decode nested CBOR in field '{field_name}': {e}")
@@ -1597,7 +1684,8 @@ class CBORAnalyzer:
                     if self._checked_as_whole(_resolved) or isinstance(query.base(_resolved), Unwrap):  # '~m' (#106)
                         for choice_error in self._check_value(value, _resolved):
                             self._report(
-                                f"Field '{field_name}' in '{type_name}' {choice_error}")
+                                f"Field '{field_name}' in '{type_name}' {choice_error}",
+                                finding=choice_error)
                         self._pop_breadcrumb()
                         continue
                     _base_type = query.head(_resolved) if _resolved else ''
@@ -1628,15 +1716,19 @@ class CBORAnalyzer:
                             if vrange:
                                 if vrange['ge'] is not None and value < vrange['ge']:
                                     type_mismatch = True
+                                    mismatch_detail = (f"at least {vrange['ge']}", str(value))
                                     logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Value {value} < .ge {vrange['ge']}")
                                 elif vrange['gt'] is not None and value <= vrange['gt']:
                                     type_mismatch = True
+                                    mismatch_detail = (f"more than {vrange['gt']}", str(value))
                                     logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Value {value} not > .gt {vrange['gt']}")
                                 elif vrange['le'] is not None and value > vrange['le']:
                                     type_mismatch = True
+                                    mismatch_detail = (f"at most {vrange['le']}", str(value))
                                     logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Value {value} > .le {vrange['le']}")
                                 elif vrange['lt'] is not None and value >= vrange['lt']:
                                     type_mismatch = True
+                                    mismatch_detail = (f"less than {vrange['lt']}", str(value))
                                     logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Value {value} not < .lt {vrange['lt']}")
                     elif _base_type == 'bool':
                         if not isinstance(value, bool):
@@ -1663,6 +1755,9 @@ class CBORAnalyzer:
                                 regexp_error = self.cddl.regexp_violation(pattern, value)
                                 if regexp_error:
                                     type_mismatch = True
+                                    if not regexp_error.startswith('invalid'):
+                                        mismatch_detail = (f"text matching .regexp /{pattern}/",
+                                                           self._format_value_for_log(value))
                                     logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Regexp mismatch for field '{field_name}': {regexp_error}")
                                     if regexp_error.startswith('invalid'):
                                         self._report(f"{regexp_error} (field '{field_name}')")
@@ -1684,9 +1779,10 @@ class CBORAnalyzer:
                                 logger.debug(f"{Colors.MISMATCH}[{field_breadcrumb}]{Colors.RESET} Type mismatch: expected array, got {type(value).__name__}")
                     
                     if type_mismatch:
+                        expected_text, actual_text = mismatch_detail or (field_type, _describe_value(value))
                         self._report(f"Type mismatch for field '{field_name}' in '{type_name}'",
                                      _mismatch_category(_base_type, value),
-                                     expected=field_type, actual=_describe_value(value))
+                                     expected=expected_text, actual=actual_text)
                     elif _base_type in self._ROOT_PRIMITIVES and _base_type != 'any':
                         size_error = self.cddl.size_violation(
                             value, _base_type, self.cddl.extract_size_constraint(_resolved))
@@ -1745,16 +1841,18 @@ class CBORAnalyzer:
                                     else:
                                         # Regular element type: primitive (with .size) or named type
                                         resolved_elem = self.cddl.resolve_alias(element_type)
-                                        if self._checked_as_whole(resolved_elem):
+                                        if self._checked_as_whole(resolved_elem) or self.cddl.extract_regexp(resolved_elem) is not None:
                                             for choice_error in self._check_value(item, resolved_elem):
                                                 self._report(
-                                                    f"Element [{i}] of field '{field_name}' {choice_error}")
+                                                    f"Element [{i}] of field '{field_name}' {choice_error}",
+                                                    finding=choice_error)
                                             self._pop_breadcrumb()
                                             continue
                                         if query.cbor_control(resolved_elem):
                                             for cbor_error in self._check_value(item, resolved_elem):
                                                 self._report(
-                                                    f"Element [{i}] of field '{field_name}' {cbor_error}")
+                                                    f"Element [{i}] of field '{field_name}' {cbor_error}",
+                                                    finding=cbor_error)
                                             self._pop_breadcrumb()
                                             continue
                                         base_elem = query.head(resolved_elem) if resolved_elem else ''
@@ -1839,10 +1937,13 @@ class CBORAnalyzer:
                 computed_counts[chosen] = computed_counts.get(chosen, 0) + 1
                 extra_keys.discard(key)
                 if chosen not in matching:
+                    self._push_breadcrumb(repr(key), step=key)  # the value is at the key
                     for error in self._check_value(data[key], computed_keys[chosen]['type']):
                         self._report(
                             f"Value for key {key!r} in type '{type_name}' "
-                            f"does not match '{format_node(computed_keys[chosen]['type'])}': {error}")
+                            f"does not match '{format_node(computed_keys[chosen]['type'])}': {error}",
+                            finding=error)
+                    self._pop_breadcrumb()
             # How many entries each computed-key member took ('+ K => V', '? K => V',
             # 'K => V' takes exactly one, #120, #151)
             for index, computed in enumerate(computed_keys):
@@ -1937,17 +2038,19 @@ class CBORAnalyzer:
                         continue
                     # Resolve user alias first
                     resolved_elem = self.cddl.resolve_alias(elem_node)
-                    if self._checked_as_whole(resolved_elem):
+                    if self._checked_as_whole(resolved_elem) or self.cddl.extract_regexp(resolved_elem) is not None:
                         for choice_error in self._check_value(item, resolved_elem):
                             self._report(
-                                f"Array element [{i}] of '{type_name}' {choice_error}")
+                                f"Array element [{i}] of '{type_name}' {choice_error}",
+                                finding=choice_error)
                         self._pop_breadcrumb()
                         continue
                     if query.cbor_control(resolved_elem):
                         # 'bstr .cbor T': decode the bytes and check the item inside
                         for cbor_error in self._check_value(item, resolved_elem):
                             self._report(
-                                f"Array element [{i}] of '{type_name}' {cbor_error}")
+                                f"Array element [{i}] of '{type_name}' {cbor_error}",
+                                finding=cbor_error)
                         self._pop_breadcrumb()
                         continue
                     # Extract base type and any .size constraint
@@ -2055,6 +2158,11 @@ class CBORAnalyzer:
             ok_type = isinstance(value, float)
             kind = 'a float'
         shown = self._format_value_for_log(value)
+
+        def outside(text: str) -> _CheckError:
+            return _CheckError(f"{text} is outside {format_node(expr)}", category='value',
+                               expected=f"a value in {format_node(expr)}", actual=text)
+
         if not ok_type:
             return [f"expected {kind} in {format_node(expr)}, got {shown}"]
         if bounds is None:
@@ -2063,14 +2171,14 @@ class CBORAnalyzer:
             # '$low .. 10' with an unknown '$low': the known bound still applies
             low, high = self._bound_literal(node.low), self._bound_literal(node.high)
             if low is not None and not value >= low.value:  # 'not >=' also rejects NaN
-                return [f"{shown} is outside {format_node(expr)}"]
+                return [outside(shown)]
             if high is not None and not (value <= high.value if node.inclusive
                                          else value < high.value):
-                return [f"{shown} is outside {format_node(expr)}"]
+                return [outside(shown)]
             return []
         low, high = bounds
         if not (low <= value and (value <= high if node.inclusive else value < high)):
-            return [f"{shown} is outside {format_node(expr)}"]
+            return [outside(shown)]
         return []
 
     def _literal_errors(self, value: Any, expr) -> Optional[List[str]]:
@@ -2119,23 +2227,35 @@ class CBORAnalyzer:
         errors = []
         size_error = self.cddl.size_violation(value, base, self.cddl.extract_size_constraint(expr))
         if size_error:
-            errors.append(size_error if size_error.startswith('.size') else f".size {size_error}")
+            size_error = size_error if size_error.startswith('.size') else f".size {size_error}"
+            errors.append(_CheckError(size_error, category='value'))
         if base in ('uint', 'int', 'nint', 'float', 'float16', 'float32', 'float64'):
             vrange = self.cddl.extract_value_range(expr)
             if vrange:
                 for op, test in (('ge', lambda v, b: v >= b), ('gt', lambda v, b: v > b),
                                  ('le', lambda v, b: v <= b), ('lt', lambda v, b: v < b)):
                     if vrange[op] is not None and not test(value, vrange[op]):
-                        errors.append(f"{value} violates .{op} {vrange[op]}")
+                        wanted = {'ge': 'at least', 'gt': 'more than',
+                                  'le': 'at most', 'lt': 'less than'}[op]
+                        errors.append(_CheckError(
+                            f"{value} violates .{op} {vrange[op]}", category='value',
+                            expected=f"{wanted} {vrange[op]}", actual=str(value)))
         if isinstance(value, (int, bytes)) and not isinstance(value, bool):
             bits_error = self.cddl.bits_violation(value, self.cddl.extract_bits(expr))
             if bits_error:
-                errors.append(bits_error)
+                errors.append(_CheckError(bits_error, category='value',
+                                          expected="only the bits .bits allows",
+                                          actual=self._format_value_for_log(value)))
         pattern = self.cddl.extract_regexp(expr)
         if pattern is not None and isinstance(value, str):
             regexp_error = self.cddl.regexp_violation(pattern, value)
             if regexp_error:
-                errors.append(regexp_error)
+                if regexp_error.startswith('invalid'):  # the pattern, not the value, is wrong
+                    errors.append(_CheckError(regexp_error, category='schema'))
+                else:
+                    errors.append(_CheckError(
+                        regexp_error, category='value', expected=f"text matching .regexp /{pattern}/",
+                        actual=self._format_value_for_log(value)))
         return errors
 
     def _match_array(self, data: Sequence, sequence: List, type_name: str) -> Optional[str]:
@@ -2258,17 +2378,36 @@ class CBORAnalyzer:
             return f"Array element [{index}] of '{type_name}' matches no entry ({reasons})"
         return f"Array type '{type_name}' has unexpected element [{index}]"
 
-    def _sandboxed_validate(self, value: Any, type_def: Dict, type_name: str) -> List[str]:
-        """Run :meth:`_validate_type` and return its errors without keeping them."""
+    def _sandboxed_validate(self, value: Any, type_def: Dict, type_name: str) -> List[_CheckError]:
+        """Run :meth:`_validate_type` and return its errors without keeping them.
+
+        The errors keep what the run found out about each: the path below the
+        current item, the rules entered, expected and actual, and where it sits.
+        """
         saved_errors, saved_breadcrumb = self.validation_errors, list(self.breadcrumb)
         saved_path, saved_rules = list(self._data_path), list(self._rules)
+        prefix, depth = self._current_path(), len(saved_breadcrumb)
         self.validation_errors = []
         try:
             self._validate_type(value, type_def, type_name)
-            return self.validation_errors
+            found = self.validation_errors
         finally:
             self.validation_errors, self.breadcrumb = saved_errors, saved_breadcrumb
             self._data_path, self._rules = saved_path, saved_rules
+        return [self._relative_error(error, prefix, depth) for error in found]
+
+    @staticmethod
+    def _relative_error(error: str, prefix: Tuple[Any, ...], depth: int) -> _CheckError:
+        """*error*, a recorded finding, as an error below the item at *prefix*."""
+        diag = getattr(error, 'diagnostic', None)
+        if diag is None:
+            return _CheckError(str(error))
+        below = diag.path[len(prefix):] if diag.path[:len(prefix)] == prefix else diag.path
+        span = None if diag.offset is None else (diag.offset, diag.end_offset)
+        return _CheckError(str(error), expected=diag.expected, actual=diag.actual,
+                           category=diag.category, path=below,
+                           schema_path=diag.schema_path[depth:], rule=diag.rule,
+                           span=span, located=True, alternatives=diag.alternatives)
 
     def _is_structured(self, alt) -> bool:
         """Whether choice alternative *alt* is a map, array or tag, by name or in full."""
@@ -2281,8 +2420,40 @@ class CBORAnalyzer:
                 or (item is not None and (isinstance(item.node, Tag)
                                           or getattr(item.node, 'major', 0) in (4, 5, 6))))
 
+    def _alternative_text(self, alt) -> str:
+        """*alt* as written, or its kind (``map``, ``array``) for a structure written inline."""
+        text = format_node(alt)
+        name = bare_name(as_type(alt))
+        if '@' in text and name is not None and name in self.cddl.types:
+            return self.cddl.types[name].get('type') or text  # a lifted 'r@0@2'
+        return text
+
+    def _no_alternative(self, value: Any, alternatives, failures) -> _CheckError:
+        """The error for a value that matches none of *alternatives*.
+
+        *failures* are ``(alternative, error)`` pairs. The message names every
+        alternative's reason; the finding expects the choice and has the value.
+        """
+        shown = ' / '.join(format_node(alt) for alt in alternatives)
+        reasons = '; '.join(f"{format_node(alt)}: {error}" for alt, error in failures)
+        return _CheckError(f"matches none of {shown} ({reasons})",
+                           expected=' / '.join(self._alternative_text(alt) for alt in alternatives),
+                           actual=_describe_value(value),
+                           alternatives=tuple((self._alternative_text(alt), error if isinstance(error, _CheckError)
+                                               else _CheckError(error)) for alt, error in failures))
+
     def _check_value(self, value: Any, expr, _depth: int = 0,
-                     strict: bool = False) -> List[str]:
+                     strict: bool = False) -> List[_CheckError]:
+        """Validate *value* against a CDDL type expression; return the errors.
+
+        See :meth:`_check_errors`. Each error is a :class:`_CheckError`: its
+        message, and what is known about where it is and what it expected.
+        """
+        return [error if isinstance(error, _CheckError) else _CheckError(error)
+                for error in self._check_errors(value, expr, _depth, strict)]
+
+    def _check_errors(self, value: Any, expr, _depth: int = 0,
+                      strict: bool = False) -> List[str]:
         """Validate *value* against a CDDL type expression; return the errors.
 
         *expr* is a ``Type`` node (text is parsed, for the callers that have
@@ -2317,19 +2488,21 @@ class CBORAnalyzer:
                         return []
                     matched.append(alt)
                 else:
-                    failures.append(f"{format_node(alt)}: {alt_errors[0]}")
+                    failures.append((alt, alt_errors[0]))
             if matched:
                 # Overlapping primitives ('uint / int') are ordinary; two
                 # structures that both fit are an ambiguous reading (#74).
                 structured = [alt for alt in matched if self._is_structured(alt)]
                 if len(structured) > 1:
                     shown = format_node(expr)
-                    return [f"matches more than one alternative of "
-                            f"{shown if len(shown) < 60 else 'the choice'}: "
-                            f"{', '.join(format_node(alt) for alt in structured)}"]
+                    return [_CheckError(
+                        f"matches more than one alternative of "
+                        f"{shown if len(shown) < 60 else 'the choice'}: "
+                        f"{', '.join(format_node(alt) for alt in structured)}",
+                        category='type', expected="exactly one alternative",
+                        actual=f"matches {', '.join(format_node(alt) for alt in structured)}")]
                 return []
-            return [f"matches none of {' / '.join(format_node(alt) for alt in alternatives)} "
-                    f"({'; '.join(failures)})"]
+            return [self._no_alternative(value, alternatives, failures)]
 
         split = self._split_set_controls(expr)
         if split is not None:  # 'T .eq 5', 'T .ne 5', 'T .and U', 'T .within U'
@@ -2368,12 +2541,18 @@ class CBORAnalyzer:
         if tag_info:
             expected_tag, inner = tag_info
             if not self._is_tagged(value):
-                return [f"requires CBOR tag {expected_tag}, but the data is not tagged{_tuple_hint(value)}"]
+                return [_CheckError(
+                    f"requires CBOR tag {expected_tag}, but the data is not tagged{_tuple_hint(value)}",
+                    category='tag', expected=f"tag {expected_tag}", actual=_describe_value(value))]
             if value.tag != expected_tag:
-                return [f"requires CBOR tag {expected_tag}, got tag {value.tag}"]
+                return [_CheckError(f"requires CBOR tag {expected_tag}, got tag {value.tag}",
+                                    category='tag', expected=f"tag {expected_tag}",
+                                    actual=f"tag {value.tag}")]
             content_error = tagcontent.content_error(expected_tag, value.value)
             if content_error:
-                return [content_error]
+                return [_CheckError(content_error, category='tag',
+                                    expected=f"valid tag {expected_tag} content",
+                                    actual=_describe_value(value.value))]
             return self._check_value(value.value, inner, _depth + 1, strict)
 
         item = query.item_ref(expr)
@@ -2438,9 +2617,39 @@ class CBORAnalyzer:
                 return [f"{what} (.{op} {label(op, inner)}) does not decode: {exc}"]
         # 'bstr .cbor uint .size 1': the bytes' own controls apply too
         errors = self._primitive_errors(value, 'bstr', expr)
-        for (_op, _base, inner), nested in zip(controls, decoded):
-            errors = errors or self._check_value(nested, inner, _depth + 1, strict)
+        for (op, _base, inner), nested in zip(controls, decoded):
+            errors = errors or self._check_embedded(value, nested, inner, op == 'cborseq',
+                                                    _depth + 1, strict)
         return errors
+
+    def _check_embedded(self, payload: bytes, nested: Any, inner, sequence: bool = False,
+                        _depth: int = 0, strict: bool = False) -> List[_CheckError]:
+        """Check *nested*, decoded from the byte string *payload*, against *inner*.
+
+        The errors know where in the input they are: inside the byte string, at
+        the item that is at fault (#154). An error about the embedded item as a
+        whole is at that item, which is all of *payload* for ``.cbor``.
+        """
+        with self._inside_embedded_cbor(payload, sequence):
+            errors = self._check_value(nested, inner, _depth, strict)
+            whole = self._embedded_item_span(self._current_path(), _NO_STEP) if errors else None
+        return [self._located_at(error, whole) for error in errors]
+
+    @classmethod
+    def _located_at(cls, error: _CheckError, span: Optional[Tuple[int, int]]) -> _CheckError:
+        """*error* with *span* for itself and each alternative that has no position yet.
+
+        What is already located (found by a nested validation run) keeps its
+        span. This is for errors about the embedded item as a whole, found
+        while the embedded frame is open: they are reported after it closes.
+        """
+        if not error.located:
+            error = error.reworded(str(error))
+            error.span, error.located = span, True
+        error.alternatives = tuple(
+            item if isinstance(item, Diagnostic) else (item[0], cls._located_at(item[1], span))
+            for item in error.alternatives)
+        return error
 
     #: Controls that compare the value with their argument instead of
     #: describing its shape: equal to (``.eq``), different from (``.ne``), and
@@ -2486,7 +2695,7 @@ class CBORAnalyzer:
             return [] if errors else [
                 f"expected a value other than {shown} (.ne), got {self._format_value_for_log(value)}"]
         if errors:
-            return [f"does not satisfy its control operand '{shown}' (.{op}): {errors[0]}"]
+            return [self._reworded(errors[0], f"does not satisfy its control operand '{shown}' (.{op}): {errors[0]}")]
         return []
 
     def _item_errors(self, value: Any, item: 'query.ItemRef', _depth: int,
@@ -2502,8 +2711,8 @@ class CBORAnalyzer:
                 if parts is None:
                     return [f"expected a tag (#6), got {self._describe_item(value)}"]
                 errors = self._check_value(parts[0], item.tag_type, _depth + 1, True)
-                return [f"tag number {parts[0]} does not match "
-                        f"{format_node(item.tag_type)}: {errors[0]}"] if errors else []
+                return [self._reworded(errors[0], f"tag number {parts[0]} does not match "
+                                       f"{format_node(item.tag_type)}: {errors[0]}")] if errors else []
             # '#7.<type>': the additional information is any number the type allows
             for info in range(256):
                 if not self._check_value(info, item.tag_type, _depth + 1, True) \
@@ -2519,9 +2728,14 @@ class CBORAnalyzer:
         if item.tag_type is not None:
             errors = self._check_value(parts[0], item.tag_type, _depth + 1, True)
             if errors:
-                return [f"tag number {parts[0]} does not match "
-                        f"{format_node(item.tag_type)}: {errors[0]}"]
+                return [self._reworded(errors[0], f"tag number {parts[0]} does not match "
+                                       f"{format_node(item.tag_type)}: {errors[0]}")]
         return self._check_value(parts[1], item.inner, _depth + 1, strict)
+
+    @staticmethod
+    def _reworded(error: str, message: str) -> _CheckError:
+        """*error* under *message*: the same finding, a caller's wording of it."""
+        return error.reworded(message) if isinstance(error, _CheckError) else _CheckError(message)
 
     @staticmethod
     def _describe_item(value: Any) -> str:
@@ -2561,8 +2775,7 @@ class CBORAnalyzer:
             failures.append((alt, errors[0]))
         if len(failures) == 1:
             return [failures[0][1]]
-        return [f"matches none of {format_node(expr)} ("
-                f"{'; '.join(f'{format_node(alt)}: {error}' for alt, error in failures)})"]
+        return [self._no_alternative(value, [expr], failures)]
 
     def _paren_parts(self, expr) -> Optional['query.ParenParts']:
         """*expr* as a parenthesized type, if it is one.

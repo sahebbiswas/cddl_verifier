@@ -19,6 +19,7 @@ __all__ = [
     "CATEGORIES",
     "Diagnostic",
     "JSON_FORMAT_VERSION",
+    "MAX_ALTERNATIVES",
     "MAX_HEX_BYTES",
     "SEVERITIES",
     "render_json",
@@ -46,6 +47,11 @@ CATEGORIES = ("decode", "schema", "tag", "type", "value", "missing", "unknown",
 #: and flagged with ``hex_truncated``, so a diagnostic never echoes a large or
 #: secret payload.
 MAX_HEX_BYTES = 16
+
+#: Most alternatives of a type choice a diagnostic lists (``Diagnostic.alternatives``);
+#: a choice with more (a large type socket) has its first ones listed, so one
+#: failure cannot produce a diagnostic per alternative of a huge choice.
+MAX_ALTERNATIVES = 16
 
 
 def _step_text(step: Any) -> str:
@@ -96,6 +102,11 @@ class Diagnostic:
         hex:      Hex excerpt of the offending bytes, cut at
                   :data:`MAX_HEX_BYTES` bytes (see ``hex_truncated``).
         hex_truncated: ``True`` when ``hex`` is a prefix of a longer item.
+        alternatives: For a value that matches none of a type choice
+                  (``uint / tstr``): one diagnostic for each alternative that
+                  was tried, with its own ``path``, ``offset``, ``expected``
+                  and ``actual``; at most :data:`MAX_ALTERNATIVES`. Empty for
+                  any other finding.
     """
 
     message: str
@@ -112,6 +123,7 @@ class Diagnostic:
     end_offset: Optional[int] = None
     hex: Optional[str] = None
     hex_truncated: bool = False
+    alternatives: Tuple["Diagnostic", ...] = ()
 
     def __str__(self) -> str:
         return self.message
@@ -146,6 +158,7 @@ class Diagnostic:
             "schema_location": self.schema_location,
             "expected": self.expected,
             "actual": self.actual,
+            "alternatives": [alternative.to_dict() for alternative in self.alternatives],
         }
 
     def to_json(self, indent: Optional[int] = None) -> str:
@@ -179,6 +192,10 @@ class Diagnostic:
             lines.append("  " + ", ".join(parts))
         if self.hex is not None:
             lines.append(f"  bytes {self.hex}{' ...' if self.hex_truncated else ''}")
+        for alternative in self.alternatives:
+            nested = alternative.format().splitlines()
+            lines.append("  alternative: " + nested[0])
+            lines.extend("  " + line for line in nested[1:])
         return "\n".join(lines)
 
 
