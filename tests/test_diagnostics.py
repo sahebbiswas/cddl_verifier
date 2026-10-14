@@ -269,11 +269,23 @@ class TestDiagnosticFields(unittest.TestCase):
         self.assertTrue(diag.hex_truncated)
         self.assertEqual(diag.end_offset - diag.offset, len(cbor.encode(big)))
 
-    def test_embedded_cbor_points_at_the_byte_string(self):
+    def test_embedded_cbor_points_inside_the_byte_string(self):
         schema = "r = { 0: bstr .cbor inner }\ninner = { 0: uint }\n"
         inner = cbor.encode({0: "no"})
         raw = cbor.encode({0: inner})
         found = validate(schema, raw).diagnostics
+        self.assertTrue(found)
+        for diag in found:
+            self.assertEqual(raw[diag.offset:diag.end_offset], b"\x62no")
+
+    def test_embedded_item_without_a_location_points_at_the_byte_string(self):
+        schema = "r = { 0: bstr .cbor inner }\ninner = { 0: uint }\n"
+        inner = cbor.encode({0: "no"})
+        raw = cbor.encode({0: inner})
+        original = CBOR.loads_with_locations
+        with mock.patch.object(CBOR, "loads_with_locations",
+                               staticmethod(lambda data: original(data, max_steps=1 if data == inner else 10_000))):
+            found = validate(schema, raw).diagnostics
         self.assertTrue(found)
         for diag in found:
             self.assertEqual(raw[diag.offset:diag.end_offset], cbor.encode(inner))
@@ -414,6 +426,84 @@ class TestRenderers(unittest.TestCase):
         self.assertEqual(good.diagnostics, ())
         self.assertEqual(bad.diagnostics, again.diagnostics)
         self.assertIsInstance(good, ValidationResult)
+
+
+class TestEmbeddedCborOffsets(unittest.TestCase):
+    """Inside a ``bstr .cbor`` the offsets are those of the inner item in the input (#154)."""
+
+    SCHEMA = "r = { 0: bstr .cbor inner }\ninner = { 0: uint, 1: tstr }"
+
+    def _found(self, schema, data):
+        raw = cbor.encode(data)
+        return raw, validate(schema, raw).diagnostics
+
+    def test_member_of_embedded_map_points_at_its_bytes(self):
+        raw, found = self._found(self.SCHEMA, {0: cbor.encode({0: "no", 1: "x"})})
+        self.assertEqual(len(found), 1)
+        diag = found[0]
+        self.assertEqual(diag.path, (0, 0))
+        self.assertEqual(raw[diag.offset:diag.end_offset], b"\x62no")
+        self.assertEqual(diag.hex, b"\x62no".hex(" "))
+
+    def test_header_length_does_not_matter(self):
+        # 40 bytes of text make the byte string header two bytes long
+        inner = cbor.encode({0: "no", 1: "x" * 40})
+        raw, found = self._found(self.SCHEMA, {0: inner})
+        self.assertEqual(raw[found[0].offset:found[0].end_offset], b"\x62no")
+        big = cbor.encode({0: "no", 1: "x" * 300})  # a three-byte header
+        raw, found = self._found(self.SCHEMA, {0: big})
+        self.assertEqual(raw[found[0].offset:found[0].end_offset], b"\x62no")
+
+    def test_embedded_inside_embedded(self):
+        schema = ("r = { 0: bstr .cbor mid }\nmid = { 0: uint, 1: bstr .cbor leaf }\n"
+                  "leaf = { 0: uint }")
+        deep = cbor.encode({0: cbor.encode({0: 1, 1: cbor.encode({0: "deep"})})})
+        found = validate(schema, deep).diagnostics
+        self.assertEqual([d.path for d in found], [(0, 1, 0)])
+        self.assertEqual(deep[found[0].offset:found[0].end_offset], b"\x64deep")
+
+    def test_chunked_byte_string_points_at_the_byte_string(self):
+        inner = cbor.encode({0: "no", 1: "x"})
+        raw = b"\xa1\x00\x5f" + bytes([0x40 + len(inner)]) + inner + b"\xff"
+        found = validate(self.SCHEMA, raw).diagnostics
+        self.assertEqual(found[0].path, (0, 0))
+        self.assertEqual(raw[found[0].offset:found[0].end_offset], raw[2:])
+
+    def test_value_without_bytes_has_no_offsets(self):
+        found = validate(self.SCHEMA, {0: cbor.encode({0: "no", 1: "x"})}).diagnostics
+        self.assertEqual(found[0].path, (0, 0))
+        self.assertIsNone(found[0].offset)
+
+    def test_unknown_member_inside_embedded_points_at_its_key(self):
+        raw, found = self._found(self.SCHEMA, {0: cbor.encode({0: 1, 1: "x", 7: 1})})
+        self.assertEqual([d.category for d in found], ["unknown"])
+        self.assertEqual(found[0].path, (0, 7))
+        self.assertEqual(raw[found[0].offset:found[0].end_offset], b"\x07")
+
+    def test_unindexed_embedded_bytes_are_not_matched_to_a_sibling(self):
+        # both leaves have the same bytes, and the second ends the middle byte
+        # string: bytes the index has no position for must not be taken for it
+        schema = ("r = { 0: bstr .cbor mid }\nmid = { 0: bstr .cbor leaf, 1: bstr .cbor leaf }\n"
+                  "leaf = { 0: uint }")
+        leaf = cbor.encode({0: "no"})
+        mid = cbor.encode({0: leaf, 1: leaf})
+        raw = cbor.encode({0: mid})
+        original = CBOR.loads_with_locations
+        with mock.patch.object(CBOR, "loads_with_locations",
+                               staticmethod(lambda data: original(
+                                   data, max_steps=1 if data == mid else 10_000))):
+            found = validate(schema, raw).diagnostics
+        self.assertEqual([d.path for d in found], [(0, 0, 0), (0, 1, 0)])
+        for diag in found:
+            self.assertEqual(raw[diag.offset:diag.end_offset], cbor.encode(mid))
+
+    def test_later_members_are_not_affected(self):
+        schema = "r = { 0: bstr .cbor inner, 1: uint }\ninner = { 0: uint }"
+        raw = cbor.encode({0: cbor.encode({0: 1}), 1: "no"})
+        found = validate(schema, raw).diagnostics
+        self.assertEqual(found[0].path, (1,))
+        self.assertEqual(raw[found[0].offset:found[0].end_offset], b"\x62no")
+
 
 
 if __name__ == "__main__":
