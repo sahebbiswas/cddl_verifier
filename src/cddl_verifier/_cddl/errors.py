@@ -50,13 +50,22 @@ class CDDLSemanticError(SchemaError):
     arguments that do not match the parameters, unknown or misapplied control
     operators, empty occurrences and ranges, and sockets used the wrong way.
     It has the same attributes as :class:`CDDLSyntaxError` except
-    ``expected``.
+    ``expected``, and also:
+
+    Attributes:
+        rule:   The rule being checked when the problem was found, if any.
+        errors: Every problem the resolver found, this one first, when it
+                kept checking after the first (the checks of the rules do);
+                just this one when the problem stopped the resolver (#156).
     """
 
-    def __init__(self, message: str, span: Span, source: Optional[Source]):
+    def __init__(self, message: str, span: Span, source: Optional[Source],
+                 rule: Optional[str] = None):
         self.message = message
         self.span = span
         self.source = source if source is not None else Source('')
+        self.rule = rule
+        self.errors: Tuple['CDDLSemanticError', ...] = (self,)
         self.line, self.column = self.source.line_col(span.start)
         super().__init__(str(self))
 
@@ -65,4 +74,4 @@ class CDDLSemanticError(SchemaError):
         return f"{name}:{self.line}:{self.column}: {self.message}"
 
     def __reduce__(self):
-        return (self.__class__, (self.message, self.span, self.source))
+        return (self.__class__, (self.message, self.span, self.source, self.rule))

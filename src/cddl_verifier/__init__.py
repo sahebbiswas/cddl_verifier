@@ -19,7 +19,7 @@ subset; see the project README for what is and is not covered.
 """
 
 from ._api import (Diagnostic, SchemaError, ValidationResult, Validator, render_json, render_text,
-                   validate)
+                   schema_diagnostics, validate)
 from ._cbor import CBORDecodeError
 from ._version import __version__
 
@@ -32,5 +32,6 @@ __all__ = [
     "__version__",
     "render_json",
     "render_text",
+    "schema_diagnostics",
     "validate",
 ]

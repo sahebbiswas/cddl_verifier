@@ -262,7 +262,29 @@ def resolve(schema: Schema, imports: Optional[Imports] = None) -> ResolvedSchema
 
     Raises:
         CDDLSemanticError: (a ``SchemaError``) for the first problem found,
-            with its line and column.
+            with its line and column. Its ``errors`` holds every problem found
+            (see :func:`resolve_all`).
+    """
+    resolved, errors = _Resolver(schema, imports).run()
+    if resolved is None:
+        raise errors[0]
+    return resolved
+
+
+def resolve_all(schema: Schema, imports: Optional[Imports] = None
+                ) -> Tuple[Optional[ResolvedSchema], Tuple[CDDLSemanticError, ...]]:
+    """Check *schema* like :func:`resolve`, but return every problem instead of raising.
+
+    A problem in the names and the rule definitions (a name defined twice, a
+    cycle) stops the resolver: it is returned alone. Problems in what a rule
+    contains (an undefined name, a control that does not apply) do not: the
+    check goes on with the next entry of the group, and the next rule, so each
+    is reported, in source order. The first problem is the one :func:`resolve`
+    raises.
+
+    Returns:
+        ``(resolved, ())`` for a schema that makes sense, else
+        ``(None, errors)``.
     """
     return _Resolver(schema, imports).run()
 
@@ -278,9 +300,20 @@ class _Resolver:
         self.prefixes, self.import_all = imports.prefixes, imports.any_name
         self.loaded_modules = imports.loaded
         self.external: Set[str] = set()
+        self.errors: List[CDDLSemanticError] = []  # problems found while checking the rules
+        self.rule_name: Optional[str] = None  # the rule being checked
 
     def error(self, message: str, span: Span) -> CDDLSemanticError:
-        return CDDLSemanticError(message, span, self.source)
+        return CDDLSemanticError(message, span, self.source, self.rule_name)
+
+    def collecting(self, check, *args) -> None:
+        """Run *check*; keep the problem it finds instead of stopping, if it finds one."""
+        try:
+            check(*args)
+        except CDDLSemanticError as exc:
+            if not any(known.message == exc.message and known.span == exc.span
+                       for known in self.errors):
+                self.errors.append(exc)
 
     def where(self, span: Span) -> str:
         if self.source is None:
@@ -290,17 +323,27 @@ class _Resolver:
 
     # ---------------------------------------------------------- symbols
 
-    def run(self) -> ResolvedSchema:
-        root = self.collect()
-        for name, rule in parse_prelude_rules().items():
-            self.rules.setdefault(name, rule)
-        self.classify()
-        self.check_cycles()
+    def run(self) -> Tuple[Optional[ResolvedSchema], Tuple[CDDLSemanticError, ...]]:
+        try:
+            root = self.collect()
+            for name, rule in parse_prelude_rules().items():
+                self.rules.setdefault(name, rule)
+            self.classify()
+            self.check_cycles()
+        except CDDLSemanticError as exc:  # the rules are not known: nothing more can be checked
+            return None, (exc,)
         for rule in self.rules.values():
             if not rule.prelude:
+                self.rule_name = rule.name
                 for definition in rule.rules:
-                    self.check_rule(rule, definition)
-        return ResolvedSchema(self.schema, self.rules, root, frozenset(self.external))
+                    self.collecting(self.check_rule, rule, definition)
+        self.rule_name = None
+        if self.errors:
+            errors = tuple(self.errors)
+            for error in errors:
+                error.errors = errors
+            return None, errors
+        return ResolvedSchema(self.schema, self.rules, root, frozenset(self.external)), ()
 
     def collect(self) -> Optional[str]:
         """Build the symbol table and report conflicting definitions."""
@@ -573,7 +616,7 @@ class _Resolver:
     def check_group(self, group: Group, scope, in_map: Optional[bool]):
         for choice in group.choices:
             for entry in choice.entries:
-                self.check_entry(entry, scope, in_map)
+                self.collecting(self.check_entry, entry, scope, in_map)
 
     def check_entry(self, entry, scope, in_map: Optional[bool]):
         self.check_occurrence(entry.occurrence)
