@@ -18,7 +18,7 @@ import re
 import struct
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, NamedTuple, Optional, Sequence, Tuple
 
 from ._cddl import parse_cddl, parse_prelude, query, tagcontent, xsd_regex
 from ._cddl.typeexpr import as_type, bare_name, rename
@@ -798,6 +798,14 @@ _UNKNOWN_TYPE = Type((Name('unknown'),))
 #: Marks a breadcrumb component (a rule name) that is not a step in the data.
 _NO_STEP = object()
 
+
+class _EmbeddedFrame(NamedTuple):
+    """A byte string whose embedded CBOR is being checked (#154)."""
+    depth: int  # steps in the data path up to the byte string
+    base: int  # offset in the input of the embedded bytes
+    locations: Any  # CBORLocations of the embedded bytes; None if unknown
+    span: Optional[Tuple[int, int]]  # the byte string itself, in the input
+
 def _cbor_type_name(value: Any) -> str:
     """Name *value* by its CBOR type (``uint``, ``tstr``, ``map``, ``tag 501``...)."""
     if isinstance(value, CBORKey):
@@ -891,8 +899,8 @@ class CBORAnalyzer:
         self._rules: List[str] = []
         self._locations = None  # CBORLocations, decoded from cbor_bytes on first use
         self._locations_tried = False
-        self._embedded_depth = 0  # >0 while checking CBOR embedded in a byte string
-        self._embedded_span: Optional[Tuple[int, int]] = None  # that byte string's span
+        # One frame per byte string whose CBOR is being checked, innermost last (#154)
+        self._embedded_frames: List[_EmbeddedFrame] = []
     
     def _push_breadcrumb(self, component: str, step: Any = _NO_STEP):
         """Add a component to the CDDL breadcrumb.
@@ -916,9 +924,8 @@ class CBORAnalyzer:
 
     def _item_span(self, path: Tuple[Any, ...], key: Any = _NO_STEP) -> Optional[Tuple[int, int]]:
         """Byte span of the item at *path* (or of its key *key*) in the CBOR input."""
-        if self._embedded_depth:
-            # Items of embedded CBOR have no offsets in the input; point at the byte string
-            return self._embedded_span
+        if self._embedded_frames:
+            return self._embedded_item_span(path, key)
         if not self.cbor_bytes:
             return None
         if self._locations is None and not self._locations_tried:
@@ -933,16 +940,42 @@ class CBORAnalyzer:
             return self._locations.key_span(path, key)
         return self._locations.span(path)
 
+    def _embedded_item_span(self, path: Tuple[Any, ...], key: Any) -> Optional[Tuple[int, int]]:
+        """Span, in the input, of an item inside embedded CBOR.
+
+        The embedded bytes are a slice of the input, so the item's position
+        inside them plus where they start is its offset in the input. An item
+        the index has no position for (or bytes that are not one slice, such
+        as a chunked byte string) is reported at the byte string.
+        """
+        frame = self._embedded_frames[-1]
+        if frame.locations is not None:
+            below = path[frame.depth:]
+            span = (frame.locations.key_span(below, key) if key is not _NO_STEP
+                    else frame.locations.span(below))
+            if span is not None:
+                return frame.base + span[0], frame.base + span[1]
+        return frame.span
+
     @contextlib.contextmanager
-    def _inside_embedded_cbor(self):
-        """Report offsets of the byte string while checking the CBOR inside it."""
-        if not self._embedded_depth:
-            self._embedded_span = self._item_span(self._current_path())
-        self._embedded_depth += 1
+    def _inside_embedded_cbor(self, payload: bytes):
+        """Report offsets inside the byte string *payload* while checking the CBOR in it."""
+        span = self._item_span(self._current_path())
+        base = locations = None
+        if span is not None and self.cbor_bytes:
+            start = span[1] - len(payload)  # the content is the end of the byte string item
+            if start >= span[0] and self.cbor_bytes[start:span[1]] == payload:
+                try:
+                    locations = CBOR.loads_with_locations(payload)[1]
+                    base = start
+                except (CBORDecodeError, TypeError):
+                    locations = None
+        self._embedded_frames.append(
+            _EmbeddedFrame(len(self._current_path()), base or 0, locations, span))
         try:
             yield
         finally:
-            self._embedded_depth -= 1
+            self._embedded_frames.pop()
 
     def _report(self, message: str, category: Optional[str] = None, *,
                 expected: Optional[str] = None, actual: Optional[str] = None,
@@ -1257,8 +1290,7 @@ class CBORAnalyzer:
         self.cbor_bytes = cbor_bytes  # Store for offset tracking
         self._locations = None
         self._locations_tried = False
-        self._embedded_depth = 0
-        self._embedded_span = None
+        self._embedded_frames = []
         
         logger.info("=" * 60)
         logger.info("VALIDATION STARTED")
@@ -1437,7 +1469,7 @@ class CBORAnalyzer:
                 if nested_type_def:
                     logger.debug(f"{Colors.CDDL}[{breadcrumb}]{Colors.RESET} Validating nested CBOR against: {inner_type}")
                     self._push_breadcrumb("cbor")
-                    with self._inside_embedded_cbor():
+                    with self._inside_embedded_cbor(data):
                         self._validate_type(nested_data, nested_type_def, inner_type)
                     self._pop_breadcrumb()
                 else:
@@ -1525,7 +1557,7 @@ class CBORAnalyzer:
                                 nested_type_def = self.cddl.get_type(inner_node, nested_data)
                                 if nested_type_def:
                                     logger.debug(f"{Colors.CDDL}[{field_breadcrumb}]{Colors.RESET} Validating nested CBOR against: {inner_type}")
-                                    with self._inside_embedded_cbor():
+                                    with self._inside_embedded_cbor(value):
                                         self._validate_type(nested_data, nested_type_def, inner_type)
                                 else:
                                     # A primitive or other expression ('bstr .cbor uint')

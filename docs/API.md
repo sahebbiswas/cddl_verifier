@@ -130,8 +130,12 @@ already-decoded Python value gives no offsets. A missing member points at the ma
 that lacks it, and an unknown member at its key. Each unknown member is its own
 diagnostic, in the order the keys appear in the map, and its `path` ends at that
 key. Inside CBOR embedded in a byte
-string (`bstr .cbor`), `path` continues below the byte string but the offsets are
-those of the byte string.
+string (`bstr .cbor`), `path` continues below the byte string and the offsets are
+those of the inner item, counted from the start of the input as for any other item
+(so `raw[offset:end_offset]` is the inner item's bytes). This holds for CBOR
+embedded in CBOR embedded in a byte string too. The offsets are those of the byte
+string itself when the inner item has no position: a chunked (indefinite-length)
+byte string, or input too large for the location index.
 
 ### Rendering diagnostics
 
