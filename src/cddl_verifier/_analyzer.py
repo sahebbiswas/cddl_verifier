@@ -208,7 +208,7 @@ class CDDLParser:
         self.content = cddl_content
         self.source_name = source_name
         self.loader = loader
-        self.warnings: List[str] = []  # imports whose module was not found (#121)
+        self.warnings: List[str] = []  # imports not found (#121), deprecated syntax (#113)
         self.types: Dict[str, Dict] = {}
         self.groups: Dict[str, List] = {}  # Store group definitions
         self.type_choices: Dict[str, List[Type]] = {}  # type choice alternatives, as nodes
@@ -306,7 +306,7 @@ class CDDLParser:
         self.ast = linked.schema
         self._origins = linked.origins
         self.resolved = resolve(self.ast, linked.imports)
-        self.warnings = unloaded_warnings(linked, self.resolved.external)
+        self.warnings = linked.warnings + unloaded_warnings(linked, self.resolved.external)
         tables = LegacyTables(self.ast, self.resolved)
         self.types = tables.types
         self.groups = tables.groups

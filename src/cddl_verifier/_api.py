@@ -106,9 +106,11 @@ class Validator:
             output labels such data with the first alternative that matches.
 
     Attributes:
-        warnings: What the schema relies on without checking: an import whose
-            module was not found keeps its names unchecked (they match any
-            value). The same messages are issued as ``UserWarning``.
+        warnings: What the schema relies on without checking, or uses in a
+            deprecated way: an import whose module was not found keeps its
+            names unchecked (they match any value), and chained controls
+            (``uint .ge 0 .le 150``) will be rejected in a later release. The
+            same messages are issued as ``UserWarning``.
 
     Raises:
         SchemaError: The schema file cannot be read or the schema cannot be

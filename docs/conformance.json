@@ -45,7 +45,7 @@
   },
   {
    "construct": "CDDL outside RFC 8610, RFC 9165, RFC 9682, RFC 9741 and the modules draft comment syntax",
-   "reason": "Unknown control operators are schema errors; the chained-control extension is the only non-standard syntax accepted."
+   "reason": "Unknown control operators are schema errors; the chained-control extension (deprecated, #113) is the only non-standard syntax accepted."
   }
  ],
  "rows": [
@@ -4481,13 +4481,14 @@
     "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "Not RFC 8610 grammar: the parser accepts it as an extension and every control applies. Deprecation is planned (#113).",
+   "notes": "Not RFC 8610 grammar: the parser accepts it as an extension and every control applies. Deprecated: each use warns and names the standard spelling, and a later release will reject it (#113).",
    "issues": [
     113
    ],
    "tests": [
     "tests/test_cddl_parser.py",
-    "tests/test_cbor_cddl_analyzer.py"
+    "tests/test_cbor_cddl_analyzer.py",
+    "tests/test_chained_controls.py"
    ],
    "probes": [
     {

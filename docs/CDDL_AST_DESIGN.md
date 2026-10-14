@@ -217,7 +217,9 @@ HeadNumber = Union[int, Type, None]              # .N, .<type>, or absent
 - A control's `op` has no leading dot. Any identifier is accepted.
 - The parser also accepts chained controls (`uint .ge 0 .le 150`), which
   RFC 8610 does not allow, and reads them left to right: the `target` of the
-  outer `Control` is the inner one. See Phase B in §10.
+  outer `Control` is the inner one. They are deprecated (#113): loading a
+  schema warns about each chain, and a later release removes the case. See
+  Phase B in §10.
 - `HeadNumber` is shared by `Tag` and `Major`. It holds the integer after the
   dot, the full `Type` written between `<` and `>` (RFC 9682), or `None` when
   there is no `.` part.
@@ -458,7 +460,9 @@ As implemented in #110 (`_cddl/legacy.py`):
   extension and parsed as `Control(Control(uint, ge, 0), le, 150)`, because
   the standard forms were not enforced before #71 and #76 (`.and`, `.within`,
   `.eq` and `.ne` are enforced from 0.19.0). Each link counts
-  toward `MAX_DEPTH`.
+  toward `MAX_DEPTH`. Since 0.22.1 each chain gives a deprecation warning
+  (`modules.deprecation_warnings`, from the AST); the parser loop and the
+  `Control.target: Control` case go in the release that rejects chains.
 
 ### Phase C: consumers read nodes instead of strings ([#111](https://github.com/sahebbiswas/cddl_verifier/issues/111))
 
