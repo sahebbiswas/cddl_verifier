@@ -3727,7 +3727,14 @@ Examples:
     
     # Load CBOR data — single read, then decode in-memory (avoids opening the file twice)
     print(f"Loading CBOR data: {args.cbor_file}", file=sys.stderr)
-    cbor_bytes = args.cbor_file.read_bytes()
+    try:
+        cbor_bytes = args.cbor_file.read_bytes()
+    except OSError as e:  # a directory, or a file that cannot be read
+        if json_mode:
+            _exit_json([Diagnostic(f"Cannot read CBOR file {args.cbor_file}: {e}",
+                                   code="decode", category="decode")], valid=False)
+        print(f"Error: cannot read CBOR file {args.cbor_file}: {e}", file=sys.stderr)
+        sys.exit(1)
     try:
         cbor_data = CBOR.loads(cbor_bytes, keep_encoding=True)
     except Exception as _e:  # noqa: BLE001 — loader raises CBORDecodeError (empty/truncated/trailing/malformed) or TypeError

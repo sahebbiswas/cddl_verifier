@@ -185,6 +185,24 @@ class TestJsonMode(CliCase):
             main([str(self.root / "s.cddl"), str(self.root / "no.cbor"), "--diagnostics", "json"])
         self.assertEqual(json.loads(out.getvalue())["diagnostics"][0]["code"], "decode")
 
+    def test_unreadable_cbor_input_is_a_diagnostic(self):
+        cddl = self.write("s.cddl", SCHEMA)
+        folder = self.root / "folder.cbor"
+        folder.mkdir()
+        for flags, as_json in (("--diagnostics", True), ("--type", False)):
+            out, err = io.StringIO(), io.StringIO()
+            args = [str(cddl), str(folder)] + (["--diagnostics", "json"] if as_json else [])
+            with redirect_stdout(out), redirect_stderr(err), self.assertRaises(SystemExit) as raised:
+                main(args)
+            self.assertEqual(raised.exception.code, 1)
+            if as_json:
+                doc = json.loads(out.getvalue())
+                self.assertEqual(doc["diagnostics"][0]["code"], "decode")
+                self.assertIn("Cannot read CBOR file", doc["diagnostics"][0]["message"])
+            else:
+                self.assertEqual(out.getvalue(), "")
+                self.assertIn("cannot read CBOR file", err.getvalue())
+
     def test_edn_only_with_output_file(self):
         target = self.root / "out.edn"
         status, doc, out, _ = self.report(SCHEMA, GOOD, "--type", "doc", "-o", str(target))
