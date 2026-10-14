@@ -158,6 +158,13 @@ class TestCborseqControl(unittest.TestCase):
         self.assertFalse(ok(field, {'a': seq(1)}))
         self.assertTrue(ok(field, {'a': b''}))
 
+    def test_parenthesized_array_argument(self):
+        for control, data in (('.cborseq', seq('x')), ('.cbor', cbor.encode(['x']))):
+            for arg in ('[* uint]', '([* uint])', '(([* uint]))'):
+                self.assertFalse(ok(f'r = bstr {control} {arg}', data), (control, arg))
+        self.assertTrue(ok('r = bstr .cborseq ([* tstr])', seq('x')))
+        self.assertTrue(ok('r = bstr .cbor ([* tstr])', cbor.encode(['x'])))
+
     def test_argument_must_be_an_array(self):
         for arg in ('uint', 'tstr', '{a: int}'):
             with self.assertRaises(SchemaError, msg=arg):
