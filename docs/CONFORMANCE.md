@@ -18,7 +18,7 @@ Layers: the **parser** reads the syntax into the typed **AST**; the **resolver**
 
 | Area | ✅ supported | 🟡 partial | ❌ unsupported | Total |
 |------|-------------:|-----------:|---------------:|------:|
-| CDDL syntax and semantics | 29 | 0 | 0 | 29 |
+| CDDL syntax and semantics | 28 | 0 | 0 | 28 |
 | Control operators | 15 | 0 | 19 | 34 |
 | Prelude types (RFC 8610 Appendix D) | 14 | 1 | 0 | 15 |
 | CBOR data model (RFC 8949) | 9 | 2 | 0 | 11 |
@@ -57,7 +57,6 @@ Constructs of the RFC 8610 grammar (as updated by RFC 9682), the modules draft, 
 | Modules `;# import X as P`, `;# include X` | draft-ietf-cbor-cddl-modules | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Draft comment syntax. Modules come from `modules=` / `--module` or a search path; one that is not found keeps its names unchecked and warns (#121). No RFC modules are bundled. | `test_modules.py` |
 | Root rules that are not maps or arrays | RFC 8610 §2.1 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Primitives with controls, choices, literals and tags work as the root type (#94). | `test_type_choices.py`, `test_public_api.py` |
 | Name resolution and schema errors | RFC 8610 §2 | ✅ | – | – | ✅ | – | – | Undefined names (with suggestions), duplicate definitions, wrong generic argument counts, unknown controls and misapplied controls are `SchemaError`s with a position (#70). | `test_resolve.py`, `test_cddl_parser.py` |
-| Chained controls `uint .ge 0 .le 150` | project extension | ✅ | ✅ | ✅ | ✅ | ✅ | – | Not RFC 8610 grammar: the parser accepts it as an extension and every control applies. Deprecation is planned (#113). [#113](https://github.com/sahebbiswas/cddl_verifier/issues/113) | `test_cddl_parser.py`, `test_cbor_cddl_analyzer.py` |
 
 ## Control operators
 
@@ -147,7 +146,7 @@ What the decoder, encoder, validator, EDN output and typed JSON bridge do with e
 | Reading EDN text | The library writes annotated EDN from CBOR; it does not parse EDN into CBOR. |
 | Signatures, MACs and cryptographic checks (COSE, CoRIM, EAT) | Validation is structural: the library checks the shape of the data, not what the data attests. |
 | Generating sample data from a schema | Schemas are used to validate and annotate data that already exists. |
-| CDDL outside RFC 8610, RFC 9165, RFC 9682, RFC 9741 and the modules draft comment syntax | Unknown control operators are schema errors; the chained-control extension is the only non-standard syntax accepted. |
+| CDDL outside RFC 8610, RFC 9165, RFC 9682, RFC 9741 and the modules draft comment syntax | Unknown control operators are schema errors; a second control on one type (`uint .ge 0 .le 150`, accepted before #113) is a syntax error that names the parenthesized spelling; nothing else non-standard is accepted. |
 
 ## Updating
 

@@ -506,13 +506,12 @@ class CDDLParser:
         """Extract numeric value-range predicates from a type node.
 
         Supports ``.ge``, ``.gt``, ``.le``, ``.lt`` (RFC 8610 §3.8.1) with a
-        numeric literal argument, including chained controls (the parser's
-        ``uint .ge 0 .le 100`` extension).
+        numeric literal argument. The type takes one control, so one bound is
+        found; ``(uint .ge 0) .le 100`` is enforced as a rule of its own.
 
         Examples::
 
             'uint .le 150'          -> {'ge': None, 'gt': None, 'le': 150, 'lt': None}
-            'uint .ge 0 .le 100'    -> {'ge': 0,    'gt': None, 'le': 100, 'lt': None}
 
         Returns ``None`` if no range predicates are found.
         """

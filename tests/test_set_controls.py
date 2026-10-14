@@ -126,8 +126,8 @@ class TestAndWithin(unittest.TestCase):
         self.assertFalse(ok(s, {'a': 'abc', 'b': []}))
         self.assertFalse(ok(s, {'a': 'ab', 'b': [4]}))
 
-    def test_chained(self):
-        s = 'r = uint .and (uint .ge 2) .and (uint .le 4)'
+    def test_nested_with_parentheses(self):
+        s = 'r = (uint .and (uint .ge 2)) .and (uint .le 4)'
         self.assertTrue(ok(s, 3))
         self.assertFalse(ok(s, 5))
 

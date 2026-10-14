@@ -120,8 +120,8 @@ class TestCborseqControl(unittest.TestCase):
     def test_through_a_rule_and_the_bytes_own_controls(self):
         self.assertTrue(ok('s = [* tstr]\nr = bstr .cborseq s', seq('a', 'b')))
         self.assertFalse(ok('s = [* tstr]\nr = bstr .cborseq s', seq('a', 1)))
-        self.assertTrue(ok('r = bstr .cborseq [* uint] .size 2', seq(1, 2)))
-        self.assertFalse(ok('r = bstr .cborseq [* uint] .size 2', seq(1, 2, 3)))
+        self.assertTrue(ok('r = (bstr .cborseq [* uint]) .size 2', seq(1, 2)))
+        self.assertFalse(ok('r = (bstr .cborseq [* uint]) .size 2', seq(1, 2, 3)))
 
     def test_in_field_element_and_named_rule(self):
         s = 'r = {a: bstr .cborseq [* uint]}'
@@ -147,14 +147,14 @@ class TestCborseqControl(unittest.TestCase):
         self.assertFalse(ok(s, seq({'k': 1}, {'k': 'x'})))
 
     def test_every_embedded_control_applies(self):
-        two = 'r = bstr .cborseq [* uint] .cborseq [* tstr]'
+        two = 'r = (bstr .cborseq [* uint]) .cborseq [* tstr]'
         self.assertFalse(ok(two, seq(1)))        # the second control wants text
         self.assertFalse(ok(two, seq('x')))      # the first wants uints
         self.assertTrue(ok(two, b''))            # both accept the empty sequence
-        both = 'r = bstr .cbor uint .cborseq [* uint]'
+        both = 'r = (bstr .cbor uint) .cborseq [* uint]'
         self.assertTrue(ok(both, seq(1)))
         self.assertFalse(ok(both, seq(1, 2)))    # .cbor takes one item
-        field = 'r = {a: bstr .cborseq [* uint] .cborseq [* tstr]}'
+        field = 'r = {a: (bstr .cborseq [* uint]) .cborseq [* tstr]}'
         self.assertFalse(ok(field, {'a': seq(1)}))
         self.assertTrue(ok(field, {'a': b''}))
 

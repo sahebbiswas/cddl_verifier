@@ -165,13 +165,32 @@ class TestTypes(unittest.TestCase):
         # Any control name parses; #70 decides which are known.
         self.assertEqual(rhs("a = uint .frobnicate 1"), Control(N('uint'), 'frobnicate', I(1)))
 
-    def test_chained_controls_extension(self):
-        # Not RFC 8610 (one control per type), accepted for compatibility:
-        # 'uint .ge 0 .le 150' reads as '(uint .ge 0) .le 150'.
-        self.assertEqual(rhs("a = uint .ge 0 .le 150"),
-                         Control(Control(N('uint'), 'ge', I(0)), 'le', I(150)))
-        r = rule("a = uint .ge 0 .le 150 / tstr")
-        self.assertEqual(format_node(r), "a = uint .ge 0 .le 150 / tstr")
+    def test_the_second_of_two_controls_is_rejected(self):
+        # RFC 8610 allows one control per type; 'uint .ge 0 .le 150' was
+        # accepted as an extension until #113.
+        for text, where in (("a = uint .ge 0 .le 150", "1:16"),
+                            ("a = uint .ge 0 .le 150 / tstr", "1:16"),
+                            ("a = {x: bstr .cbor uint .size 1}", "1:25"),
+                            ("a = tstr .size 1 .regexp \"a\" .ne \"b\"", "1:18")):
+            with self.subTest(text=text):
+                with self.assertRaises(CDDLSyntaxError) as cm:
+                    parse_cddl(text)
+                self.assertIn("a type takes one control operator", cm.exception.message)
+                self.assertTrue(str(cm.exception).startswith(f"<schema>:{where}: "), str(cm.exception))
+
+    def test_the_public_api_reports_it_as_a_schema_error(self):
+        from cddl_verifier import SchemaError, Validator
+        with self.assertRaises(SchemaError) as cm:
+            Validator("r = uint .ge 0 .le 150")
+        self.assertIn("a type takes one control operator", str(cm.exception))
+
+    def test_the_error_names_the_parenthesized_spelling(self):
+        with self.assertRaises(CDDLSyntaxError) as cm:
+            parse_cddl("a = uint .ge 0 .le 150")
+        self.assertIn("parenthesize the first: (uint .ge 0) .le ...", cm.exception.message)
+        self.assertEqual(rhs("a = (uint .ge 0) .le 150"),
+                         Control(Paren(T(Control(N('uint'), 'ge', I(0)))), 'le', I(150)))
+        r = rule("a = (uint .ge 0) .le 150 / tstr")
         self.assertEqual(parse_cddl(format_node(r)).rules[0], r)
 
     def test_paren(self):
@@ -418,14 +437,6 @@ class TestErrors(unittest.TestCase):
                 repr(schema)
                 self.assertGreater(len(list(walk(schema))), n)
                 self.assertEqual(parse_cddl(format_node(schema)), schema)
-
-    def test_chained_controls_count_toward_the_limit(self):
-        ok = parse_cddl("r = uint" + " .ge 0" * MAX_DEPTH)
-        self.assertEqual(parse_cddl(format_node(ok)), ok)
-        repr(ok)
-        with self.assertRaises(CDDLSyntaxError) as cm:
-            parse_cddl("r = uint" + " .ge 0" * (MAX_DEPTH + 2))
-        self.assertIn("nesting deeper than", cm.exception.message)
 
     def test_nesting_limit(self):
         for opener, closer in (("[", "]"), ("{ a: ", "}"), ("(", ")"), ("#6.1(", ")"), ("x<", ">")):

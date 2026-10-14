@@ -50,13 +50,14 @@ def alternatives(expr) -> list:
 
 
 def _unwrap_controls(node):
-    """``(base, [(op, arg), ...])`` for a control chain, in source order."""
-    ops = []
-    while isinstance(node, Control):
-        ops.append((node.op, node.arg))
-        node = node.target
-    ops.reverse()
-    return node, ops
+    """``(base, [(op, arg)])`` for a controlled type, ``(node, [])`` for any other.
+
+    A type takes one control, so there is at most one pair; a control on a
+    controlled type is written with parentheses and the target is a ``Paren``.
+    """
+    if isinstance(node, Control):
+        return node.target, [(node.op, node.arg)]
+    return node, []
 
 
 def head(expr) -> str:
@@ -199,13 +200,22 @@ def item_ref(expr) -> Optional[ItemRef]:
 def embedded_controls(expr) -> List[Tuple[str, str, Type]]:
     """``(op, base, inner)`` for every ``.cbor`` and ``.cborseq`` on a ``bstr``, in order.
 
-    ``bstr .cbor A .cborseq B`` gives both: the bytes must satisfy each. The list
-    is empty for any other type. Chained controls are looked through.
+    ``(bstr .cbor A) .cborseq B`` gives both: the bytes must satisfy each. Each
+    parenthesized control is looked into, innermost first. The list is empty
+    for any other type.
     """
     node = _single(expr)
-    if node is None:
-        return []
-    stripped, ops = _unwrap_controls(node)
+    ops: list = []
+    while node is not None:
+        if isinstance(node, Control):
+            ops.append((node.op, node.arg))
+            node = node.target
+        elif isinstance(node, Paren) and len(node.type.alternatives) == 1:
+            node = node.type.alternatives[0]
+        else:
+            break
+    ops.reverse()
+    stripped = node
     if not isinstance(stripped, Name) or stripped.name not in ('bstr', 'bytes'):
         return []
     return [(op, stripped.name, _type(arg)) for op, arg in ops if op in ('cbor', 'cborseq')]
@@ -219,11 +229,7 @@ def _embedded_control(expr, control: str) -> Optional[Tuple[str, Type]]:
 
 
 def cbor_control(expr) -> Optional[Tuple[str, Type]]:
-    """``(base, inner)`` for ``bstr .cbor inner`` / ``bytes .cbor inner``.
-
-    Chained controls are looked through, so ``bstr .cbor uint .size 1`` gives
-    ``('bstr', uint)``: the embedded item must still be checked.
-    """
+    """``(base, inner)`` for ``bstr .cbor inner`` / ``bytes .cbor inner``, parenthesized or not."""
     return _embedded_control(expr, 'cbor')
 
 
@@ -231,7 +237,7 @@ def cborseq_control(expr) -> Optional[Tuple[str, Type]]:
     """``(base, inner)`` for ``bstr .cborseq [* inner]`` / ``bytes .cborseq ...``.
 
     The byte string holds a CBOR sequence (RFC 8742); *inner* is the array type
-    its items are matched against. Chained controls are looked through.
+    its items are matched against.
     """
     return _embedded_control(expr, 'cborseq')
 

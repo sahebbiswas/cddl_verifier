@@ -57,15 +57,18 @@ class TestQuery(unittest.TestCase):
 
     def test_head(self):
         self.assertEqual(query.head(T("tstr .size 2")), "tstr")
-        self.assertEqual(query.head(T("uint .ge 0 .le 9")), "uint")
+        self.assertEqual(query.head(T("uint .ge 0")), "uint")
         self.assertEqual(query.head(T("coswid.tag-id")), "coswid.tag-id")
         self.assertEqual(query.head(T("coswid.tag-id .size 2")), "coswid.tag-id")
         self.assertEqual(query.head(T("#6.1(x)")), "#6.1(x)")
         self.assertEqual(query.head(T("a / b")), "a / b")
 
     def test_controls(self):
-        ops = query.controls(T("uint .ge 0 .le 150"))
-        self.assertEqual([(c.op, c.arg_text) for c in ops], [("ge", "0"), ("le", "150")])
+        ops = query.controls(T("uint .ge 0"))
+        self.assertEqual([(c.op, c.arg_text) for c in ops], [("ge", "0")])
+        # a control on a controlled type is its own: the target is the parentheses
+        ops = query.controls(T("(uint .ge 0) .le 150"))
+        self.assertEqual([(c.op, c.arg_text) for c in ops], [("le", "150")])
         self.assertEqual(query.controls(T("uint / tstr .size 2")), [])
 
     def test_paren(self):
@@ -82,7 +85,7 @@ class TestQuery(unittest.TestCase):
         self.assertIsNone(query.paren(T("#6.1(a)")))
 
     def test_without_controls(self):
-        self.assertEqual(F(query.without_controls(T("tstr .size 3 .regexp \"a\""))), "tstr")
+        self.assertEqual(F(query.without_controls(T("tstr .size 3"))), "tstr")
         self.assertEqual(F(query.without_controls(T("foo<uint>"))), "foo<uint>")
         self.assertEqual(F(query.without_controls(T("(uint) .le 3"))), "(uint)")
         self.assertIsNone(query.without_controls(T("1..5")))
@@ -113,8 +116,8 @@ class TestQuery(unittest.TestCase):
         self.assertIsNone(query.inline_array(T("[ a: int ]")))
         self.assertTrue(query.is_array(T("[ a, b ]")))
 
-    def test_cbor_control_through_a_chain(self):
-        for text in ("bstr .cbor uint .size 1", "bstr .size 1 .cbor uint"):
+    def test_cbor_control_through_parentheses(self):
+        for text in ("bstr .cbor uint", "(bstr .cbor uint) .size 1", "(bstr .size 1) .cbor uint"):
             base, inner = query.cbor_control(T(text))
             self.assertEqual((base, F(inner)), ("bstr", "uint"))
         self.assertIsNone(query.cbor_control(T("tstr .cbor uint")))
@@ -160,7 +163,7 @@ class TestBehaviour(unittest.TestCase):
         # type is not checked yet (#73).
         self.assertTrue(validate('r = "t" .size (1..3)', "t").valid)
         self.assertFalse(validate('r = "t" .size (2..3)', "t").valid)
-        self.assertTrue(validate("r = 1 .ge 0 .le 9", 1).valid)
+        self.assertTrue(validate("r = (1 .ge 0) .le 9", 1).valid)
         self.assertFalse(validate('r = { a: "t" .regexp "[a-c]+" / 1 }', {"a": "t"}).valid)
         self.assertTrue(validate('r = { a: "a" .regexp "[a-c]+" / 1 }', {"a": "a"}).valid)
 
@@ -186,12 +189,12 @@ class TestBehaviour(unittest.TestCase):
         from cddl_verifier.cbor import encode
         bad, good, too_big = encode(True), encode(5), encode(300)
         cases = [
-            ("r = bstr .cbor uint .size 1", lambda d: encode(d)),          # root
-            ("r = { a: bstr .cbor uint .size 1 }", lambda d: {"a": d}),   # field
+            ("r = (bstr .cbor uint) .size 1", lambda d: encode(d)),          # root
+            ("r = { a: (bstr .cbor uint) .size 1 }", lambda d: {"a": d}),   # field
             ("r = { a: bstr .cbor uint }", lambda d: {"a": d}),          # field, no chain
-            ("r = [ * bstr .cbor uint .size 1 ]", lambda d: [d]),         # array element
+            ("r = [ * (bstr .cbor uint) .size 1 ]", lambda d: [d]),         # array element
             ("r = { a: [ * bstr .cbor uint ] }", lambda d: {"a": [d]}),   # inline array
-            ("r = { a: bstr .cbor uint .size 1 / tstr }", lambda d: {"a": d}),  # choice
+            ("r = { a: (bstr .cbor uint) .size 1 / tstr }", lambda d: {"a": d}),  # choice
         ]
         for schema, wrap in cases:
             with self.subTest(schema=schema):

@@ -189,11 +189,11 @@ class QueryOnNodes(Quiet):
         self.assertEqual(query.head(parse_type_expr("tstr .size 2")), "tstr")
         self.assertEqual(query.head(parse_type_expr("coswid.tag-id")), "coswid.tag-id")
         self.assertEqual(query.head(parse_type_expr("#6.1(x)")), "#6.1(x)")
-        controls = query.controls(parse_type_expr("uint .ge 0 .le 150"))
-        self.assertEqual([(c.op, c.arg_text) for c in controls], [("ge", "0"), ("le", "150")])
+        controls = query.controls(parse_type_expr("uint .ge 0"))
+        self.assertEqual([(c.op, c.arg_text) for c in controls], [("ge", "0")])
 
     def test_base_looks_through_controls(self):
-        self.assertEqual(query.base(parse_type_expr("tstr .size 1 .regexp \"a\"")), Name("tstr"))
+        self.assertEqual(query.base(parse_type_expr("tstr .size 1")), Name("tstr"))
         self.assertIsNone(query.base(parse_type_expr("a / b")))
 
 
