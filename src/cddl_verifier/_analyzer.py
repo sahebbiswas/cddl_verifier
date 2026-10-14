@@ -2633,13 +2633,23 @@ class CBORAnalyzer:
         with self._inside_embedded_cbor(payload, sequence):
             errors = self._check_value(nested, inner, _depth, strict)
             whole = self._embedded_item_span(self._current_path(), _NO_STEP) if errors else None
-        located = []
-        for error in errors:
-            if not error.located:
-                error = error.reworded(str(error))
-                error.span, error.located = whole, True
-            located.append(error)
-        return located
+        return [self._located_at(error, whole) for error in errors]
+
+    @classmethod
+    def _located_at(cls, error: _CheckError, span: Optional[Tuple[int, int]]) -> _CheckError:
+        """*error* with *span* for itself and each alternative that has no position yet.
+
+        What is already located (found by a nested validation run) keeps its
+        span. This is for errors about the embedded item as a whole, found
+        while the embedded frame is open: they are reported after it closes.
+        """
+        if not error.located:
+            error = error.reworded(str(error))
+            error.span, error.located = span, True
+        error.alternatives = tuple(
+            item if isinstance(item, Diagnostic) else (item[0], cls._located_at(item[1], span))
+            for item in error.alternatives)
+        return error
 
     #: Controls that compare the value with their argument instead of
     #: describing its shape: equal to (``.eq``), different from (``.ne``), and

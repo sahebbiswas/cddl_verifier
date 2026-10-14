@@ -221,6 +221,15 @@ class TestNestedFindings(unittest.TestCase):
         self.assertEqual(alternative.path, (0, "a", "b", "deeper"))
         self.assertEqual(alternative.schema_path, ("x", "rule"))
 
+    def test_alternatives_of_an_embedded_choice_are_inside_the_byte_string(self):
+        raw, diags = found("r = { 0: bstr .cbor (uint / tstr) }", {0: cbor.encode(b"x")})
+        diag = diags[0]
+        self.assertEqual(bytes_of(raw, diag), cbor.encode(b"x"))  # not the outer byte string
+        self.assertEqual(len(diag.alternatives), 2)
+        for alternative in diag.alternatives:
+            self.assertEqual((alternative.offset, alternative.end_offset),
+                             (diag.offset, diag.end_offset))
+
     def test_findings_still_compare_as_strings(self):
         analyzer = validate("r = uint", cbor.encode(1))
         self.assertTrue(analyzer.valid)
