@@ -471,6 +471,7 @@ in the same commit:
 | `.size` | `extract_size_constraint`, `_size_bound` | `Control(op="size")` with an `IntLit`, `Range` or `Name` argument |
 | `.ge/.gt/.le/.lt` | `extract_value_range` | `Control(op=...)` |
 | `.regexp` | `extract_regexp`, `regexp_violation` (`xsd_regex`) | `Control(op="regexp", arg=TextLit)` |
+| `.cborseq` | `query.cborseq_control`, `_cborseq_errors` | `Control(op="cborseq")` with an array argument |
 | `.bits` | `extract_bits`, `bits_violation` (`resolve.bit_mask`) | `Control(op="bits")` with an `IntLit`, `Range`, `Name`, `ChoiceFrom` or choice argument |
 | `.cbor` | `extract_cbor_control` (now `query.cbor_control`) | `Control(op="cbor")` |
 | tags | `extract_cbor_tag`, `_peel_tagged_primitive`, string parts of `_with_tag` (now `query.tag`) | `Tag` |

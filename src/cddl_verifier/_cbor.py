@@ -21,8 +21,9 @@ CBOR Major Types:
 Decoding is strict: ``CBOR.loads()`` / ``cbor_decode()`` consume exactly one
 complete CBOR data item. Empty input, truncated items, and trailing bytes after
 the item raise :class:`CBORDecodeError` (a ``ValueError`` subclass) carrying the
-byte ``offset`` at which the problem was detected. CBOR sequences (RFC 8742)
-are intentionally not accepted by this API.
+byte ``offset`` at which the problem was detected. A CBOR sequence (RFC 8742)
+is not accepted there; ``CBOR.loads_sequence()`` / ``cbor_decode_sequence()``
+decode one into the list of its items.
 
 References:
 - RFC 8949: Concise Binary Object Representation (CBOR)
@@ -385,6 +386,52 @@ class CBOR:
         """
         return cls.load(cbor_bytes, keep_encoding).data
     
+    @classmethod
+    def loads_sequence(cls, cbor_bytes: bytes, keep_encoding: bool = False) -> List[Any]:
+        """
+        Decode a CBOR sequence (RFC 8742) to the list of its items.
+
+        A sequence is zero or more complete data items, one after the other with
+        nothing between them. Empty input is the empty sequence and gives
+        ``[]``. An item that is truncated or malformed raises
+        :class:`CBORDecodeError` (:class:`CBORTruncatedError` when the input ends
+        inside it), saying which item it is and carrying the offset in the whole
+        input. :meth:`loads` stays strict: it still rejects trailing data.
+
+        Args:
+            cbor_bytes: CBOR encoded bytes
+            keep_encoding: See :meth:`load`.
+
+        Returns:
+            The decoded items, in order.
+
+        Raises:
+            CBORDecodeError: An item is malformed or truncated.
+            TypeError: The input is not bytes-like.
+        """
+        if isinstance(cbor_bytes, (bytearray, memoryview)):
+            cbor_bytes = bytes(cbor_bytes)
+        elif not isinstance(cbor_bytes, bytes):
+            raise TypeError(
+                f"CBOR input must be bytes-like, not {type(cbor_bytes).__name__}"
+            )
+        obj = cls()
+        obj._decode_data = cbor_bytes
+        obj._decode_pos = 0
+        obj._keep_encoding = keep_encoding
+        items: List[Any] = []
+        while obj._decode_pos < len(cbor_bytes):
+            try:
+                items.append(obj._decode_item())
+            except RecursionError:
+                raise CBORDecodeError(
+                    f"item {len(items)} of the sequence: Nesting too deep",
+                    obj._decode_pos) from None
+            except CBORDecodeError as exc:
+                raise type(exc)(f"item {len(items)} of the sequence: {exc.reason}",
+                                exc.offset) from None
+        return items
+
     @classmethod
     def loads_with_locations(cls, cbor_bytes: bytes,
                              max_steps: int = MAX_LOCATION_STEPS) -> Tuple[Any, 'CBORLocations']:
@@ -1802,6 +1849,11 @@ def cbor_encode(obj: Any, canonical: bool = False) -> bytes:
 def cbor_decode(data: bytes, keep_encoding: bool = False) -> Any:
     """Decode exactly one CBOR item to a Python object (see ``CBOR.loads``)."""
     return CBOR.loads(data, keep_encoding)
+
+
+def cbor_decode_sequence(data: bytes, keep_encoding: bool = False) -> List[Any]:
+    """Decode a CBOR sequence to the list of its items (see ``CBOR.loads_sequence``)."""
+    return CBOR.loads_sequence(data, keep_encoding)
 
 
 def cbor_diag_dump(data: bytes, indent: str = "  ") -> str:

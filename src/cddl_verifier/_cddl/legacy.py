@@ -703,9 +703,12 @@ class LegacyTables:
             if node.op in _TYPE_ARG_CONTROLS:
                 # 'bstr .cbor pair<uint, tstr>', 'bstr .cbor { a: uint }': the
                 # embedded item is checked against the argument (#127)
-                if isinstance(arg, Array):
+                inner = arg
+                while isinstance(inner, Paren) and len(inner.type.alternatives) == 1:
+                    inner = inner.type.alternatives[0]  # '.cborseq ([* uint])' is '.cborseq [* uint]'
+                if isinstance(inner, Array):
                     # '[+ p]' too: the embedded item is checked as a rule of its own
-                    arg = Name(self._synthetic(arg, f'{path}@arg'))
+                    arg = Name(self._synthetic(inner, f'{path}@arg'))
                 else:
                     arg = _as_type2(self._lift(Type((arg,)), f'{path}@arg'))
             elif node.op in _AND_CONTROLS:

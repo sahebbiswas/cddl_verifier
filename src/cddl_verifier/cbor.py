@@ -28,6 +28,7 @@ from ._cbor import (
     CBORTruncatedError,
     CBORUnsupportedError,
     cbor_decode,
+    cbor_decode_sequence,
     cbor_diag_dump,
     cbor_encode,
 )
@@ -43,9 +44,11 @@ __all__ = [
     "CBORUnsupportedError",
     "UNDEFINED",
     "cbor_decode",
+    "cbor_decode_sequence",
     "cbor_diag_dump",
     "cbor_encode",
     "decode",
+    "decode_sequence",
     "diag_dump",
     "encode",
     "head_info",
@@ -71,6 +74,16 @@ def decode(data: bytes, keep_encoding: bool = False):
     as the plain value does. :func:`head_info` reads it for any value.
     """
     return cbor_decode(data, keep_encoding)
+
+
+def decode_sequence(data: bytes, keep_encoding: bool = False):
+    """Decode a CBOR sequence (RFC 8742) from *data* to the list of its items.
+
+    Empty input is the empty sequence. A truncated or malformed item raises
+    ``CBORDecodeError`` that names the item and carries the offset. :func:`decode`
+    still rejects trailing data.
+    """
+    return cbor_decode_sequence(data, keep_encoding)
 
 
 def diag_dump(data: bytes, indent: str = "  ") -> str:

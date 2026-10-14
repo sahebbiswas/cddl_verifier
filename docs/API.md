@@ -339,10 +339,23 @@ except CBORTrailingDataError as e:
     print(e)                          # Trailing data after CBOR item: 1 extra byte(s) (at offset 1)
 ```
 
-CBOR sequences (RFC 8742) are deliberately **not** accepted by these functions;
-a separate sequence-decoding API (for `.cborseq`) is planned. Nested
-`.cbor`-controlled byte strings in the analyzer are decoded with the same strict
-rules.
+CBOR sequences (RFC 8742) are deliberately **not** accepted by these functions.
+`decode_sequence(data, keep_encoding=False)` (`cbor_decode_sequence`,
+`CBOR.loads_sequence`) reads one:
+
+```python
+from cddl_verifier.cbor import decode_sequence
+
+decode_sequence(b"\x01\x62ab\x82\x01\x02")   # [1, 'ab', [1, 2]]
+decode_sequence(b"")                          # []  (the empty sequence)
+decode_sequence(b"\x01\x62a")                # CBORTruncatedError: item 1 of the sequence ... (at offset 2)
+```
+
+A sequence is zero or more complete items, back to back. Empty input is the
+empty sequence. A truncated or malformed item raises the same exceptions as
+`decode`, with a message that names the item and an `offset` into the whole
+input. Nested `.cbor`-controlled byte strings in the analyzer are decoded with
+the strict single-item rules; `.cborseq` byte strings with `decode_sequence`.
 
 ### Builder API
 

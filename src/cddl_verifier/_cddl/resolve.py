@@ -78,7 +78,7 @@ _CONTROL_KINDS: Dict[str, Tuple[Optional[FrozenSet[str]], Optional[FrozenSet[str
     'bits': (frozenset({'uint', 'bstr'}), frozenset({'uint'})),
     'regexp': (frozenset({'tstr'}), frozenset({'tstr'})),
     'cbor': (frozenset({'bstr'}), None),
-    'cborseq': (frozenset({'bstr'}), None),
+    'cborseq': (frozenset({'bstr'}), frozenset({'array'})),
     'lt': (_NUMERIC, _NUMERIC),
     'le': (_NUMERIC, _NUMERIC),
     'gt': (_NUMERIC, _NUMERIC),

@@ -196,22 +196,44 @@ def item_ref(expr) -> Optional[ItemRef]:
     return None
 
 
+def embedded_controls(expr) -> List[Tuple[str, str, Type]]:
+    """``(op, base, inner)`` for every ``.cbor`` and ``.cborseq`` on a ``bstr``, in order.
+
+    ``bstr .cbor A .cborseq B`` gives both: the bytes must satisfy each. The list
+    is empty for any other type. Chained controls are looked through.
+    """
+    node = _single(expr)
+    if node is None:
+        return []
+    stripped, ops = _unwrap_controls(node)
+    if not isinstance(stripped, Name) or stripped.name not in ('bstr', 'bytes'):
+        return []
+    return [(op, stripped.name, _type(arg)) for op, arg in ops if op in ('cbor', 'cborseq')]
+
+
+def _embedded_control(expr, control: str) -> Optional[Tuple[str, Type]]:
+    for op, base, inner in embedded_controls(expr):
+        if op == control:
+            return base, inner
+    return None
+
+
 def cbor_control(expr) -> Optional[Tuple[str, Type]]:
     """``(base, inner)`` for ``bstr .cbor inner`` / ``bytes .cbor inner``.
 
     Chained controls are looked through, so ``bstr .cbor uint .size 1`` gives
     ``('bstr', uint)``: the embedded item must still be checked.
     """
-    node = _single(expr)
-    if node is None:
-        return None
-    stripped, ops = _unwrap_controls(node)
-    if not isinstance(stripped, Name) or stripped.name not in ('bstr', 'bytes'):
-        return None
-    for op, arg in ops:
-        if op == 'cbor':
-            return stripped.name, _type(arg)
-    return None
+    return _embedded_control(expr, 'cbor')
+
+
+def cborseq_control(expr) -> Optional[Tuple[str, Type]]:
+    """``(base, inner)`` for ``bstr .cborseq [* inner]`` / ``bytes .cborseq ...``.
+
+    The byte string holds a CBOR sequence (RFC 8742); *inner* is the array type
+    its items are matched against. Chained controls are looked through.
+    """
+    return _embedded_control(expr, 'cborseq')
 
 
 def literal(expr):

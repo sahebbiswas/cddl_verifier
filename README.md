@@ -95,7 +95,8 @@ print(cbor_to_json(raw, typed=True, pretty=True))
 
 Decoding is strict: the input must be exactly one complete CBOR item. Empty,
 truncated or trailing-byte input raises `CBORDecodeError` with the byte offset
-of the problem. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/API.md) for the full API.
+of the problem. `decode_sequence` reads a CBOR sequence (RFC 8742) as the list of
+its items. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/API.md) for the full API.
 
 ## What is supported
 
@@ -121,7 +122,7 @@ of the problem. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/b
   misused generic or an unknown control operator
   ([#70](https://github.com/sahebbiswas/cddl_verifier/issues/70)).
   Validation covers a practical subset of what the grammar can express: the
-  control operators `.cborseq`, `.abnf`, `.abnfb` and the
+  control operators `.abnf`, `.abnfb` and the
   RFC 9741 conversions are parsed but not enforced
   ([#76](https://github.com/sahebbiswas/cddl_verifier/issues/76)). The
   [conformance matrix](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CONFORMANCE.md)
@@ -131,8 +132,8 @@ of the problem. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/b
   The optional §4.2.2 reduction of integral floats to integers is not applied,
   and non-canonical mode still writes floats as 8-byte doubles.
 - **CBOR**: indefinite-length items, `undefined` and the other simple values
-  decode; the encoder writes definite-length items. CBOR sequences are
-  rejected; a sequence API is not available yet.
+  decode; the encoder writes definite-length items. `decode` rejects a CBOR
+  sequence; `decode_sequence` reads one.
 - **Value types**: tags decode to `(tag, value)` tuples. This is provisional
   and expected to change
   ([#78](https://github.com/sahebbiswas/cddl_verifier/issues/78)). Map keys
