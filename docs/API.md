@@ -127,7 +127,9 @@ the fields and the JSON layout (`format_version`) stay stable.
 validation errors the offset is the position of the item in the CBOR bytes, found
 by the decoder, and only when the data was given as bytes: validating an
 already-decoded Python value gives no offsets. A missing member points at the map
-that lacks it, and an unknown member at its key. Inside CBOR embedded in a byte
+that lacks it, and an unknown member at its key. Each unknown member is its own
+diagnostic, in the order the keys appear in the map, and its `path` ends at that
+key. Inside CBOR embedded in a byte
 string (`bstr .cbor`), `path` continues below the byte string but the offsets are
 those of the byte string.
 

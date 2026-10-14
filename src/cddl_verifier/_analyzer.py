@@ -965,7 +965,8 @@ class CBORAnalyzer:
             at_parent: Point at the container of the current item (a member
                        that is missing has no item of its own).
             extra_path: Steps below the current item.
-            key:       Point at this key of the map at the current item.
+            key:       Point at the member with this key of the map at the current
+                       item: the path ends at it and the offset is that of its key.
         """
         path = self._current_path()
         if at_parent and path:
@@ -976,6 +977,8 @@ class CBORAnalyzer:
         if expected is None and actual is None:
             expected, actual = expected_and_found(message)
         span = self._item_span(path, key)
+        if key is not _NO_STEP:
+            path = path + (key,)  # the member's own path; the offset is that of its key
         offset = end = hex_text = None
         truncated = False
         if span is not None:
@@ -1819,13 +1822,13 @@ class CBORAnalyzer:
                                  f"with key '{format_node(computed['key'])}', found {count}")
                     logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
                     self._report(error_msg)
-            if extra_keys:
-                error_msg = f"Unknown fields not in schema for type '{type_name}': {extra_keys}"
+            # One diagnostic per unknown member, in the order they appear in the map (#155)
+            for key in [k for k in data if k in extra_keys]:
+                error_msg = f"Unknown field {key!r} not in schema for type '{type_name}'"
                 logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
-                unknown = sorted(extra_keys, key=repr)
-                self._report(error_msg, 'unknown', key=unknown[0],
+                self._report(error_msg, 'unknown', key=key,
                              expected='only the members the schema defines',
-                             actual=f"unknown key(s) {', '.join(repr(k) for k in unknown)}")
+                             actual=f"unknown key {key!r}")
         
         elif type_def['type'] == 'array':
             if not isinstance(data, (list, tuple)):

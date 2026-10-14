@@ -221,7 +221,7 @@ _CLASSIFY_RULES = (
     ('schema', re.compile(r"not found in CDDL|resolves to|Invalid \.regexp pattern|cannot check")),
     ('tag', re.compile(r"\bCBOR tag\b")),
     ('missing', re.compile(r"^Missing required field")),
-    ('unknown', re.compile(r"^Unknown fields")),
+    ('unknown', re.compile(r"^Unknown fields?\b")),
     ('nested', re.compile(r"nested CBOR|Embedded CBOR|embedded CBOR|containing CBOR")),
     ('occurrence', re.compile(
         r"at least one|must not be empty|missing element|unexpected element|"
