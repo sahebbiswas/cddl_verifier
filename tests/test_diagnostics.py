@@ -172,6 +172,26 @@ class TestDiagnosticFields(unittest.TestCase):
         diag = found[0]
         self.assertEqual(raw[diag.offset:diag.end_offset], b"\x09")
         self.assertIn("9", diag.actual)
+        self.assertEqual(diag.path, (9,))
+
+    def test_each_unknown_member_gets_its_own_diagnostic(self):
+        schema = "m = {0: uint}"
+        data = {0: 1, "b": 2, 9: 3, "a": 4}
+        raw = cbor.encode(data)
+        found = validate(schema, raw).diagnostics
+        self.assertEqual([d.category for d in found], ["unknown"] * 3)
+        # the map's own key order, not sorted and not set order
+        self.assertEqual([d.path for d in found], [("b",), (9,), ("a",)])
+        self.assertEqual([raw[d.offset:d.end_offset] for d in found],
+                         [b"\x61b", b"\x09", b"\x61a"])
+        self.assertIn("'b'", found[0].message)
+        self.assertNotIn("{", found[0].message)
+
+    def test_unknown_member_order_is_deterministic(self):
+        schema = "m = {0: uint}"
+        raw = cbor.encode({0: 1, "z": 1, "y": 1, "x": 1, "w": 1})
+        runs = {tuple(d.path for d in validate(schema, raw).diagnostics) for _ in range(5)}
+        self.assertEqual(len(runs), 1)
 
     def test_tag_errors(self):
         schema = "r = #6.501({ 0: tstr })"

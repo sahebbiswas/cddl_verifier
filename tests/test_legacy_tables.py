@@ -207,7 +207,7 @@ class TestKeyTypeMembers(unittest.TestCase):
         self.assertFalse(result.valid)
         self.assertIn("Value for key 'x'", result.errors[0])
         result = validate(schema, {"a": 1, 5: 2})
-        self.assertIn("Unknown fields", result.errors[0])
+        self.assertIn("Unknown field", result.errors[0])
 
     def test_uncheckable_computed_key_matches_nothing(self):
         # A key type the validator cannot check yet must not let every extra
@@ -217,7 +217,7 @@ class TestKeyTypeMembers(unittest.TestCase):
             with self.subTest(schema=schema):
                 result = validate(schema, {"a": 1, "foo": "x"})
                 self.assertFalse(result.valid)
-                self.assertIn("Unknown fields", " ".join(result.errors))
+                self.assertIn("Unknown field", " ".join(result.errors))
 
     def test_any_and_socket_keys(self):
         self.assertTrue(validate("m = { * any => int }", {"x": 1, 2: 3}).valid)
