@@ -114,7 +114,8 @@ one `Diagnostic` with `code == "decode"` and the byte `offset` of the problem.
 | `rule` | The CDDL rule being checked |
 | `schema_location` | `file:line:column` of that rule (`<schema>` for schema text) |
 | `schema_path` | The rules and members the check went through, root first |
-| `expected`, `actual` | What the schema asks for and what the data has, as short text, when known |
+| `expected`, `actual` | What the schema asks for and what the data has, as short text, when known: `at most 100` and `200` for `uint .le 100`, `uint / tstr` and `bstr` for a choice |
+| `alternatives` | For a value that matches none of a type choice (`uint / tstr`): one `Diagnostic` for each alternative tried, with its own `path`, offsets, `expected` and `actual`. At most 16 (`MAX_ALTERNATIVES`); empty for any other finding |
 
 `path_text` and `schema_path_text` give the paths as `/1/2` and `/measurement/1/[2]`.
 `to_dict()` and `to_json()` give the JSON form, and `format()` several lines of text.
@@ -130,10 +131,14 @@ already-decoded Python value gives no offsets. A missing member points at the ma
 that lacks it, and an unknown member at its key. Each unknown member is its own
 diagnostic, in the order the keys appear in the map, and its `path` ends at that
 key. Inside CBOR embedded in a byte
-string (`bstr .cbor`), `path` continues below the byte string and the offsets are
+string (`bstr .cbor`, `bstr .cborseq`), `path` continues below the byte string
+(the items of a sequence are its array indexes) and the offsets are
 those of the inner item, counted from the start of the input as for any other item
 (so `raw[offset:end_offset]` is the inner item's bytes). This holds for CBOR
-embedded in CBOR embedded in a byte string too. The offsets are those of the byte
+embedded in CBOR embedded in a byte string too, wherever the type is written: as
+the type of a member, of an array element or of the root. An error about the
+embedded item as a whole (`bstr .cbor uint` with text inside) is at all of its
+bytes. The offsets are those of the byte
 string itself when the inner item has no position: a chunked (indefinite-length)
 byte string, or input too large for the location index.
 

@@ -135,11 +135,14 @@ class TestCborseqControl(unittest.TestCase):
         self.assertTrue(ok(s, {'a': seq('x', 'y')}))
         self.assertFalse(ok(s, {'a': seq('x', 1)}))
 
-    def test_error_is_reported_at_the_byte_string(self):
+    def test_error_is_reported_at_the_item(self):
         s = 'r = {a: bstr .cborseq [* uint]}'
-        result = validate(s, cbor.encode({'a': seq(1, 'x')}), root_type='r')
+        raw = cbor.encode({'a': seq(1, 'x')})
+        result = validate(s, raw, root_type='r')
         self.assertFalse(result.valid)
-        self.assertEqual(result.diagnostics[0].path, ('a',))
+        diag = result.diagnostics[0]
+        self.assertEqual(diag.path, ('a', 1))  # the second item of the sequence
+        self.assertEqual(raw[diag.offset:diag.end_offset], cbor.encode('x'))
 
     def test_nested_structures_in_the_items(self):
         s = 'r = bstr .cborseq [* {k: uint}]'
