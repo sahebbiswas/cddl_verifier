@@ -30,6 +30,9 @@ cddl-verify schema.cddl data.cbor --edn-format keyname
 # Suppress field-name annotations
 cddl-verify schema.cddl data.cbor --no-annotate
 
+# Report problems as one JSON document on stdout (for scripts and CI)
+cddl-verify schema.cddl data.cbor --type corim-map --diagnostics json
+
 # Print all parsed CDDL types and exit (useful for debugging schemas)
 cddl-verify schema.cddl data.cbor --show-types
 
@@ -53,16 +56,165 @@ cddl-verify --version
 | `--edn-format {keyindex,keyname,both}` | EDN key format (default: `keyindex`) |
 | `-M DIR`, `--module-path DIR` | Directory searched for imported CDDL modules (`<name>.cddl`); repeatable. The schema file's own directory is always searched, last |
 | `--module NAME=FILE` | CDDL file for the imported module `NAME`; repeatable |
-| `--show-types` | Print all parsed CDDL types and exit |
+| `--diagnostics {text,json}` | How problems are reported (default: `text`); see [Diagnostics](#diagnostics) |
+| `--show-types` | Print all parsed CDDL types and exit (not with `--diagnostics json`) |
 | `--verbose` | Enable detailed logging of validation and type resolution |
 | `--version` | Print the version and exit |
 
-Exit status: `0` on success, `1` when a file is missing, the CBOR cannot be
-decoded, or validation against an explicit `--type` fails.
+Exit status: `0` on success, `1` when a file is missing, the schema cannot be
+loaded, the CBOR cannot be decoded, or validation against an explicit `--type`
+fails. `--diagnostics json` uses the same statuses.
 
 When `--type` is omitted, the first type defined in the CDDL file is used as the
 root. Validation errors are then reported as warnings and unannotated EDN is
 printed instead of exiting.
+
+### Diagnostics
+
+By default problems are printed as messages on stderr. `--diagnostics json`
+makes the result machine-readable:
+
+- **stdout is exactly one JSON document** and nothing else, whatever happens.
+  Progress lines, warnings and `--verbose` logs go to stderr.
+- **EDN is written only with `-o FILE`**, and only when there is something to
+  show (the data decoded, and validated if `--type` was given). Without `-o`
+  nothing but the document is printed.
+- The exit status is the one of the text mode (see above).
+- `--show-types` prints to stderr only and cannot be combined with
+  `--diagnostics json`.
+
+The document is the one `ValidationResult.to_json()` writes, so the fields are
+described in [API.md](API.md#diagnostic): `format_version`, `valid` (`true`,
+`false`, or `null` when no root type was checked), `root_type`, and
+`diagnostics`. A schema that cannot be loaded gives its problems as
+`code: "schema"` diagnostics (all of them, not just the first), CBOR that cannot
+be decoded gives one `code: "decode"` diagnostic, and a file that is missing is
+reported the same way, so a script never has to parse stderr.
+
+**Nested validation failure.** With `schema.cddl` as `doc = { 1: [* uint], name: tstr }`
+and `data.cbor` holding `{1: [1, "x"], "name": "x"}`:
+
+```bash
+cddl-verify schema.cddl data.cbor --type doc --diagnostics json 2>/dev/null
+```
+
+```json
+{
+  "format_version": 1,
+  "valid": false,
+  "root_type": "doc",
+  "diagnostics": [
+    {
+      "severity": "error",
+      "category": "type",
+      "code": "validation",
+      "message": "Element [1] of field '1' has wrong type: expected uint, got str",
+      "path": [1, 1],
+      "path_expr": "$<key 1>[1]",
+      "offset": 4,
+      "end_offset": 6,
+      "hex": "61 78",
+      "hex_truncated": false,
+      "rule": "doc",
+      "schema_path": ["doc", "1", "[1]"],
+      "schema_location": "schema.cddl:1:1",
+      "expected": "uint",
+      "actual": "tstr",
+      "alternatives": [],
+      "line": null,
+      "column": null
+    }
+  ]
+}
+```
+
+(The real output has one value per line; arrays are shortened here.)
+
+**Decode failure.** For `data.cbor` cut short after `a2 01 82 01`:
+
+```json
+{
+  "format_version": 1,
+  "valid": false,
+  "root_type": null,
+  "diagnostics": [
+    {
+      "severity": "error",
+      "category": "decode",
+      "code": "decode",
+      "message": "Unexpected end of data (at offset 4)",
+      "path": [],
+      "path_expr": "$",
+      "offset": 4,
+      "end_offset": null,
+      "hex": null,
+      "hex_truncated": false,
+      "rule": null,
+      "schema_path": [],
+      "schema_location": null,
+      "expected": null,
+      "actual": null,
+      "alternatives": [],
+      "line": null,
+      "column": null
+    }
+  ]
+}
+```
+
+In text mode the same failures are listed on stderr:
+
+```text
+[FAIL] Validation failed:
+  - Element [1] of field '1' has wrong type: expected uint, got str
+  - Type mismatch for field 'name' in 'doc'
+```
+
+**Reading a path.** `path` is the list of steps from the root, as the decoder
+returns them. An integer map key and an array index look alike there, so
+`path_expr` writes the path in an unambiguous notation:
+
+| Step | `path_expr` | Example |
+|------|-------------|---------|
+| root | `$` | `$` |
+| array index | `[2]` | `$[1][2]`: element 2 of element 1 |
+| text key (a name) | `.name` | `$.name` |
+| text key that is not a name | `["odd key"]` | `$["a b"]` |
+| any other key | `<key 1>`, `<key h'ab'>`, `<key true>` | `$<key 1>[1]`: element 1 of the array at integer key 1 |
+
+**Order.** Diagnostics are in the order the schema is checked: the members of a
+map in the order the schema lists them, then keys the schema does not know in the
+order they appear in the data. The order is the same on every run for the same
+schema and data. Validation does not stop at the first failure, so the document
+lists every problem found in one pass; only a decode failure or a schema that
+cannot be loaded stops earlier, and then it is the only diagnostic (or, for a
+schema, all of its problems).
+
+**From a diagnostic to the bytes.** `offset` and `end_offset` are decimal byte
+positions in the CBOR input; `hex` is the first 16 bytes of the item (`hex_truncated`
+tells when it is longer). To see the item in context, print the diagnostic dump
+(its left column is the offset in *hex*; `offset` 4 is line `0004`):
+
+```bash
+python -c "import sys; from cddl_verifier.cbor import diag_dump; print(diag_dump(open(sys.argv[1], 'rb').read()))" data.cbor
+```
+
+```text
+0003:     01                            # [0] uint(1)
+0004:     61                            # [1] text(1)
+0005:       78                          # "x"
+```
+
+To keep the report and the annotated EDN of the same run, ask for both. The
+report is on stdout and the EDN goes to the file:
+
+```bash
+cddl-verify schema.cddl data.cbor --type doc --diagnostics json -o data.edn > report.json
+```
+
+If validation fails with an explicit `--type`, no EDN is written (as in text
+mode). Without `--type` the first rule is used as a guess: its failures are then
+`"severity": "warning"`, the exit status is `0`, and unannotated EDN is written.
 
 ### Imported modules
 

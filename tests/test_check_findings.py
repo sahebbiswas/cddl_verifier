@@ -126,7 +126,7 @@ class TestChoices(unittest.TestCase):
         self.assertEqual(alternatives[0]["alternatives"], [])
         text = diags[0].format()
         self.assertIn("alternative: error[type]: uint: expected uint", text)
-        self.assertIn("at data /0/a", text)
+        self.assertIn("at data $<key 0>.a", text)
 
     def test_large_choice_lists_a_bounded_number(self):
         count = MAX_ALTERNATIVES + 10

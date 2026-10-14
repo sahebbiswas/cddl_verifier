@@ -68,11 +68,38 @@ def _step_text(step: Any) -> str:
     return str(value)
 
 
+class _Index(int):
+    """An array index in a diagnostic's path, as opposed to an integer map key.
+
+    It compares and hashes as the plain ``int``, so lookups by path keep
+    working; only :attr:`Diagnostic.path_expr` tells the two apart.
+    """
+
+    __slots__ = ()
+
+
+_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_-]*\Z")
+
+
+def _step_expr(step: Any) -> str:
+    """One path step in ``$``-notation: ``[2]``, ``.name``, ``["odd key"]`` or ``<key 1>``."""
+    if isinstance(step, _Index):
+        return f"[{int(step)}]"
+    value = getattr(step, "value", step)  # CBORKey wraps the real key
+    if isinstance(value, str):
+        if _IDENTIFIER.match(value):
+            return f".{value}"
+        return f"[{json.dumps(value)}]"
+    return f"<key {_step_text(step)}>"
+
+
 def _step_json(step: Any) -> Any:
     """One path step as a JSON value: ints and strings stay, the rest are text."""
     if isinstance(step, bool):
         return "true" if step else "false"
-    if isinstance(step, (int, str)):
+    if isinstance(step, int):
+        return int(step)  # an array index is an int subclass
+    if isinstance(step, str):
         return step
     return _step_text(step)
 
@@ -95,7 +122,9 @@ class Diagnostic:
                   text where the problem starts.
         category: The kind of problem; one of :data:`CATEGORIES`.
         path:     Where the item is in the data: map keys and array indexes
-                  from the root, as the decoder returns them.
+                  from the root, as the decoder returns them. An integer
+                  map key and an array index look alike here; ``path_expr``
+                  tells them apart.
         schema_path: The CDDL rules and members the check went through, from
                   the root type down.
         rule:     The CDDL rule being checked when the problem was found.
@@ -143,6 +172,18 @@ class Diagnostic:
         return "/" + "/".join(_step_text(step) for step in self.path)
 
     @property
+    def path_expr(self) -> str:
+        """The data path in ``$``-notation, which tells array indexes from map keys.
+
+        ``$`` is the root; ``[2]`` is array index 2; ``.name`` is the text key
+        ``name`` (a text key that is not an identifier is ``["odd key"]``);
+        any other map key is ``<key 1>`` or ``<key h'ab'>``. So ``$[1][2]`` is
+        element 2 of element 1, and ``$[1]<key 1>`` is the entry with integer
+        key 1 of a map that is element 1.
+        """
+        return "$" + "".join(_step_expr(step) for step in self.path)
+
+    @property
     def schema_path_text(self) -> str:
         """The schema path as text: ``/corim-map/signers/[0]``."""
         return "/" + "/".join(self.schema_path)
@@ -158,6 +199,7 @@ class Diagnostic:
             "code": self.code,
             "message": self.message,
             "path": [_step_json(step) for step in self.path],
+            "path_expr": self.path_expr,
             "offset": self.offset,
             "end_offset": self.end_offset,
             "hex": self.hex,
@@ -187,7 +229,7 @@ class Diagnostic:
             lines.append("  at " + ", ".join(where))
             where = []
         elif self.category != "decode" and (self.path or self.offset is not None):
-            where.append(f"data {self.path_text}")
+            where.append(f"data {self.path_expr}")
         if self.offset is not None and self.code != "schema":
             span = f"offset {self.offset}"
             if self.end_offset is not None and self.end_offset > self.offset + 1:

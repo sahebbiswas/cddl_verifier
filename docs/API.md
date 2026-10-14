@@ -146,9 +146,9 @@ one `Diagnostic` with `code == "decode"` and the byte `offset` of the problem.
 |-----------|-------------|
 | `message` | Human-readable text (also `str(diagnostic)`) |
 | `code` | `"decode"`, `"validation"`, or `"schema"` for a problem in the schema text (see [`schema_diagnostics`](#schema_diagnostics)) |
-| `severity` | `"error"`, `"warning"` or `"info"`; every diagnostic is an `"error"` today |
+| `severity` | `"error"`, `"warning"` or `"info"`; a diagnostic is an `"error"`, except that `cddl-verify --diagnostics json` reports the failures of an inferred root type as `"warning"` |
 | `category` | The kind of problem: `decode`, `schema`, `tag`, `type`, `value`, `missing`, `unknown`, `occurrence`, `nested` or `other` |
-| `path` | Where the item is in the data: the map keys and array indexes from the root, as the decoder returns them (`(1, 2)`); `()` is the root |
+| `path` | Where the item is in the data: the map keys and array indexes from the root, as the decoder returns them (`(1, 2)`); `()` is the root. An integer map key and an array index look alike here; use `path_expr` to tell them apart |
 | `offset`, `end_offset` | Byte span of the offending item in the CBOR input, or `None` (see below) |
 | `hex`, `hex_truncated` | Hex of the first 16 bytes of that item (`"18 c8"`); `hex_truncated` is `True` when the item is longer |
 | `rule` | The CDDL rule being checked |
@@ -159,6 +159,11 @@ one `Diagnostic` with `code == "decode"` and the byte `offset` of the problem.
 | `alternatives` | For a value that matches none of a type choice (`uint / tstr`): one `Diagnostic` for each alternative tried, with its own `path`, offsets, `expected` and `actual`. At most 16 (`MAX_ALTERNATIVES`); empty for any other finding |
 
 `path_text` and `schema_path_text` give the paths as `/1/2` and `/measurement/1/[2]`.
+`path_expr` gives the data path in `$`-notation, which tells array indexes from map keys:
+`$[1][2]` is element 2 of element 1, `$.name` the text key `name`, `$["a b"]` a text key
+that is not a name, and `$<key 1>[1]` element 1 of the array at integer key 1
+(`<key h'ab'>` and `<key true>` are other key types). It is also the `path_expr` member of
+the JSON form, next to `path`.
 `to_dict()` and `to_json()` give the JSON form, and `format()` several lines of text.
 
 A field is `None` or empty when it is not known. Read the fields instead of
@@ -199,7 +204,7 @@ print(render_json(result.diagnostics, valid=result.valid))
 
 ```text
 error[type]: Element [1] of field '2' has wrong type: expected tstr, got int
-  at data /2/1, offset 11
+  at data $<key 2>[1], offset 11
   in rule person (<schema>:1:1)
   expected tstr, found int
   bytes 05
