@@ -169,6 +169,20 @@ class TestResolverCollects(unittest.TestCase):
         self.assertEqual([e.message for e in errors],
                          ["undefined name 'nope1'", "undefined name 'nope2'"])
 
+    def test_a_control_target_and_argument_each_get_a_problem(self):
+        _, errors = resolve_all(parse_cddl("r = nope1 .size nope2"))
+        self.assertEqual([e.message for e in errors],
+                         ["undefined name 'nope1'", "undefined name 'nope2'"])
+
+    def test_the_bounds_of_a_range_each_get_a_problem(self):
+        _, errors = resolve_all(parse_cddl("r = lo .. hi"))
+        self.assertEqual([e.message for e in errors],
+                         ["undefined name 'lo'", "undefined name 'hi'"])
+
+    def test_a_control_is_not_checked_when_its_parts_are_wrong(self):
+        _, errors = resolve_all(parse_cddl('r = nope .size "x"'))
+        self.assertEqual([e.message for e in errors], ["undefined name 'nope'"])
+
     def test_the_first_problem_is_the_one_raised(self):
         for text in ("r = a / b", "r = { x => a, y: b }", MANY):
             with self.subTest(text=text):

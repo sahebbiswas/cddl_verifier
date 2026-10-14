@@ -551,14 +551,17 @@ class _Resolver:
             self.collecting(self.check_type1, alternative, scope)
 
     def check_type1(self, node, scope):
+        before = len(self.errors)
         if isinstance(node, Range):
-            self.check_type2(node.low, scope)
-            self.check_type2(node.high, scope)
-            self.check_range(node, scope)
+            self.collecting(self.check_type2, node.low, scope)
+            self.collecting(self.check_type2, node.high, scope)
+            if len(self.errors) == before:  # the bounds mean something
+                self.check_range(node, scope)
         elif isinstance(node, Control):
-            self.check_type1(node.target, scope)
-            self.check_type2(node.arg, scope)
-            self.check_control(node, scope)
+            self.collecting(self.check_type1, node.target, scope)
+            self.collecting(self.check_type2, node.arg, scope)
+            if len(self.errors) == before:  # the target and the argument mean something
+                self.check_control(node, scope)
         else:
             self.check_type2(node, scope)
 
