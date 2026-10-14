@@ -81,9 +81,8 @@ def _is_leap_second_instant(year: int, month: int, day: int, utc_minute: int) ->
         day_utc = datetime.date(year, month, day) + datetime.timedelta(days=utc_minute // 1440)
     except (ValueError, OverflowError):
         return False
-    next_day = day_utc + datetime.timedelta(days=1)
     return (utc_minute % 1440 == 23 * 60 + 59 and day_utc.month in (3, 6, 9, 12)
-            and next_day.month != day_utc.month)
+            and day_utc.day == _days_in_month(day_utc.year, day_utc.month))
 
 
 # ----------------------------------------------------------------- RFC 3986
