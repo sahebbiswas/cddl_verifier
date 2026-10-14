@@ -216,12 +216,16 @@ only for its type, wherever the tag is matched, however the schema writes it
 
 - Tag 0: `YYYY-MM-DDThh:mm:ss[.fraction]` and `Z` or `+hh:mm`, with a real date
   (`2021-02-29` and month 13 are errors, a leap day needs a leap year), a
-  time up to `23:59:60` and an offset up to `23:59`.
+  time up to `23:59:59` and an offset up to `23:59`. Second 60 is allowed only
+  as 23:59:60 UTC on the last day of March, June, September or December, so
+  `1990-12-31T15:59:60-08:00` is valid and `2020-01-01T12:00:60Z` is not.
 - Tag 32: a URI reference with a valid scheme, authority (user information,
   host, IPv6 literal, port), path, query and fragment, and `%HH` escapes.
   Spaces, non-ASCII characters and `<>"\^`{|}` must be escaped; `::x` is not a
   URI reference.
-- Tags 33 and 34: the base64url and base64 alphabets, padding as the tag says.
+- Tags 33 and 34: the base64url and base64 alphabets, padding as the tag says,
+  and the unused bits of the last character are 0 (`YQ` is valid, `YR` is not;
+  RFC 8949 section 3.4.5.3).
 - Tag 35: a pattern Python's `re` can compile, after `(?<name>...)` and
   `\k<name>` are read the Python way. This approximates the PCRE and ECMA-262
   the RFC names; a construct only one of them has is rejected.

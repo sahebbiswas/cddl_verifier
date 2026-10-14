@@ -10,11 +10,13 @@ has no check:
 ======  ===============================================================
 tag     content
 ======  ===============================================================
-0       an RFC 3339 ``date-time`` (calendar-valid, offset 00:00 to 23:59)
+0       an RFC 3339 ``date-time`` (calendar-valid, offset 00:00 to 23:59,
+        second 60 only at the end of a UTC month)
 24      a byte string holding exactly one well-formed CBOR item
 32      an RFC 3986 URI reference (``::x`` and ``a b`` are not)
 33      base64url text without padding (RFC 4648 section 5)
-34      base64 text with padding (RFC 4648 section 4)
+34      base64 text with padding (RFC 4648 section 4); for both the unused
+        bits of the last character are 0 (RFC 8949 section 3.4.5.3)
 35      a regular expression; checked as a Python ``re`` pattern after
         ``(?<name>...)`` and ``\\k<name>`` are written the Python way, which
         approximates PCRE and ECMA-262 but does not accept every construct
@@ -54,11 +56,34 @@ def _date_time(text: str) -> Optional[str]:
         return f"month {month:02d} is not between 01 and 12"
     if not 1 <= day <= _days_in_month(year, month):
         return f"day {day:02d} does not exist in {year:04d}-{month:02d}"
-    if hour > 23 or minute > 59 or second > 60:  # 60 is a leap second
+    if hour > 23 or minute > 59 or second > 60:
         return f"the time {hour:02d}:{minute:02d}:{second:02d} does not exist"
-    if match.group(7) is not None and (int(match.group(7)) > 23 or int(match.group(8)) > 59):
-        return f"the offset {match.group(7)}:{match.group(8)} does not exist"
+    offset = 0
+    if match.group(7) is not None:
+        if int(match.group(7)) > 23 or int(match.group(8)) > 59:
+            return f"the offset {match.group(7)}:{match.group(8)} does not exist"
+        sign = -1 if text[match.start(7) - 1] == '-' else 1
+        offset = sign * (int(match.group(7)) * 60 + int(match.group(8)))
+    if second == 60 and not _is_leap_second_instant(year, month, day, hour * 60 + minute - offset):
+        return "second 60 is only allowed at 23:59:60 UTC on the last day of March, June, September or December"
     return None
+
+
+def _is_leap_second_instant(year: int, month: int, day: int, utc_minute: int) -> bool:
+    """Whether the UTC minute (from the local date's midnight) can end in a leap second.
+
+    RFC 3339 section 5.7 allows second 60 only at the end of a UTC month, in
+    practice June or December (ITU-R TF.460 also allows March and September).
+    Which of those months really had one cannot be known for the future.
+    """
+    import datetime
+    try:
+        day_utc = datetime.date(year, month, day) + datetime.timedelta(days=utc_minute // 1440)
+    except (ValueError, OverflowError):
+        return False
+    next_day = day_utc + datetime.timedelta(days=1)
+    return (utc_minute % 1440 == 23 * 60 + 59 and day_utc.month in (3, 6, 9, 12)
+            and next_day.month != day_utc.month)
 
 
 # ----------------------------------------------------------------- RFC 3986
@@ -141,18 +166,34 @@ _B64URL = re.compile(r'[A-Za-z0-9_-]*', re.ASCII)
 _B64 = re.compile(r'(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?', re.ASCII)
 
 
+_URL_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
+_STD_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+
+
+def _padding_bits(text: str, alphabet: str) -> Optional[str]:
+    """RFC 8949 section 3.4.5.3: the unused bits of the last character must be 0."""
+    body = text.rstrip('=')
+    if not body or len(body) % 4 == 0:
+        return None
+    unused = 4 if len(body) % 4 == 2 else 2  # a 2-character block holds 1 byte, a 3-character block 2
+    if alphabet.index(body[-1]) & ((1 << unused) - 1):
+        return (f"the last character {body[-1]!r} has unused bits that are not 0 "
+                f"(RFC 8949 section 3.4.5.3)")
+    return None
+
+
 def _base64url(text: str) -> Optional[str]:
     if not _B64URL.fullmatch(text):
         return "expected base64url text (only A-Z a-z 0-9 - _, and no '=' padding)"
     if len(text) % 4 == 1:
         return "a base64url text cannot have a length of 4n+1"
-    return None
+    return _padding_bits(text, _URL_ALPHABET)
 
 
 def _base64(text: str) -> Optional[str]:
     if not _B64.fullmatch(text):
         return "expected base64 text with padding (A-Z a-z 0-9 + /, padded with = to a multiple of 4)"
-    return None
+    return _padding_bits(text, _STD_ALPHABET)
 
 
 # ------------------------------------------------------------------- regexp

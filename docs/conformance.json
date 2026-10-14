@@ -3597,7 +3597,7 @@
     "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "`tdate` is tag 0 around an RFC 3339 date-time: the calendar must be valid (no 2021-02-29, no month 13), the time `hh:mm:ss` up to the leap second 60, the offset `Z` or `+hh:mm`. `time` is tag 1 around a number.",
+   "notes": "`tdate` is tag 0 around an RFC 3339 date-time: the calendar must be valid (no 2021-02-29, no month 13), the time `hh:mm:ss` valid, the offset `Z` or `+hh:mm`. Second 60 is accepted only as 23:59:60 UTC at the end of March, June, September or December. `time` is tag 1 around a number.",
    "issues": [],
    "tests": [
     "tests/test_prelude_types.py",
@@ -3783,7 +3783,7 @@
     "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "The tag number, the type of the content and what the content means: `encoded-cbor` is one well-formed CBOR item, `uri` an RFC 3986 URI reference, `b64url` base64url text without padding, `b64legacy` base64 text with padding. `regexp` is checked as a Python `re` pattern (with `(?<name>...)` and `\\k<name>` accepted), which approximates PCRE and ECMA-262 but does not accept every construct of either.",
+   "notes": "The tag number, the type of the content and what the content means: `encoded-cbor` is one well-formed CBOR item, `uri` an RFC 3986 URI reference, `b64url` base64url text without padding, `b64legacy` base64 text with padding; for both the unused bits of the last character are 0. `regexp` is checked as a Python `re` pattern (with `(?<name>...)` and `\\k<name>` accepted), which approximates PCRE and ECMA-262 but does not accept every construct of either.",
    "issues": [],
    "tests": [
     "tests/test_prelude_types.py",
@@ -3866,6 +3866,10 @@
       {
        "$tag": 33,
        "$value": "YQ=="
+      },
+      {
+       "$tag": 33,
+       "$value": "YR"
       }
      ]
     },
@@ -3881,6 +3885,10 @@
       {
        "$tag": 34,
        "$value": "YQ"
+      },
+      {
+       "$tag": 34,
+       "$value": "YR=="
       }
      ]
     },
