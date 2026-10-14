@@ -345,7 +345,7 @@ class TestRenderers(unittest.TestCase):
         text = render_text(self.found, verbose=True)
         first = self.found[0]
         self.assertIn(f"error[{first.category}]: {first.message}", text)
-        self.assertIn("at data /1/1, offset ", text)
+        self.assertIn("at data $<key 1>[1], offset ", text)
         self.assertIn("in rule measurement (<schema>:1:1)", text)
         self.assertIn("expected uint, found tstr", text)
         self.assertIn("bytes 61 78", text)
@@ -361,7 +361,7 @@ class TestRenderers(unittest.TestCase):
 
     def test_decode_diagnostic_text_has_no_data_path(self):
         diag = validate("n = uint", b"\xa1\x01").diagnostics[0]
-        self.assertNotIn("data /", diag.format())
+        self.assertNotIn("data $", diag.format())
         self.assertIn("offset 2", diag.format())
 
     def test_json_is_valid_and_complete(self):
@@ -370,7 +370,7 @@ class TestRenderers(unittest.TestCase):
         self.assertEqual(len(document["diagnostics"]), len(self.found))
         keys = {"severity", "category", "code", "message", "path", "offset", "end_offset",
                 "hex", "hex_truncated", "rule", "schema_path", "schema_location",
-                "expected", "actual", "alternatives", "line", "column"}
+                "expected", "actual", "alternatives", "path_expr", "line", "column"}
         for item in document["diagnostics"]:
             self.assertEqual(set(item), keys)
 

@@ -33,8 +33,9 @@ from ._version import __version__
 
 from ._cbor import CBOR, CBORDecodeError, CBORKey
 from ._cbor_values import UNDEFINED, CBORSimple, CBORTag, tag_tuple_error
-from ._diagnostics import (MAX_ALTERNATIVES, MAX_HEX_BYTES, Diagnostic, _Finding, classify_message, diagnostic_of,
-                           expected_and_found)
+from ._diagnostics import (MAX_ALTERNATIVES, MAX_HEX_BYTES, Diagnostic, _Finding, _Index, classify_message, decode_diagnostic,
+                           diagnostic_of, expected_and_found, render_json, render_text,
+                           schema_diagnostic)
 
 
 _FLOAT_WIDTHS = {'float16': 25, 'float32': 26, 'float64': 27}
@@ -1818,7 +1819,7 @@ class CBORAnalyzer:
                                 # Validate each array element
                                 logger.debug(f"{Colors.CDDL}[{field_breadcrumb}]{Colors.RESET} Validating {len(value)} array elements")
                                 for i, item in enumerate(value):
-                                    self._push_breadcrumb(f"[{i}]", step=i)
+                                    self._push_breadcrumb(f"[{i}]", step=_Index(i))
                                     item_breadcrumb = self._get_breadcrumb()
                                     item_repr = self._format_value_for_log(item)
                                     logger.debug(f"{Colors.CDDL}[{item_breadcrumb}]{Colors.RESET} Element: {item_repr}")
@@ -2023,7 +2024,7 @@ class CBORAnalyzer:
             repeating_type = element_types.get(repeat) if repeat is not None else None
 
             for i, item in enumerate(data):
-                self._push_breadcrumb(f"[{i}]", step=i)
+                self._push_breadcrumb(f"[{i}]", step=_Index(i))
                 item_breadcrumb = self._get_breadcrumb()
                 item_repr = self._format_value_for_log(item)
                 logger.debug(f"{Colors.CDDL}[{item_breadcrumb}]{Colors.RESET} Element: {item_repr}")
@@ -3544,6 +3545,23 @@ def main(argv=None):
         _reset_cli_logging()
 
 
+def _exit_json(diagnostics, *, valid, root_type=None, status=1):
+    """Print the diagnostics document, the only thing on stdout, and exit."""
+    sys.stdout.write(render_json(diagnostics, valid=valid, root_type=root_type) + "\n")
+    sys.stdout.flush()
+    sys.exit(status)
+
+
+def _schema_problems(cddl_file, modules, module_path, error):
+    """Every problem in the schema that could not be loaded, as diagnostics (#145)."""
+    from ._api import schema_diagnostics  # _api imports this module
+    try:
+        found = schema_diagnostics(cddl_file, modules=modules, module_path=module_path)
+    except Exception:  # noqa: BLE001 - fall back to the error that stopped the load
+        found = ()
+    return found or (schema_diagnostic(error),)
+
+
 def _run_cli(argv=None):
     parser = argparse.ArgumentParser(
         prog='cddl-verify',
@@ -3565,6 +3583,12 @@ Examples:
 
   # Use human-readable key names instead of integer indices
   %(prog)s schema.cddl data.cbor --edn-format keyname
+
+  # Machine-readable diagnostics: stdout is one JSON document, nothing else
+  %(prog)s schema.cddl data.cbor --type corim-map --diagnostics json
+
+  # ...and the EDN to a file when the data is valid
+  %(prog)s schema.cddl data.cbor --type corim-map --diagnostics json -o data.edn
         """
     )
     
@@ -3591,6 +3615,10 @@ Examples:
     parser.add_argument('--unique-choices', action='store_true',
                         help='Fail when data matches more than one map, array or tag '
                              'alternative of a choice')
+    parser.add_argument('--diagnostics', choices=['text', 'json'], default='text',
+                        help='How problems are reported: text (messages on stderr, the default) '
+                             'or json (one JSON document on stdout, progress and logs on stderr; '
+                             'EDN is written only with -o)')
     parser.add_argument('--verbose', action='store_true',
                         help='Enable verbose logging of validation and type resolution')
     parser.add_argument('--show-types', action='store_true', 
@@ -3603,12 +3631,22 @@ Examples:
     if args.verbose:
         logger.debug("Verbose logging enabled")
     
+    json_mode = args.diagnostics == 'json'
+    if json_mode and args.show_types:
+        parser.error("--show-types cannot be combined with --diagnostics json")
+
     # Check if files exist
     if not args.cddl_file.exists():
+        if json_mode:
+            _exit_json([Diagnostic(f"CDDL file not found: {args.cddl_file}", code="schema",
+                                   category="schema")], valid=False)
         print(f"Error: CDDL file not found: {args.cddl_file}")
         sys.exit(1)
     
     if not args.cbor_file.exists():
+        if json_mode:
+            _exit_json([Diagnostic(f"CBOR file not found: {args.cbor_file}", code="decode",
+                                   category="decode")], valid=False)
         print(f"Error: CBOR file not found: {args.cbor_file}")
         sys.exit(1)
     
@@ -3621,7 +3659,17 @@ Examples:
             parser.error(f"--module expects NAME=FILE, not {item!r}")
         modules[name] = Path(file)
     loader = ModuleLoader(modules, [*args.module_path, args.cddl_file.parent])
-    cddl = load_cddl(args.cddl_file, loader)
+    try:
+        cddl = CDDLParser(args.cddl_file.read_text(encoding='utf-8'),
+                          source_name=str(args.cddl_file), loader=loader)
+    except Exception as e:  # noqa: BLE001 - any read or parse error is a schema problem
+        problems = _schema_problems(args.cddl_file, modules, args.module_path, e)
+        if json_mode:
+            _exit_json(problems, valid=False)
+        print("Error loading CDDL file:", file=sys.stderr)
+        for line in render_text(problems).splitlines():
+            print(f"  - {line}", file=sys.stderr)
+        sys.exit(1)
     for message in cddl.warnings:
         print(f"Warning: {message}", file=sys.stderr)
     
@@ -3683,6 +3731,9 @@ Examples:
     try:
         cbor_data = CBOR.loads(cbor_bytes, keep_encoding=True)
     except Exception as _e:  # noqa: BLE001 — loader raises CBORDecodeError (empty/truncated/trailing/malformed) or TypeError
+        if json_mode:
+            _exit_json([decode_diagnostic(_e, cbor_bytes) if isinstance(_e, CBORDecodeError)
+                        else Diagnostic(str(_e), code="decode", category="decode")], valid=False)
         print(f"Error decoding CBOR: {_e}", file=sys.stderr)
         sys.exit(1)
     
@@ -3697,26 +3748,36 @@ Examples:
     # Validate against the root type.
     # - Explicit --type: hard failure on validation errors (existing behaviour).
     # - Inferred type:   log errors as warnings, then continue to show EDN output.
+    checked_type, valid, diagnostics = root_type, None, ()
     if root_type:
         print(f"Validating CBOR against CDDL (type: {root_type})...", file=sys.stderr)
         analyzer = CBORAnalyzer(cddl, unique_choices=args.unique_choices)
 
         if analyzer.validate(cbor_data, root_type, cbor_bytes):
+            valid = True
             print("[OK] Validation successful", file=sys.stderr)
         else:
+            valid = False
             errors = analyzer.get_errors()
+            diagnostics = analyzer.get_diagnostics()
             if type_inferred:
                 # Non-fatal: warn and fall back to unannotated EDN output
                 print("[WARNING] Type resolution/validation errors for inferred type "
                       f"'{root_type}' (proceeding to EDN output):", file=sys.stderr)
                 for error in errors:
                     logger.warning(error)
+                diagnostics = tuple(replace(d, severity="warning") for d in diagnostics)
                 root_type = None  # Produce plain EDN without type annotations
             else:
+                if json_mode:
+                    _exit_json(diagnostics, valid=False, root_type=checked_type)
                 print("[FAIL] Validation failed:", file=sys.stderr)
                 for error in errors:
                     print(f"  - {error}", file=sys.stderr)
                 sys.exit(1)
+
+    if json_mode and not args.output:
+        _exit_json(diagnostics, valid=valid, root_type=checked_type, status=0)
 
     # Generate EDN
     print("Generating EDN...", file=sys.stderr)
@@ -3727,12 +3788,13 @@ Examples:
     if args.output:
         args.output.write_text(edn_output, encoding='utf-8')
         print(f"[OK] EDN written to: {args.output}", file=sys.stderr)
+        if json_mode:
+            _exit_json(diagnostics, valid=valid, root_type=checked_type, status=0)
     else:
         print("\n" + "=" * 50, file=sys.stderr)
         print("EDN Output:", file=sys.stderr)
         print("=" * 50, file=sys.stderr)
         print(edn_output)
-
 
 if __name__ == '__main__':
     main()
