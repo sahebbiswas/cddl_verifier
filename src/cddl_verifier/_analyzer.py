@@ -1988,7 +1988,7 @@ class CBORAnalyzer:
                 error_msg = self._match_array(data, sequence, type_name)
                 if error_msg:
                     logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
-                    self._report(error_msg)
+                    self._report(error_msg, finding=error_msg if isinstance(error_msg, _CheckError) else None)
                 return len(self.validation_errors) == 0
 
             # Enforce the number of elements the entries' occurrences allow
@@ -1997,6 +1997,7 @@ class CBORAnalyzer:
             length = type_def.get('length')
             if length is not None:
                 low, high = length
+                extra = ()  # the element an error points at, when it is one
                 error_msg = None
                 if len(data) < low:
                     error_msg = (f"Array type '{type_name}' is missing element [{len(data)}]: "
@@ -2004,9 +2005,10 @@ class CBORAnalyzer:
                 elif high is not None and len(data) > high:
                     error_msg = (f"Array type '{type_name}' has unexpected element [{high}]: "
                                  f"expected at most {high} element(s), got {len(data)}")
+                    extra = (_Index(high),)
                 if error_msg:
                     logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
-                    self._report(error_msg)
+                    self._report(error_msg, extra_path=extra)
             elif type_def.get('occurrence', '') == '+' and len(data) == 0:
                 error_msg = f"Array type '{type_name}' requires at least one element (+ occurrence)"
                 logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
@@ -2318,7 +2320,11 @@ class CBORAnalyzer:
                     continue
                 key = (pos, node)
                 if key not in fits:
-                    errors = self._check_value(data[pos], node)
+                    self._push_breadcrumb(f"[{pos}]", step=_Index(pos))  # where the element is
+                    try:
+                        errors = self._check_value(data[pos], node)
+                    finally:
+                        self._pop_breadcrumb()
                     fits[key] = not errors
                     if errors:
                         tried.setdefault(pos, []).append((node, errors[0]))
@@ -2376,8 +2382,20 @@ class CBORAnalyzer:
                     f"the array ends before its required entries")
         if index in tried:
             reasons = '; '.join(f"{format_node(node)}: {error}" for node, error in tried[index][:3])
-            return f"Array element [{index}] of '{type_name}' matches no entry ({reasons})"
-        return f"Array type '{type_name}' has unexpected element [{index}]"
+            message = f"Array element [{index}] of '{type_name}' matches no entry ({reasons})"
+            # When one entry failed inside the element (an array or map in it),
+            # the finding is at that place; otherwise at the element
+            deeper = [error for _, error in tried[index]
+                      if isinstance(error, _CheckError) and error.path]
+            if len(deeper) == 1:
+                found = deeper[0]
+                return _CheckError(message, expected=found.expected, actual=found.actual,
+                                   category=found.category, path=(_Index(index),) + found.path,
+                                   schema_path=found.schema_path, rule=found.rule,
+                                   span=found.span, located=found.located)
+            return _CheckError(message, path=(_Index(index),))
+        return _CheckError(f"Array type '{type_name}' has unexpected element [{index}]",
+                           path=(_Index(index),))
 
     def _sandboxed_validate(self, value: Any, type_def: Dict, type_name: str) -> List[_CheckError]:
         """Run :meth:`_validate_type` and return its errors without keeping them.
