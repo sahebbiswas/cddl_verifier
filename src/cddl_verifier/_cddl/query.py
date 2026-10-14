@@ -196,16 +196,25 @@ def item_ref(expr) -> Optional[ItemRef]:
     return None
 
 
-def _embedded_control(expr, control: str) -> Optional[Tuple[str, Type]]:
+def embedded_controls(expr) -> List[Tuple[str, str, Type]]:
+    """``(op, base, inner)`` for every ``.cbor`` and ``.cborseq`` on a ``bstr``, in order.
+
+    ``bstr .cbor A .cborseq B`` gives both: the bytes must satisfy each. The list
+    is empty for any other type. Chained controls are looked through.
+    """
     node = _single(expr)
     if node is None:
-        return None
+        return []
     stripped, ops = _unwrap_controls(node)
     if not isinstance(stripped, Name) or stripped.name not in ('bstr', 'bytes'):
-        return None
-    for op, arg in ops:
+        return []
+    return [(op, stripped.name, _type(arg)) for op, arg in ops if op in ('cbor', 'cborseq')]
+
+
+def _embedded_control(expr, control: str) -> Optional[Tuple[str, Type]]:
+    for op, base, inner in embedded_controls(expr):
         if op == control:
-            return stripped.name, _type(arg)
+            return base, inner
     return None
 
 

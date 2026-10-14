@@ -146,6 +146,18 @@ class TestCborseqControl(unittest.TestCase):
         self.assertTrue(ok(s, seq({'k': 1}, {'k': 2})))
         self.assertFalse(ok(s, seq({'k': 1}, {'k': 'x'})))
 
+    def test_every_embedded_control_applies(self):
+        two = 'r = bstr .cborseq [* uint] .cborseq [* tstr]'
+        self.assertFalse(ok(two, seq(1)))        # the second control wants text
+        self.assertFalse(ok(two, seq('x')))      # the first wants uints
+        self.assertTrue(ok(two, b''))            # both accept the empty sequence
+        both = 'r = bstr .cbor uint .cborseq [* uint]'
+        self.assertTrue(ok(both, seq(1)))
+        self.assertFalse(ok(both, seq(1, 2)))    # .cbor takes one item
+        field = 'r = {a: bstr .cborseq [* uint] .cborseq [* tstr]}'
+        self.assertFalse(ok(field, {'a': seq(1)}))
+        self.assertTrue(ok(field, {'a': b''}))
+
     def test_argument_must_be_an_array(self):
         for arg in ('uint', 'tstr', '{a: int}'):
             with self.assertRaises(SchemaError, msg=arg):

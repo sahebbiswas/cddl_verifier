@@ -2324,23 +2324,9 @@ class CBORAnalyzer:
         if literal is not None:
             return literal
 
-        cbor_control = query.cbor_control(expr)
-        if cbor_control:  # 'bstr .cbor inner': decode the bytes, check the item inside
-            if not isinstance(value, bytes):
-                return [f"expected bstr (.cbor {format_node(cbor_control[1])}), "
-                        f"got {type(value).__name__}"]
-            try:
-                nested = SimpleCBORDecoder(value).decode("cbor")
-            except Exception as exc:
-                return [f"embedded CBOR (.cbor {format_node(cbor_control[1])}) "
-                        f"does not decode: {exc}"]
-            # 'bstr .cbor uint .size 1': the bytes' own controls apply too
-            errors = self._primitive_errors(value, 'bstr', expr)
-            return errors or self._check_value(nested, cbor_control[1], _depth + 1, strict)
-
-        cborseq_control = query.cborseq_control(expr)
-        if cborseq_control:  # 'bstr .cborseq [* T]': decode the sequence, check its items as an array
-            return self._cborseq_errors(value, expr, cborseq_control[1], _depth, strict)
+        embedded = query.embedded_controls(expr)
+        if embedded:  # 'bstr .cbor T', 'bstr .cborseq [* T]': decode the bytes, check what is inside
+            return self._embedded_errors(value, expr, embedded, _depth, strict)
 
         if name is not None and name in self.cddl.types:
             return self._sandboxed_validate(value, self.cddl.types[name], name)
@@ -2363,20 +2349,34 @@ class CBORAnalyzer:
         logger.debug(f"Cannot check type expression '{shown}'; accepting value")
         return []
 
-    def _cborseq_errors(self, value: Any, expr, inner, _depth: int, strict: bool) -> List[str]:
-        """Check a ``bstr .cborseq inner`` value: decode the sequence, match its items as an array."""
-        shown = format_node(inner)
-        if '@' in shown:  # a structure written in place, lifted to a rule of its own
-            shown = 'items'
-        if not isinstance(value, bytes):
-            return [f"expected bstr (.cborseq {shown}), got {type(value).__name__}"]
-        try:
-            items = CBOR.loads_sequence(value, keep_encoding=True)
-        except Exception as exc:
-            return [f"embedded CBOR sequence (.cborseq {shown}) does not decode: {exc}"]
-        # 'bstr .cborseq [* T] .size 4': the bytes' own controls apply too
+    def _embedded_errors(self, value: Any, expr, controls, _depth: int, strict: bool) -> List[str]:
+        """Check a ``bstr`` with ``.cbor`` / ``.cborseq`` controls: every one must hold.
+
+        ``.cbor`` decodes one item and checks it against its argument;
+        ``.cborseq`` decodes a CBOR sequence and checks its items, as an array,
+        against its argument. The bytes' own controls (``.size``) apply too.
+        """
+        def label(op, inner):
+            shown = format_node(inner)
+            return 'items' if op == 'cborseq' and '@' in shown else shown  # a lifted structure
+
+        decoded = []
+        for op, _base, inner in controls:
+            if not isinstance(value, bytes):
+                return [f"expected bstr (.{op} {label(op, inner)}), got {type(value).__name__}"]
+            try:
+                if op == 'cbor':
+                    decoded.append(SimpleCBORDecoder(value).decode("cbor"))
+                else:
+                    decoded.append(CBOR.loads_sequence(value, keep_encoding=True))
+            except Exception as exc:
+                what = 'embedded CBOR' if op == 'cbor' else 'embedded CBOR sequence'
+                return [f"{what} (.{op} {label(op, inner)}) does not decode: {exc}"]
+        # 'bstr .cbor uint .size 1': the bytes' own controls apply too
         errors = self._primitive_errors(value, 'bstr', expr)
-        return errors or self._check_value(items, inner, _depth + 1, strict)
+        for (_op, _base, inner), nested in zip(controls, decoded):
+            errors = errors or self._check_value(nested, inner, _depth + 1, strict)
+        return errors
 
     #: Controls that compare the value with their argument instead of
     #: describing its shape: equal to (``.eq``), different from (``.ne``), and
@@ -2635,6 +2635,7 @@ class CBORAnalyzer:
                 or self._is_compared_number(expr)
                 or any(control.op == 'bits' for control in query.controls(expr))
                 or query.cborseq_control(expr) is not None
+                or len(query.embedded_controls(expr)) > 1
                 or self._paren_parts(expr) is not None)
 
     _NUMBER_TYPES = frozenset({'uint', 'int', 'float', 'float16', 'float32', 'float64',
