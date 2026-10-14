@@ -818,7 +818,8 @@ class _CheckError(str):
         span: Byte span of the item in the input, when it is known
             (``located``); otherwise it is found from the path when reported.
         alternatives: For a value that matches none of a choice's
-            alternatives: ``(alternative, error)`` for each one that was tried.
+            alternatives: ``(alternative, error)`` for each one that was tried,
+            or, for an error found by a nested run, their finished diagnostics.
     """
 
     expected: Optional[str]
@@ -829,13 +830,13 @@ class _CheckError(str):
     rule: Optional[str]
     span: Optional[Tuple[int, int]]
     located: bool
-    alternatives: Tuple[Tuple[str, '_CheckError'], ...]
+    alternatives: Tuple[Any, ...]
 
     def __new__(cls, message: str, *, expected: Optional[str] = None, actual: Optional[str] = None,
                 category: Optional[str] = None, path: Tuple[Any, ...] = (),
                 schema_path: Tuple[str, ...] = (), rule: Optional[str] = None,
                 span: Optional[Tuple[int, int]] = None, located: bool = False,
-                alternatives: Tuple[Tuple[str, '_CheckError'], ...] = ()):
+                alternatives: Tuple[Any, ...] = ()):
         obj = super().__new__(cls, message)
         obj.expected, obj.actual, obj.category = expected, actual, category
         obj.path, obj.schema_path, obj.rule = tuple(path), tuple(schema_path), rule
@@ -1077,16 +1078,20 @@ class CBORAnalyzer:
 
     def _diagnostic(self, message: str, path: Tuple[Any, ...], category: Optional[str],
                     expected: Optional[str], actual: Optional[str], rule: Optional[str],
-                    key: Any, finding: Optional[_CheckError]) -> Diagnostic:
-        """The diagnostic for *message* at *path*, below the current item's schema path."""
-        schema_path = tuple(self.breadcrumb)
+                    key: Any, finding: Optional[_CheckError],
+                    schema_path: Optional[Tuple[str, ...]] = None) -> Diagnostic:
+        """The diagnostic for *message* at *path*, below the schema path (the current one by default)."""
+        schema_path = tuple(self.breadcrumb) if schema_path is None else schema_path
         alternatives = ()
         if finding is not None:
-            alternatives = tuple(
-                self._diagnostic(f"{label}: {cause}", path, None, None, None, None, _NO_STEP, cause)
-                for label, cause in finding.alternatives[:MAX_ALTERNATIVES])
             path = path + finding.path
             schema_path = schema_path + finding.schema_path
+            # the alternatives were checked on the same value: they continue from here
+            alternatives = tuple(
+                item if isinstance(item, Diagnostic)  # already complete (from a nested run)
+                else self._diagnostic(f"{item[0]}: {item[1]}", path, None, None, None, None,
+                                      _NO_STEP, item[1], schema_path)
+                for item in finding.alternatives[:MAX_ALTERNATIVES])
             category = category or finding.category
             rule = rule or finding.rule
             if expected is None and actual is None:
@@ -2402,7 +2407,7 @@ class CBORAnalyzer:
         return _CheckError(str(error), expected=diag.expected, actual=diag.actual,
                            category=diag.category, path=below,
                            schema_path=diag.schema_path[depth:], rule=diag.rule,
-                           span=span, located=True)
+                           span=span, located=True, alternatives=diag.alternatives)
 
     def _is_structured(self, alt) -> bool:
         """Whether choice alternative *alt* is a map, array or tag, by name or in full."""

@@ -200,6 +200,27 @@ class TestNestedFindings(unittest.TestCase):
         self.assertEqual(bytes_of(raw, diag), cbor.encode(b"x"))
         self.assertEqual({bytes_of(raw, a) for a in diag.alternatives}, {cbor.encode(b"x")})
 
+    def test_alternatives_survive_a_nested_check(self):
+        schema = "r = [* bstr .cbor inner]\ninner = {a: uint / tstr}"
+        raw, diags = found(schema, [cbor.encode({"a": b"x"})])
+        diag = diags[0]
+        self.assertEqual(diag.path, (0, "a"))
+        self.assertEqual([(a.path, a.expected) for a in diag.alternatives],
+                         [((0, "a"), "uint"), ((0, "a"), "tstr")])
+        self.assertEqual({bytes_of(raw, a) for a in diag.alternatives}, {cbor.encode(b"x")})
+
+    def test_alternatives_continue_from_the_path_of_their_finding(self):
+        from cddl_verifier._analyzer import CBORAnalyzer, CDDLParser, _CheckError, _NO_STEP
+        analyzer = CBORAnalyzer(CDDLParser("r = uint"))
+        cause = _CheckError("expected uint, got str", path=("deeper",), schema_path=("rule",))
+        finding = _CheckError("matches none of uint", path=("a", "b"), schema_path=("x",),
+                              alternatives=(("uint", cause),))
+        diagnostic = analyzer._diagnostic("m", (0,), None, None, None, None, _NO_STEP, finding)
+        self.assertEqual(diagnostic.path, (0, "a", "b"))
+        alternative = diagnostic.alternatives[0]
+        self.assertEqual(alternative.path, (0, "a", "b", "deeper"))
+        self.assertEqual(alternative.schema_path, ("x", "rule"))
+
     def test_findings_still_compare_as_strings(self):
         analyzer = validate("r = uint", cbor.encode(1))
         self.assertTrue(analyzer.valid)
