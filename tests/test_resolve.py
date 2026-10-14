@@ -189,7 +189,7 @@ class TestAccepted(unittest.TestCase):
             "nonempty<M> = (M) .and ({ + any => any })\nr = nonempty<{ a: int }>",
             "r = tstr .size (1..63)\nlim = 3\ns = bstr .size lim",
             "r = uint .size 0x10 / uint .bits b\nb = &( x: 1 )",
-            "r = int .ge -5 .le 5",                  # chained controls (extension)
+            "r = (int .ge -5) .le 5",
             "r = number .ge 0.5",
             "r = tstr .regexp pat\npat = \"a+\"",
             "r = bstr .cbor { a: uint }",

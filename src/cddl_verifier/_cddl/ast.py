@@ -188,11 +188,12 @@ class Range:
 class Control:
     """``target .op arg``; ``op`` has no leading dot.
 
-    ``target`` is a ``Control`` only for chained controls
-    (``uint .ge 0 .le 150``), a non-standard extension the parser accepts.
+    A type takes one control (RFC 8610), so ``target`` is never a ``Control``;
+    a control on a controlled type is written ``(uint .ge 0) .le 150`` and the
+    target is a ``Paren``.
     """
 
-    target: Union[Type2, "Control"]
+    target: Type2
     op: str
     arg: Type2
     span: Span = _span()

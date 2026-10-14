@@ -215,11 +215,10 @@ HeadNumber = Union[int, Type, None]              # .N, .<type>, or absent
   type, a rule, a generic parameter or undefined. That is #70's job. `$` and
   `$$` stay part of `name`.
 - A control's `op` has no leading dot. Any identifier is accepted.
-- The parser also accepts chained controls (`uint .ge 0 .le 150`), which
-  RFC 8610 does not allow, and reads them left to right: the `target` of the
-  outer `Control` is the inner one. They are deprecated (#113): loading a
-  schema warns about each chain, and a later release removes the case. See
-  Phase B in §10.
+- A type takes one control. Chained controls (`uint .ge 0 .le 150`), which
+  RFC 8610 does not allow, were accepted as an extension until #113 and are
+  now a syntax error: the `target` of a `Control` is never a `Control`, and
+  `(uint .ge 0) .le 150` has a `Paren` target. See Phase B in §10.
 - `HeadNumber` is shared by `Tag` and `Major`. It holds the integer after the
   dot, the full `Type` written between `<` and `>` (RFC 9682), or `None` when
   there is no `.` part.
@@ -456,13 +455,12 @@ As implemented in #110 (`_cddl/legacy.py`):
 - **Generic wrappers.** `x = non-empty<{ ... }>` (one map or array argument)
   is read as the map inside, as the line-based parser did. #70 replaced this
   with real instantiation.
-- **Chained controls.** `uint .ge 0 .le 150` is accepted as a non-standard
+- **Chained controls.** `uint .ge 0 .le 150` was accepted as a non-standard
   extension and parsed as `Control(Control(uint, ge, 0), le, 150)`, because
   the standard forms were not enforced before #71 and #76 (`.and`, `.within`,
-  `.eq` and `.ne` are enforced from 0.19.0). Each link counts
-  toward `MAX_DEPTH`. Since 0.22.1 each chain gives a deprecation warning
-  (`modules.deprecation_warnings`, from the AST); the parser loop and the
-  `Control.target: Control` case go in the release that rejects chains.
+  `.eq` and `.ne` are enforced from 0.19.0). From 0.23.0 (#113) a second
+  control is a syntax error that names the parenthesized spelling, and the
+  parser loop and the `Control.target: Control` case are gone.
 
 ### Phase C: consumers read nodes instead of strings ([#111](https://github.com/sahebbiswas/cddl_verifier/issues/111))
 

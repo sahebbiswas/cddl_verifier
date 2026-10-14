@@ -45,7 +45,7 @@
   },
   {
    "construct": "CDDL outside RFC 8610, RFC 9165, RFC 9682, RFC 9741 and the modules draft comment syntax",
-   "reason": "Unknown control operators are schema errors; the chained-control extension (deprecated, #113) is the only non-standard syntax accepted."
+   "reason": "Unknown control operators are schema errors; a second control on one type (`uint .ge 0 .le 150`, accepted before #113) is a syntax error that names the parenthesized spelling; nothing else non-standard is accepted."
   }
  ],
  "rows": [
@@ -4465,40 +4465,6 @@
      "hex": "a10101",
      "decode": "ok",
      "json_roundtrip": true
-    }
-   ]
-  },
-  {
-   "id": "syntax.chained-controls",
-   "area": "syntax",
-   "construct": "Chained controls `uint .ge 0 .le 150`",
-   "spec": "project extension",
-   "status": "supported",
-   "layers": {
-    "parser": "supported",
-    "ast": "supported",
-    "resolver": "supported",
-    "validator": "supported",
-    "edn": "n/a"
-   },
-   "notes": "Not RFC 8610 grammar: the parser accepts it as an extension and every control applies. Deprecated: each use warns and names the standard spelling, and a later release will reject it (#113).",
-   "issues": [
-    113
-   ],
-   "tests": [
-    "tests/test_cddl_parser.py",
-    "tests/test_cbor_cddl_analyzer.py",
-    "tests/test_chained_controls.py"
-   ],
-   "probes": [
-    {
-     "schema": "r = uint .ge 0 .le 150",
-     "valid": [
-      5
-     ],
-     "invalid": [
-      200
-     ]
     }
    ]
   }

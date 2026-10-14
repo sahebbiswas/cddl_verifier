@@ -84,7 +84,7 @@ class TestOtherPositions(unittest.TestCase):
         self.assertFalse(validate(schema, {"o": encode([1, 2])}).valid)
 
     def test_size_on_the_bytes_still_applies(self):
-        schema = "r = { o: bstr .cbor opt<uint> .size 1 }\n" + OPT
+        schema = "r = { o: (bstr .cbor opt<uint>) .size 1 }\n" + OPT
         self.assertTrue(validate(schema, {"o": encode(None)}).valid)
         self.assertFalse(validate(schema, {"o": encode(1000)}).valid)
 

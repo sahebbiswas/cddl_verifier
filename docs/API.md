@@ -56,9 +56,7 @@ Parses a schema once so it can check many items.
   ([CDDL_SUPPORT.md](CDDL_SUPPORT.md#type-choices)).
 - A module that is not found is not an error: the names used from it are not
   checked and match any value. `Validator.warnings` lists these imports (and
-  each is also issued as a `UserWarning`). It also lists each use of the
-  deprecated chained controls (`uint .ge 0 .le 150`), with its position and
-  the standard spelling.
+  each is also issued as a `UserWarning`).
 - Raises `SchemaError` (a `ValueError`) when a schema file cannot be read, is
   not valid CDDL, or does not make sense (an undefined name, a generic given
   the wrong number of arguments, an unknown control operator; see

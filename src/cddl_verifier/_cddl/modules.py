@@ -24,10 +24,9 @@ from pathlib import Path
 from typing import Dict, FrozenSet, Iterable, List, Mapping, Optional, Set, Tuple, Union
 
 from .._errors import SchemaError
-from .ast import (ChoiceFrom, Control, GroupRef, GroupRule, Name, Schema, Source, TypeRule,
-                  Unwrap, walk)
+from .ast import (ChoiceFrom, GroupRef, GroupRule, Name, Schema, Source, TypeRule,
+                  Unwrap)
 from .parser import parse_cddl
-from .printer import format_node
 from .resolve import Imports, parse_imports, resolve
 
 #: A module given directly: CDDL text, or a path to a file holding it.
@@ -91,8 +90,6 @@ class LinkResult:
             locate it.
         unloaded: ``(module, prefix or None)`` of each import that was not found.
         loaded:  Names of the modules that were merged in.
-        warnings: What the schema and its modules use that is deprecated
-            (chained controls, #113), each message locating the use.
     """
 
     schema: Schema
@@ -100,7 +97,6 @@ class LinkResult:
     origins: Dict[str, Source] = field(default_factory=dict)
     unloaded: List[Tuple[str, Optional[str]]] = field(default_factory=list)
     loaded: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
 
 
 def link(schema: Schema, loader: Optional[ModuleLoader]) -> LinkResult:
@@ -121,7 +117,6 @@ class _Linker:
 
     def link(self, schema: Schema, stack: Tuple[str, ...]) -> LinkResult:
         text = schema.source.text if schema.source else ''
-        warnings = deprecation_warnings(schema)
         rules = list(schema.rules)
         defined = {r.name for r in rules if r.assign == '=' and not r.name.startswith('$')}
         origins: Dict[str, Source] = {}
@@ -175,11 +170,10 @@ class _Linker:
             prefixes |= result.imports.prefixes
             any_name = any_name or result.imports.any_name
             unloaded.extend(item for item in result.unloaded if item not in unloaded)
-            warnings.extend(w for w in result.warnings if w not in warnings)
 
         linked = replace(schema, rules=tuple(rules))
         return LinkResult(linked, Imports(frozenset(prefixes), any_name, loaded_prefixes),
-                          origins, unloaded, loaded, warnings)
+                          origins, unloaded, loaded)
 
     def module(self, name: str, stack: Tuple[str, ...]) -> Optional[LinkResult]:
         """The linked and checked module *name*, or ``None`` if it is not available."""
@@ -237,40 +231,6 @@ def rename(node, mapping, scope: FrozenSet[str] = frozenset()):
 
 def _is_node(value) -> bool:
     return hasattr(value, '__dataclass_fields__') and not isinstance(value, type)
-
-
-def deprecation_warnings(schema: Schema) -> List[str]:
-    """One warning per chained control (``uint .ge 0 .le 150``) in *schema* (#113).
-
-    RFC 8610 allows one control per type, so a chain is an extension that will
-    be rejected in a later release. The message names the standard spelling.
-    """
-    nodes = [n for n in walk(schema) if isinstance(n, Control)]
-    inner = {id(n.target) for n in nodes}
-    warnings: List[str] = []
-    for node in nodes:
-        if not isinstance(node.target, Control) or id(node) in inner:
-            continue  # not a chain, or a link inside a chain already reported as a whole
-        links = []
-        while isinstance(node.target, Control):
-            links.append(node)
-            node = node.target
-        links.append(node)
-        links.reverse()
-        spelled = f"{format_node(links[0].target)} .{links[0].op} {format_node(links[0].arg)}"
-        for link_ in links[1:]:
-            spelled = f"({spelled}) .{link_.op} {format_node(link_.arg)}"
-        outer = links[-1]
-        where = ''
-        if schema.source is not None and outer.span.end:
-            line, col = schema.source.line_col(outer.span.start)
-            where = f"{schema.source.name or '<schema>'}:{line}:{col}: "
-        was = format_node(outer)
-        warnings.append(
-            f"{where}chained controls are deprecated and will be rejected in a later "
-            f"release (RFC 8610 allows one control per type): write `{spelled}` "
-            f"instead of `{was}`")
-    return warnings
 
 
 def unloaded_warnings(linked: LinkResult, external: Iterable[str]) -> List[str]:

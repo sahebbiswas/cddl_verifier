@@ -57,13 +57,12 @@ The error names the bit that is set. An argument that is not bit positions is
 a schema error. A name from an import that is not loaded cannot be read, so it
 is not enforced; the unloaded-module warning says so.
 
-One non-standard form is accepted but deprecated: chained controls such as
-`uint .ge 0 .le 150`, read as `(uint .ge 0) .le 150`. RFC 8610 allows one
-control per type. Every control in a chain is still enforced, and each use
-gives a warning (`Validator.warnings`, a `UserWarning`, and a line on stderr
-from the CLI) that gives its position and the standard spelling. A later
-release will reject chains as a syntax error. Write `(uint .ge 0) .le 150`,
-which is enforced too, or the range `0..150` (see [Ranges](#ranges)).
+A type takes one control, as RFC 8610 says. Chained controls such as
+`uint .ge 0 .le 150`, which earlier versions accepted as an extension, are a
+syntax error (since 0.23.0) and the message gives the spelling to use:
+`(uint .ge 0) .le 150`, which is enforced, or the range `0..150` (see
+[Ranges](#ranges)). Likewise `(bstr .cbor uint) .size 1`, not
+`bstr .cbor uint .size 1`.
 
 ## Schema semantics
 

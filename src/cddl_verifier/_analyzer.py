@@ -208,7 +208,7 @@ class CDDLParser:
         self.content = cddl_content
         self.source_name = source_name
         self.loader = loader
-        self.warnings: List[str] = []  # imports not found (#121), deprecated syntax (#113)
+        self.warnings: List[str] = []  # imports whose module was not found (#121)
         self.types: Dict[str, Dict] = {}
         self.groups: Dict[str, List] = {}  # Store group definitions
         self.type_choices: Dict[str, List[Type]] = {}  # type choice alternatives, as nodes
@@ -306,7 +306,7 @@ class CDDLParser:
         self.ast = linked.schema
         self._origins = linked.origins
         self.resolved = resolve(self.ast, linked.imports)
-        self.warnings = linked.warnings + unloaded_warnings(linked, self.resolved.external)
+        self.warnings = unloaded_warnings(linked, self.resolved.external)
         tables = LegacyTables(self.ast, self.resolved)
         self.types = tables.types
         self.groups = tables.groups
@@ -506,13 +506,12 @@ class CDDLParser:
         """Extract numeric value-range predicates from a type node.
 
         Supports ``.ge``, ``.gt``, ``.le``, ``.lt`` (RFC 8610 §3.8.1) with a
-        numeric literal argument, including chained controls (the parser's
-        ``uint .ge 0 .le 100`` extension).
+        numeric literal argument. The type takes one control, so one bound is
+        found; ``(uint .ge 0) .le 100`` is enforced as a rule of its own.
 
         Examples::
 
             'uint .le 150'          -> {'ge': None, 'gt': None, 'le': 150, 'lt': None}
-            'uint .ge 0 .le 100'    -> {'ge': 0,    'gt': None, 'le': 100, 'lt': None}
 
         Returns ``None`` if no range predicates are found.
         """

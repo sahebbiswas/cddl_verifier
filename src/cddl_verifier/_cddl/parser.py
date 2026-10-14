@@ -12,6 +12,7 @@ from .ast import (AnyItem, Array, BytesLit, ChoiceFrom, Control, FloatLit, Group
                   Span, Tag, TextLit, Type, TypeRule, Unwrap, entry_type)
 from .errors import CDDLSyntaxError, describe
 from .lexer import Lexer, Token
+from .printer import format_node
 
 #: Deepest nesting of brackets, parentheses, tags and generic arguments
 #: accepted. Everything that recurses over the tree (the parser, the printer,
@@ -160,19 +161,14 @@ class Parser:
             op = self.advance().value
             arg = self.parse_type2()
             node = Control(t2, op, arg, span=self.span_from(start))
-            # Non-standard extension: 'uint .ge 0 .le 150' chains controls,
-            # read as '(uint .ge 0) .le 150'. RFC 8610 allows one control per
-            # type; the line-based parser accepted chains, so they are kept
-            # until the standard forms are enforced (#71, #76). Each link
-            # nests the tree one level deeper, so it counts toward MAX_DEPTH.
-            links = 0
-            while self.tok.kind == 'CTLOP':
-                self.enter()
-                links += 1
-                op = self.advance().value
-                arg = self.parse_type2()
-                node = Control(node, op, arg, span=self.span_from(start))
-            self.depth -= links
+            if self.tok.kind == 'CTLOP':
+                # RFC 8610 allows one control per type ('uint .ge 0 .le 150' was
+                # accepted as an extension until #113).
+                t = self.tok
+                raise CDDLSyntaxError(
+                    f"a type takes one control operator, found a second ('{t.text}'); "
+                    f"parenthesize the first: ({format_node(node)}) {t.text} ...",
+                    Span(t.start, t.end), self.source)
             return node
         return t2
 

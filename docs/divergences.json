@@ -4,7 +4,6 @@
   {"row": ["control.b32", "control.b45", "control.b64c", "control.b64c-sloppy", "control.b64u", "control.b64u-sloppy", "control.base10", "control.h32", "control.hex", "control.hexlc", "control.hexuc", "control.join", "control.json", "control.printf"], "kind": "parser", "cause": "their-unsupported", "reason": "The RFC 9165 controls are not known to the cddl crate, which rejects the schema."},
   {"row": "syntax.int-literal", "kind": "parser", "cause": "their-unsupported", "reason": "Hexadecimal and binary integer literals (RFC 8610 §3.5) do not parse in the cddl crate."},
   {"row": "syntax.bytes-literal", "kind": "parser", "cause": "their-unsupported", "reason": "The b64'...' byte string literal does not parse in the cddl crate."},
-  {"row": "syntax.chained-controls", "kind": "parser", "cause": "their-unsupported", "reason": "The cddl crate does not parse a second control after the first (`uint .ge 0 .le 150`)."},
   {"row": "syntax.tag-type", "kind": "parser", "cause": "their-unsupported", "reason": "The `#6.<type>(t)` form (a tag number given as a type) does not parse in the cddl crate."},
   {"row": "syntax.major-types", "kind": "parser", "cause": "their-unsupported", "reason": "`#6.N` without content and `#7.<type>` do not parse in the cddl crate."},
   {"row": ["syntax.group", "syntax.recursion"], "kind": "crash", "cause": "their-bug", "reason": "The cddl crate overflows its stack (SIGSEGV) on a recursive rule; this library accepts it."},
