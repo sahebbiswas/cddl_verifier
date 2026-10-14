@@ -480,6 +480,23 @@ class TestEmbeddedCborOffsets(unittest.TestCase):
         self.assertEqual(found[0].path, (0, 7))
         self.assertEqual(raw[found[0].offset:found[0].end_offset], b"\x07")
 
+    def test_unindexed_embedded_bytes_are_not_matched_to_a_sibling(self):
+        # both leaves have the same bytes, and the second ends the middle byte
+        # string: bytes the index has no position for must not be taken for it
+        schema = ("r = { 0: bstr .cbor mid }\nmid = { 0: bstr .cbor leaf, 1: bstr .cbor leaf }\n"
+                  "leaf = { 0: uint }")
+        leaf = cbor.encode({0: "no"})
+        mid = cbor.encode({0: leaf, 1: leaf})
+        raw = cbor.encode({0: mid})
+        original = CBOR.loads_with_locations
+        with mock.patch.object(CBOR, "loads_with_locations",
+                               staticmethod(lambda data: original(
+                                   data, max_steps=1 if data == mid else 10_000))):
+            found = validate(schema, raw).diagnostics
+        self.assertEqual([d.path for d in found], [(0, 0, 0), (0, 1, 0)])
+        for diag in found:
+            self.assertEqual(raw[diag.offset:diag.end_offset], cbor.encode(mid))
+
     def test_later_members_are_not_affected(self):
         schema = "r = { 0: bstr .cbor inner, 1: uint }\ninner = { 0: uint }"
         raw = cbor.encode({0: cbor.encode({0: 1}), 1: "no"})

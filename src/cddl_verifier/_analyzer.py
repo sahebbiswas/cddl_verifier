@@ -922,10 +922,15 @@ class CBORAnalyzer:
         """Map keys and array indexes from the root to the item being checked."""
         return tuple(step for step in self._data_path if step is not _NO_STEP)
 
-    def _item_span(self, path: Tuple[Any, ...], key: Any = _NO_STEP) -> Optional[Tuple[int, int]]:
-        """Byte span of the item at *path* (or of its key *key*) in the CBOR input."""
+    def _item_span(self, path: Tuple[Any, ...], key: Any = _NO_STEP,
+                   fallback: bool = True) -> Optional[Tuple[int, int]]:
+        """Byte span of the item at *path* (or of its key *key*) in the CBOR input.
+
+        Inside embedded CBOR an item the index has no position for is placed
+        at its byte string, unless *fallback* is false: then it has no span.
+        """
         if self._embedded_frames:
-            return self._embedded_item_span(path, key)
+            return self._embedded_item_span(path, key, fallback)
         if not self.cbor_bytes:
             return None
         if self._locations is None and not self._locations_tried:
@@ -940,7 +945,8 @@ class CBORAnalyzer:
             return self._locations.key_span(path, key)
         return self._locations.span(path)
 
-    def _embedded_item_span(self, path: Tuple[Any, ...], key: Any) -> Optional[Tuple[int, int]]:
+    def _embedded_item_span(self, path: Tuple[Any, ...], key: Any,
+                            fallback: bool = True) -> Optional[Tuple[int, int]]:
         """Span, in the input, of an item inside embedded CBOR.
 
         The embedded bytes are a slice of the input, so the item's position
@@ -955,23 +961,25 @@ class CBORAnalyzer:
                     else frame.locations.span(below))
             if span is not None:
                 return frame.base + span[0], frame.base + span[1]
-        return frame.span
+        return frame.span if fallback else None
 
     @contextlib.contextmanager
     def _inside_embedded_cbor(self, payload: bytes):
         """Report offsets inside the byte string *payload* while checking the CBOR in it."""
-        span = self._item_span(self._current_path())
+        path = self._current_path()
+        span = self._item_span(path)  # where to point when the bytes can't be located
+        own = self._item_span(path, fallback=False)  # the byte string's own span, if indexed
         base = locations = None
-        if span is not None and self.cbor_bytes:
-            start = span[1] - len(payload)  # the content is the end of the byte string item
-            if start >= span[0] and self.cbor_bytes[start:span[1]] == payload:
+        if own is not None and self.cbor_bytes:
+            start = own[1] - len(payload)  # the content is the end of the byte string item
+            if start >= own[0] and self.cbor_bytes[start:own[1]] == payload:
                 try:
                     locations = CBOR.loads_with_locations(payload)[1]
                     base = start
                 except (CBORDecodeError, TypeError):
                     locations = None
         self._embedded_frames.append(
-            _EmbeddedFrame(len(self._current_path()), base or 0, locations, span))
+            _EmbeddedFrame(len(path), base or 0, locations, span))
         try:
             yield
         finally:
