@@ -30,7 +30,7 @@ from cddl_verifier._cbor import (
     load_cbor_bytes,
 )
 import cddl_verifier
-from cddl_verifier import __version__
+from cddl_verifier import __version__, cbor as public_cbor
 
 
 # (description, encoded item, expected decoded value)
@@ -165,6 +165,66 @@ class TestMalformedRejected(unittest.TestCase):
     def test_non_bytes_rejected(self):
         with self.assertRaises(TypeError):
             CBOR.loads("a1 01 02")
+
+
+# (description, encoded map, offset of the second, duplicate key)
+DUPLICATE_KEYS = [
+    ("text key twice", "a2616100616100", 4),
+    ("byte-string key twice", "a2410100410100", 4),
+    ("float key twice (double)", "a2fb3ff800000000000000fb3ff800000000000000", 11),
+    ("same float, half vs double width", "a2f93e0000fb3ff800000000000000", 5),
+    ("tagged key twice", "a2c10200c10200", 4),
+    ("array key twice", "a2810100810100", 4),
+    ("map key twice", "a2a1010200a1010200", 5),
+    ("null key twice", "a2f600f600", 3),
+    ("duplicate inside a nested map", "a101a201000100", 5),
+    ("duplicate inside an array", "81a201000100", 4),
+]
+
+
+class TestDuplicateMapKeys(unittest.TestCase):
+    """A map with the same key twice is rejected for every key type, at any depth (#92).
+
+    The offset is that of the second key. ``1`` and ``true``, ``1`` and
+    ``1.0``, or ``0.0`` and ``-0.0`` are distinct keys and are not here.
+    """
+
+    def test_each_case_is_rejected_at_the_second_key(self):
+        for description, hex_text, offset in DUPLICATE_KEYS:
+            with self.subTest(description):
+                with self.assertRaises(CBORDecodeError) as cm:
+                    CBOR.loads(bytes.fromhex(hex_text))
+                self.assertEqual(cm.exception.offset, offset)
+                self.assertIn("Duplicate map key", cm.exception.reason)
+
+    def test_each_case_is_rejected_by_the_public_decoder(self):
+        for description, hex_text, offset in DUPLICATE_KEYS:
+            with self.subTest(description):
+                with self.assertRaises(CBORDecodeError) as cm:
+                    public_cbor.decode(bytes.fromhex(hex_text))
+                self.assertEqual(cm.exception.offset, offset)
+
+    def test_inside_a_sequence_item(self):
+        with self.assertRaises(CBORDecodeError) as cm:
+            public_cbor.decode_sequence(bytes.fromhex("01a201000100"))
+        self.assertEqual(cm.exception.offset, 4)
+        self.assertIn("item 1 of the sequence", cm.exception.reason)
+
+    def test_inside_embedded_cbor_gives_an_invalid_result(self):
+        inner = bytes.fromhex("a201000100")
+        for schema, data in (
+                ("r = {a: bstr .cbor any}", {"a": inner}),
+                ("r = bstr .cbor any", inner),
+                ("r = bstr .cborseq [* any]", inner)):
+            with self.subTest(schema):
+                result = cddl_verifier.validate(schema, public_cbor.encode(data))
+                self.assertFalse(result.valid)
+                self.assertIn("Duplicate map key", " ".join(result.errors))
+
+    def test_distinct_keys_are_accepted(self):
+        for hex_text in ("a2616100616200", "a2410100410200", "a2f93e0000f93c0000"):
+            with self.subTest(hex_text):
+                self.assertEqual(len(CBOR.loads(bytes.fromhex(hex_text))), 2)
 
 
 class TestAnalyzerCLI(unittest.TestCase):
