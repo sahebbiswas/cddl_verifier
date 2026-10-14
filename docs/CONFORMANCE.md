@@ -20,7 +20,7 @@ Layers: the **parser** reads the syntax into the typed **AST**; the **resolver**
 |------|-------------:|-----------:|---------------:|------:|
 | CDDL syntax and semantics | 29 | 0 | 0 | 29 |
 | Control operators | 15 | 0 | 19 | 34 |
-| Prelude types (RFC 8610 Appendix D) | 12 | 2 | 0 | 14 |
+| Prelude types (RFC 8610 Appendix D) | 14 | 1 | 0 | 15 |
 | CBOR data model (RFC 8949) | 9 | 2 | 0 | 11 |
 
 ## CDDL syntax and semantics
@@ -116,10 +116,11 @@ One row per group of related names.
 | `tstr`, `text` | RFC 8610 Appendix D | ✅ | ✅ | ✅ | ✅ | ✅ | – |  | `test_prelude_types.py` |
 | `float16`, `float32`, `float64`, `float`, `float16-32`, `float32-64` | RFC 8610 Appendix D | ✅ | ✅ | ✅ | ✅ | ✅ | – | `float16`, `float32` and `float64` follow the encoding of data decoded from bytes (`float16` rejects a float written as a double). A float given as a Python value has no encoding and matches a width it can be written in without loss (`1.5` is `float16`, `1.1` is only `float64`). `float` and the choices accept every float width they name; integers never match. | `test_prelude_types.py`, `test_cbor_items_extended.py` |
 | `number` | RFC 8610 Appendix D | ✅ | ✅ | ✅ | ✅ | ✅ | – | `int / float`. | `test_prelude_types.py` |
-| `tdate`, `time` | RFC 8610 Appendix D | 🟡 | ✅ | ✅ | ✅ | 🟡 | – | The tag number and the type of the content are checked, not the date text (#169). [#169](https://github.com/sahebbiswas/cddl_verifier/issues/169) | `test_prelude_types.py` |
+| `tdate`, `time` | RFC 8610 Appendix D | ✅ | ✅ | ✅ | ✅ | ✅ | – | `tdate` is tag 0 around an RFC 3339 date-time: the calendar must be valid (no 2021-02-29, no month 13), the time `hh:mm:ss` up to the leap second 60, the offset `Z` or `+hh:mm`. `time` is tag 1 around a number. | `test_prelude_types.py`, `test_tag_content.py` |
 | `decfrac`, `bigfloat` | RFC 8610 Appendix D | ✅ | ✅ | ✅ | ✅ | ✅ | – | Tags 4 and 5 holding `[exponent, mantissa]`. | `test_prelude_types.py` |
 | `eb64url`, `eb64legacy`, `eb16`, `cbor-any` | RFC 8610 Appendix D | ✅ | ✅ | ✅ | ✅ | ✅ | – | Tag numbers 21, 22, 23 and 55799. | `test_prelude_types.py` |
-| `encoded-cbor`, `uri`, `b64url`, `b64legacy`, `regexp`, `mime-message` | RFC 8610 Appendix D | 🟡 | ✅ | ✅ | ✅ | 🟡 | – | The tag number and the type of the content are checked, not its meaning: `uri` accepts any text and `encoded-cbor` any byte string (#169). [#169](https://github.com/sahebbiswas/cddl_verifier/issues/169) | `test_prelude_types.py` |
+| `encoded-cbor`, `uri`, `b64url`, `b64legacy`, `regexp` | RFC 8610 Appendix D | ✅ | ✅ | ✅ | ✅ | ✅ | – | The tag number, the type of the content and what the content means: `encoded-cbor` is one well-formed CBOR item, `uri` an RFC 3986 URI reference, `b64url` base64url text without padding, `b64legacy` base64 text with padding. `regexp` is checked as a Python `re` pattern (with `(?<name>...)` and `\k<name>` accepted), which approximates PCRE and ECMA-262 but does not accept every construct of either. | `test_prelude_types.py`, `test_tag_content.py` |
+| `mime-message` | RFC 8610 Appendix D | 🟡 | ✅ | ✅ | ✅ | 🟡 | – | The tag number and the type of the content (text) are checked. The text is not parsed as a MIME message (RFC 2045): that needs a MIME parser, so tag 36 is shape-only by design. [#187](https://github.com/sahebbiswas/cddl_verifier/issues/187) | `test_prelude_types.py`, `test_tag_content.py` |
 
 ## CBOR data model (RFC 8949)
 

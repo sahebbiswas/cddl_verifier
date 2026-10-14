@@ -193,10 +193,14 @@ defines it ([#130](https://github.com/sahebbiswas/cddl_verifier/issues/130)):
 | CDDL type | Definition | Accepts |
 |-----------|------------|---------|
 | `number` | `int / float` | an integer or a float |
-| `tdate` | `#6.0(tstr)` | tag 0 around a text string |
+| `tdate` | `#6.0(tstr)` | tag 0 around an RFC 3339 date-time |
 | `time` | `#6.1(number)` | tag 1 around an integer or a float |
-| `uri`, `b64url`, `b64legacy`, `regexp`, `mime-message` | `#6.32(tstr)` … `#6.36(tstr)` | that tag around a text string |
-| `encoded-cbor` | `#6.24(bstr)` | tag 24 around a byte string |
+| `uri` | `#6.32(tstr)` | tag 32 around an RFC 3986 URI reference |
+| `b64url` | `#6.33(tstr)` | tag 33 around base64url text, without padding |
+| `b64legacy` | `#6.34(tstr)` | tag 34 around base64 text, with padding |
+| `regexp` | `#6.35(tstr)` | tag 35 around a regular expression |
+| `mime-message` | `#6.36(tstr)` | tag 36 around a text string (not parsed as MIME) |
+| `encoded-cbor` | `#6.24(bstr)` | tag 24 around a byte string holding one well-formed CBOR item |
 | `eb64url`, `eb64legacy`, `eb16` | `#6.21(any)` … `#6.23(any)` | that tag around any value |
 | `cbor-any` | `#6.55799(any)` | tag 55799 around any value |
 | `decfrac`, `bigfloat` | `#6.4([e10: int, m: integer])`, `#6.5([e2: int, m: integer])` | that tag around an array of an `int` exponent and an `integer` mantissa |
@@ -205,6 +209,27 @@ defines it ([#130](https://github.com/sahebbiswas/cddl_verifier/issues/130)):
 | `bigint` | `biguint / bignint` | either of the above |
 | `integer` | `int / bigint` | any integer, of any size |
 | `unsigned` | `uint / biguint` | any non-negative integer, of any size |
+
+The content of tags 0, 24, 32, 33, 34 and 35 is checked for what it means, not
+only for its type, wherever the tag is matched, however the schema writes it
+(`tdate`, `#6.0(tstr)`, a field, an element, a choice) (#169):
+
+- Tag 0: `YYYY-MM-DDThh:mm:ss[.fraction]` and `Z` or `+hh:mm`, with a real date
+  (`2021-02-29` and month 13 are errors, a leap day needs a leap year), a
+  time up to `23:59:60` and an offset up to `23:59`.
+- Tag 32: a URI reference with a valid scheme, authority (user information,
+  host, IPv6 literal, port), path, query and fragment, and `%HH` escapes.
+  Spaces, non-ASCII characters and `<>"\^`{|}` must be escaped; `::x` is not a
+  URI reference.
+- Tags 33 and 34: the base64url and base64 alphabets, padding as the tag says.
+- Tag 35: a pattern Python's `re` can compile, after `(?<name>...)` and
+  `\k<name>` are read the Python way. This approximates the PCRE and ECMA-262
+  the RFC names; a construct only one of them has is rejected.
+- Tag 24: the bytes decode as exactly one CBOR item.
+- Tag 36 is shape-only: the text is not parsed as a MIME message
+  ([#187](https://github.com/sahebbiswas/cddl_verifier/issues/187)).
+
+Content of the wrong type (a number under tag 0) is reported as before.
 
 The decoder turns a bignum (tag 2 or 3) whose value does not fit in 64 bits
 into a plain integer, and keeps one that fits as the tag and its bytes (see
