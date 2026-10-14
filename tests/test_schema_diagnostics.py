@@ -159,6 +159,23 @@ class TestResolverCollects(unittest.TestCase):
         self.assertEqual([e.message for e in errors],
                          ["undefined name 'x1'", "undefined name 'x2'", "undefined name 'x3'"])
 
+    def test_each_alternative_of_a_choice_is_checked(self):
+        _, errors = resolve_all(parse_cddl("r = a / b / uint"))
+        self.assertEqual([e.message for e in errors],
+                         ["undefined name 'a'", "undefined name 'b'"])
+
+    def test_a_key_and_its_value_each_get_a_problem(self):
+        _, errors = resolve_all(parse_cddl("r = { nope1 => nope2, c: uint }"))
+        self.assertEqual([e.message for e in errors],
+                         ["undefined name 'nope1'", "undefined name 'nope2'"])
+
+    def test_the_first_problem_is_the_one_raised(self):
+        for text in ("r = a / b", "r = { x => a, y: b }", MANY):
+            with self.subTest(text=text):
+                with self.assertRaises(CDDLSemanticError) as caught:
+                    resolve(parse_cddl(text))
+                self.assertIs(caught.exception, caught.exception.errors[0])
+
     def test_pickle_keeps_the_rule(self):
         with self.assertRaises(CDDLSemanticError) as caught:
             resolve(parse_cddl("r = { a: nope }"))

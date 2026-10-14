@@ -306,6 +306,10 @@ class _Resolver:
     def error(self, message: str, span: Span) -> CDDLSemanticError:
         return CDDLSemanticError(message, span, self.source, self.rule_name)
 
+    def fail(self, message: str, span: Span) -> None:
+        """Raise the problem *message* at *span* (for :meth:`collecting`)."""
+        raise self.error(message, span)
+
     def collecting(self, check, *args) -> None:
         """Run *check*; keep the problem it finds instead of stopping, if it finds one."""
         try:
@@ -544,7 +548,7 @@ class _Resolver:
 
     def check_type(self, ty: Type, scope):
         for alternative in ty.alternatives:
-            self.check_type1(alternative, scope)
+            self.collecting(self.check_type1, alternative, scope)
 
     def check_type1(self, node, scope):
         if isinstance(node, Range):
@@ -623,12 +627,12 @@ class _Resolver:
         if isinstance(entry, Member):
             if entry.key is not None:
                 if entry.key.kind == 'value':
-                    self.check_type2(entry.key.value, scope)
+                    self.collecting(self.check_type2, entry.key.value, scope)
                 elif entry.key.kind == 'type':
-                    self.check_type1(entry.key.type, scope)
+                    self.collecting(self.check_type1, entry.key.type, scope)
             elif in_map and not _is_unwrap(entry.value):
-                raise self.error("a map entry needs a key: write 'key: type' or "
-                                 "'key-type => type'", entry.span)
+                self.collecting(self.fail, "a map entry needs a key: write 'key: type' or "
+                                "'key-type => type'", entry.span)
             self.check_type(entry.value, scope)
             if in_map and entry.key is None:
                 self.check_map_splice(entry.value.alternatives[0])
