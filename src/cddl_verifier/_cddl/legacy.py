@@ -121,7 +121,7 @@ class LegacyTables:
                     self.type_choices[name] = [base]
             choices = self.type_choices.setdefault(name, [])
             for alt in rule.type.alternatives:
-                choices.append(self._type_of(Type((alt,)), f'{name}@{len(choices)}'))
+                choices.append(self._structured_type(Type((alt,)), f'{name}@{len(choices)}'))
             return
         if self.first_definition is None and not self._is_group(rule):
             self.first_definition = name
@@ -439,7 +439,7 @@ class LegacyTables:
                 value = entry_type(_without_occurrence(entry))
                 if value is None:
                     continue
-            element_types[index] = self._type_of(value, f'{owner}@{index}')
+            element_types[index] = self._structured_type(value, f'{owner}@{index}')
         occurrence = ''
         if len(entries) == 1 and entries[0].occurrence is not None \
                 and entries[0].occurrence.text in ('+', '*'):
@@ -645,6 +645,10 @@ class LegacyTables:
                     # a generic instance that is a choice ('opt<uint>' gives
                     # 'uint / nil'): its alternatives join this choice
                     lifted.extend(new.type.alternatives)
+                elif len(alts) > 1 and isinstance(new, Array):
+                    # 'uint / [* uint]': an array that is one alternative is
+                    # a structure of its own, so its elements are checked (#196)
+                    lifted.append(Name(self._synthetic(new, alt_path)))
                 else:
                     lifted.append(new)
             return Type(tuple(lifted))
@@ -737,8 +741,18 @@ class LegacyTables:
                 # counted and checked by position (#133)
                 return Name(self._synthetic(node, path))
             return Array(_canonical_entries(
-                _map_group(node.group, lambda v, i: self._lift(v, f'{path}@{i}'))))
+                _map_group(node.group, lambda v, i: self._structured_type(v, f'{path}@{i}'))))
         return node
+
+    def _structured_type(self, value, path: str):
+        """*value* (an array element or a choice alternative) lifted like any
+        type, but an array written in place (``[* [* uint]]``) becomes a
+        structure of its own, so each element of it is checked (#196)."""
+        lifted = self._lift(value, path)
+        if isinstance(lifted, Type) and len(lifted.alternatives) == 1 \
+                and isinstance(lifted.alternatives[0], Array):
+            return Type((Name(self._synthetic(lifted.alternatives[0], path)),))
+        return lifted
 
     def _uniform(self, array: Array) -> bool:
         """Whether *array* is ``[ + T ]`` or ``[ * T ]``, which stays inline.
