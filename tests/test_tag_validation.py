@@ -20,11 +20,12 @@ from cddl_verifier._analyzer import CDDLParser
 from cddl_verifier._cddl import query, CDDLSyntaxError
 from cddl_verifier._cddl.parser import parse_type_expr
 from cddl_verifier._cddl.printer import format_node
+from cddl_verifier.cbor import CBORTag
 
 M = "\nm = {a: uint}"
 T = "\nt = #6.7(m)"
-TAGGED = (7, {"a": 1})
-WRONG_TAG = (8, {"a": 1})
+TAGGED = CBORTag(7, {"a": 1})
+WRONG_TAG = CBORTag(8, {"a": 1})
 UNTAGGED = {"a": 1}
 
 
@@ -40,7 +41,7 @@ class TagTestCase(unittest.TestCase):
 class TestRootTags(TagTestCase):
 
     def test_untagged_root_rejects_tagged_data(self):
-        result = validate("m = { a: uint }", (999, {"a": 1}))
+        result = validate("m = { a: uint }", CBORTag(999, {"a": 1}))
         self.assertFalse(result.valid)
         self.assertEqual(result.errors[0],
                          "Type 'm' expects an untagged map, but the data has CBOR tag 999")
@@ -49,7 +50,7 @@ class TestRootTags(TagTestCase):
     def test_untagged_array_root_rejects_tagged_data(self):
         self.check([
             ("r = [* uint]", [1], True),
-            ("r = [* uint]", (5, [1]), False),
+            ("r = [* uint]", CBORTag(5, [1]), False),
         ])
 
     def test_tagged_root(self):
@@ -63,10 +64,10 @@ class TestRootTags(TagTestCase):
 
     def test_nested_tags(self):
         self.check([
-            ("r = #6.1(#6.2(m))" + M, (1, (2, {"a": 1})), True),
-            ("r = #6.1(#6.2(m))" + M, (1, {"a": 1}), False),
-            ("r = #6.1(#6.2(m))" + M, (1, (3, {"a": 1})), False),
-            ("r = #6.1(m)" + M, (1, (2, {"a": 1})), False),
+            ("r = #6.1(#6.2(m))" + M, CBORTag(1, CBORTag(2, {"a": 1})), True),
+            ("r = #6.1(#6.2(m))" + M, CBORTag(1, {"a": 1}), False),
+            ("r = #6.1(#6.2(m))" + M, CBORTag(1, CBORTag(3, {"a": 1})), False),
+            ("r = #6.1(m)" + M, CBORTag(1, CBORTag(2, {"a": 1})), False),
         ])
 
 
@@ -75,8 +76,8 @@ class TestFieldTags(TagTestCase):
     def test_untagged_field_rejects_tagged_data(self):
         self.check([
             ("r = {x: m}" + M, {"x": UNTAGGED}, True),
-            ("r = {x: m}" + M, {"x": (9, {"a": 1})}, False),
-            ("r = {x: uint}", {"x": (9, 5)}, False),
+            ("r = {x: m}" + M, {"x": CBORTag(9, {"a": 1})}, False),
+            ("r = {x: uint}", {"x": CBORTag(9, 5)}, False),
         ])
 
     def test_tagged_rule_field(self):
@@ -90,16 +91,16 @@ class TestFieldTags(TagTestCase):
 
     def test_tagged_primitive_field(self):
         self.check([
-            ("r = {x: #6.7(uint)}", {"x": (7, 1)}, True),
-            ("r = {x: #6.7(uint)}", {"x": (8, 1)}, False),
+            ("r = {x: #6.7(uint)}", {"x": CBORTag(7, 1)}, True),
+            ("r = {x: #6.7(uint)}", {"x": CBORTag(8, 1)}, False),
             ("r = {x: #6.7(uint)}", {"x": 1}, False),
-            ("r = {x: #6.7(uint)}", {"x": (7, "s")}, False),
-            ("r = {x: s}\ns = #6.1(tstr .size 2)", {"x": (1, "ab")}, True),
-            ("r = {x: s}\ns = #6.1(tstr .size 2)", {"x": (1, "abc")}, False),
+            ("r = {x: #6.7(uint)}", {"x": CBORTag(7, "s")}, False),
+            ("r = {x: s}\ns = #6.1(tstr .size 2)", {"x": CBORTag(1, "ab")}, True),
+            ("r = {x: s}\ns = #6.1(tstr .size 2)", {"x": CBORTag(1, "abc")}, False),
         ])
 
     def test_tagged_primitive_field_error_message(self):
-        result = validate("r = {x: #6.7(uint)}", {"x": (8, 1)})
+        result = validate("r = {x: #6.7(uint)}", {"x": CBORTag(8, 1)})
         self.assertIn("Field 'x' in 'r' requires CBOR tag 7, got tag 8", result.errors)
 
 
@@ -108,12 +109,12 @@ class TestArrayAndChoiceTags(TagTestCase):
     def test_declared_array_elements(self):
         self.check([
             ("r = [* m]" + M, [UNTAGGED], True),
-            ("r = [* m]" + M, [(9, {"a": 1})], False),
+            ("r = [* m]" + M, [CBORTag(9, {"a": 1})], False),
             ("r = [* t]" + T + M, [TAGGED], True),
             ("r = [* t]" + T + M, [WRONG_TAG], False),
             ("r = [* t]" + T + M, [UNTAGGED], False),
-            ("r = [* #6.7(uint)]", [(7, 1)], True),
-            ("r = [* #6.7(uint)]", [(8, 1)], False),
+            ("r = [* #6.7(uint)]", [CBORTag(7, 1)], True),
+            ("r = [* #6.7(uint)]", [CBORTag(8, 1)], False),
         ])
 
     def test_declared_array_error_names_element_rule(self):
@@ -122,7 +123,7 @@ class TestArrayAndChoiceTags(TagTestCase):
 
     def test_inline_array_field_elements(self):
         self.check([
-            ("r = {x: [* m]}" + M, {"x": [(9, {"a": 1})]}, False),
+            ("r = {x: [* m]}" + M, {"x": [CBORTag(9, {"a": 1})]}, False),
             ("r = {x: [* t]}" + T + M, {"x": [TAGGED]}, True),
             ("r = {x: [* t]}" + T + M, {"x": [WRONG_TAG]}, False),
         ])

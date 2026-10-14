@@ -7,6 +7,7 @@ Demonstrates all the new builder pattern features with live examples.
 
 from cddl_verifier.cbor import CBOR, encode as cbor_encode, decode as cbor_decode
 import time
+from cddl_verifier.cbor import CBORTag
 
 def separator(title=""):
     """Print separator"""
@@ -204,7 +205,7 @@ def demo_corim_building():
     print(f"Added tag 2: {tag2['id']}")
     
     # Wrap in tag 501 (unsigned-corim-map)
-    tagged_corim = (501, corim.data)
+    tagged_corim = CBORTag(501, corim.data)
     
     # Encode
     cbor_bytes = CBOR(tagged_corim).encode(canonical=True)

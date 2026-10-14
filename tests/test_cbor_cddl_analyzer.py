@@ -40,6 +40,7 @@ from cddl_verifier._analyzer import (
     EDNGenerator,
     load_cddl
 )
+from cddl_verifier.cbor import CBORTag
 
 # Import CBOR encoder/decoder
 try:
@@ -463,7 +464,7 @@ class TestEDNGeneration(unittest.TestCase):
         generator = EDNGenerator(cddl, edn_format='keyindex')
         
         # Create tagged data (tag 32, value "test")
-        data = (32, "test")
+        data = CBORTag(32, "test")
         edn = generator.generate(data, 'tagged-item')
         
         # Should show tag notation
@@ -481,7 +482,7 @@ class TestEDNGeneration(unittest.TestCase):
         cddl = CDDLParser(cddl_text)
         generator = EDNGenerator(cddl, edn_format='keyindex')
         
-        data = {0: (32, "test")}
+        data = {0: CBORTag(32, "test")}
         edn = generator.generate(data, 'record')
         
         lines = edn.split('\n')
@@ -537,7 +538,7 @@ class TestEDNGeneration(unittest.TestCase):
             self.skipTest("CBOR encoding failed")
         
         # Create tagged outer data
-        data = (506, inner_cbor)
+        data = CBORTag(506, inner_cbor)
         
         generator = EDNGenerator(cddl, edn_format='keyindex')
         edn = generator.generate(data, 'outer-type')
@@ -596,7 +597,7 @@ class TestCoRIMSupport(unittest.TestCase):
         generator = EDNGenerator(cddl, edn_format='keyindex')
         
         # Create tagged CoRIM data
-        data = (501, {0: "test-id", 1: [1, 2, 3]})
+        data = CBORTag(501, {0: "test-id", 1: [1, 2, 3]})
         edn = generator.generate(data, 'corim')
         
         # Should show resolved tag type
@@ -759,7 +760,7 @@ class TestIndentationAccuracy(unittest.TestCase):
         cddl = CDDLParser(cddl_text)
         generator = EDNGenerator(cddl, edn_format='keyindex')
         
-        data = {0: (32, "test")}
+        data = {0: CBORTag(32, "test")}
         edn = generator.generate(data, 'outer')
         
         lines = edn.split('\n')
@@ -1029,7 +1030,7 @@ class TestValidationGapsCoverage(unittest.TestCase):
         inner_cbor = cbor_encode({0: 42})
         self.assertGreater(len(inner_cbor), 0, "cbor_encode must produce non-empty bytes")
 
-        data = (506, inner_cbor)
+        data = CBORTag(506, inner_cbor)
         generator = EDNGenerator(cddl, edn_format='keyindex')
         edn = generator.generate(data, 'outer-type')
 

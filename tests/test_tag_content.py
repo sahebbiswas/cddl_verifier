@@ -19,6 +19,7 @@ import unittest
 
 from cddl_verifier import cbor, validate
 from cddl_verifier._cddl.tagcontent import CHECKED_TAGS, content_error
+from cddl_verifier.cbor import CBORTag
 
 
 def ok(schema, value, root='r'):
@@ -86,12 +87,12 @@ class TestContentError(unittest.TestCase):
 class TestInTheValidator(unittest.TestCase):
     """The check runs wherever a tag is matched: root, field, element, rule."""
 
-    GOOD = {'tdate': (0, '2020-01-01T00:00:00Z'), 'uri': (32, 'http://a/b'),
-            'b64url': (33, 'YQ'), 'b64legacy': (34, 'YQ=='), 'regexp': (35, 'a+'),
-            'encoded-cbor': (24, b'\x01')}
-    BAD = {'tdate': (0, 'not a date'), 'uri': (32, '::not uri'),
-           'b64url': (33, 'YQ=='), 'b64legacy': (34, 'YQ'), 'regexp': (35, '('),
-           'encoded-cbor': (24, b'\xff\xff')}
+    GOOD = {'tdate': CBORTag(0, '2020-01-01T00:00:00Z'), 'uri': CBORTag(32, 'http://a/b'),
+            'b64url': CBORTag(33, 'YQ'), 'b64legacy': CBORTag(34, 'YQ=='), 'regexp': CBORTag(35, 'a+'),
+            'encoded-cbor': CBORTag(24, b'\x01')}
+    BAD = {'tdate': CBORTag(0, 'not a date'), 'uri': CBORTag(32, '::not uri'),
+           'b64url': CBORTag(33, 'YQ=='), 'b64legacy': CBORTag(34, 'YQ'), 'regexp': CBORTag(35, '('),
+           'encoded-cbor': CBORTag(24, b'\xff\xff')}
 
     def test_root(self):
         for name in self.GOOD:
@@ -109,31 +110,31 @@ class TestInTheValidator(unittest.TestCase):
             self.assertFalse(ok(f'r = {{? a: {name}}}', {'a': self.BAD[name]}), name)
 
     def test_written_as_a_tag_and_through_a_rule(self):
-        self.assertFalse(ok('r = #6.0(tstr)', (0, 'not a date')))
-        self.assertTrue(ok('r = #6.0(tstr)', (0, '2020-01-01T00:00:00Z')))
-        self.assertFalse(ok('when = tdate\nr = {a: when}', {'a': (0, 'nope')}))
-        self.assertFalse(ok('r = #6.32(tstr)', (32, 'a b')))
+        self.assertFalse(ok('r = #6.0(tstr)', CBORTag(0, 'not a date')))
+        self.assertTrue(ok('r = #6.0(tstr)', CBORTag(0, '2020-01-01T00:00:00Z')))
+        self.assertFalse(ok('when = tdate\nr = {a: when}', {'a': CBORTag(0, 'nope')}))
+        self.assertFalse(ok('r = #6.32(tstr)', CBORTag(32, 'a b')))
 
     def test_nested_tags(self):
-        self.assertFalse(ok('r = #6.100(tdate)', (100, (0, 'bad'))))
-        self.assertTrue(ok('r = #6.100(tdate)', (100, (0, '2020-01-01T00:00:00Z'))))
+        self.assertFalse(ok('r = #6.100(tdate)', CBORTag(100, CBORTag(0, 'bad'))))
+        self.assertTrue(ok('r = #6.100(tdate)', CBORTag(100, CBORTag(0, '2020-01-01T00:00:00Z'))))
 
     def test_message_and_diagnostic_path(self):
-        result = validate('r = {a: tdate}', cbor.encode({'a': (0, 'bad')}), root_type='r')
+        result = validate('r = {a: tdate}', cbor.encode({'a': CBORTag(0, 'bad')}), root_type='r')
         self.assertFalse(result.valid)
         self.assertIn("tag 0 content 'bad' is not valid", result.errors[0])
         self.assertEqual(result.diagnostics[0].path, ('a',))
 
     def test_wrong_type_and_wrong_tag_still_reported_as_before(self):
-        result = validate('r = tdate', cbor.encode((0, 5)), root_type='r')
+        result = validate('r = tdate', cbor.encode(CBORTag(0, 5)), root_type='r')
         self.assertFalse(result.valid)
         self.assertNotIn('is not valid', result.errors[0])
-        self.assertFalse(ok('r = tdate', (1, '2020-01-01T00:00:00Z')))
+        self.assertFalse(ok('r = tdate', CBORTag(1, '2020-01-01T00:00:00Z')))
 
     def test_encoded_cbor_inside_is_still_checked_by_its_type(self):
-        self.assertTrue(ok('r = #6.24(bstr .cbor uint)', (24, b'\x01')))
-        self.assertFalse(ok('r = #6.24(bstr .cbor uint)', (24, b'\x61a')))
-        self.assertFalse(ok('r = #6.24(bstr .cbor uint)', (24, b'\xff')))
+        self.assertTrue(ok('r = #6.24(bstr .cbor uint)', CBORTag(24, b'\x01')))
+        self.assertFalse(ok('r = #6.24(bstr .cbor uint)', CBORTag(24, b'\x61a')))
+        self.assertFalse(ok('r = #6.24(bstr .cbor uint)', CBORTag(24, b'\xff')))
 
 
 if __name__ == '__main__':

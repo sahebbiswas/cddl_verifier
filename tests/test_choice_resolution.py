@@ -19,6 +19,7 @@ from cddl_verifier._analyzer import CDDLParser, main
 from cddl_verifier.cbor import encode
 from cddl_verifier._cddl.typeexpr import as_type
 from ._tables import as_text
+from cddl_verifier.cbor import CBORTag
 
 MAPS = "m1 = {1: int}\nm2 = {2: tstr}\n"
 SOCKET = "r = $s\n$s /= m1\n$s /= m2\n" + MAPS
@@ -51,8 +52,8 @@ class Matching(unittest.TestCase):
 
     def test_tags_are_matched_with_their_content(self):
         p = CDDLParser("$s /= #6.7(m1)\n$s /= #6.7(m2)\n" + MAPS)
-        self.assertEqual(as_text(p.choice_matches("$s", (7, {2: "x"}))), ["#6.7(m2)"])
-        self.assertEqual(p.choice_matches("$s", (8, {2: "x"})), [])
+        self.assertEqual(as_text(p.choice_matches("$s", CBORTag(7, {2: "x"}))), ["#6.7(m2)"])
+        self.assertEqual(p.choice_matches("$s", CBORTag(8, {2: "x"})), [])
 
     def test_inline_choices(self):
         p = CDDLParser("r = {x: m1 / m2}\n" + MAPS)
@@ -67,7 +68,7 @@ class EdnLabels(unittest.TestCase):
         self.assertIn("/ m1 /", edn(SOCKET, {1: 1}))
 
     def test_same_tag_alternatives(self):
-        text = edn("r = $s\n$s /= #6.7(m1)\n$s /= #6.7(m2)\n" + MAPS, (7, {2: "x"}))
+        text = edn("r = $s\n$s /= #6.7(m1)\n$s /= #6.7(m2)\n" + MAPS, CBORTag(7, {2: "x"}))
         self.assertIn("#6.7(m2)", text)
         self.assertNotIn("#6.7(m1)", text)
 
@@ -75,7 +76,7 @@ class EdnLabels(unittest.TestCase):
         text = edn("r = {x: $s}\n$s /= m1\n$s /= m2\n" + MAPS, {"x": {2: 5}})
         self.assertNotIn("m1", text)
         self.assertNotIn("m2", text)
-        text = edn("r = $s\n$s /= #6.7(m1)\n$s /= #6.8(m2)\n" + MAPS, (9, {2: "x"}))
+        text = edn("r = $s\n$s /= #6.7(m1)\n$s /= #6.8(m2)\n" + MAPS, CBORTag(9, {2: "x"}))
         self.assertNotIn("m1", text)
         self.assertNotIn("m2", text)
 
@@ -139,7 +140,7 @@ class UniqueChoices(unittest.TestCase):
     def test_inline_choice_and_tags(self):
         schema = "r = {x: m1 / m2, y: $t}\n$t /= #6.7(m1)\n$t /= #6.7(m2)\n" + self.SCHEMA.split("\n", 3)[3]
         v = Validator(schema, unique_choices=True)
-        self.assertEqual(len(v.validate({"x": {1: 1}, "y": (7, {1: 1})}).errors), 2)
+        self.assertEqual(len(v.validate({"x": {1: 1}, "y": CBORTag(7, {1: 1})}).errors), 2)
 
     def test_cli_flag(self):
         with tempfile.TemporaryDirectory() as d:

@@ -24,6 +24,7 @@ import unittest
 from cddl_verifier import Validator, validate
 from cddl_verifier.cbor import CBORDecodeError, CBORKey, decode, encode
 from cddl_verifier.json_codec import cbor_to_json, json_to_cbor
+from cddl_verifier.cbor import CBORTag
 
 
 class TestRoundTrip(unittest.TestCase):
@@ -112,14 +113,14 @@ class TestCBORKey(unittest.TestCase):
     def test_equality_follows_cbor(self):
         self.assertEqual(CBORKey([1, 2]), CBORKey([1, 2]))
         self.assertEqual(CBORKey([1, 2, 3]), CBORKey((1, 2, 3)))  # a 3-tuple encodes as an array
-        self.assertNotEqual(CBORKey([1, 2]), CBORKey((1, 2)))     # a (tag, value) pair is a tag
+        self.assertNotEqual(CBORKey([1, 2]), CBORKey(CBORTag(1, 2)))     # a (tag, value) pair is a tag
         self.assertEqual(CBORKey({1: 2, 3: 4}), CBORKey({3: 4, 1: 2}))
         self.assertEqual(hash(CBORKey({1: 2, 3: 4})), hash(CBORKey({3: 4, 1: 2})))
         self.assertNotEqual(CBORKey(True), CBORKey(1))
         self.assertNotEqual(CBORKey(1.0), CBORKey(1))
         self.assertNotEqual(CBORKey(0.0), CBORKey(-0.0))
         self.assertEqual(CBORKey(math.nan), CBORKey(math.nan))
-        self.assertNotEqual(CBORKey([1]), CBORKey((1, [])))  # array vs tag 1([])
+        self.assertNotEqual(CBORKey([1]), CBORKey(CBORTag(1, [])))  # array vs tag 1([])
 
     def test_never_equal_to_plain_values(self):
         self.assertNotEqual(CBORKey(True), True)

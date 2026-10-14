@@ -22,6 +22,7 @@ from cddl_verifier.cbor import encode
 from cddl_verifier._cddl import query
 from cddl_verifier._cddl.parser import parse_type_expr
 from cddl_verifier._cddl.printer import format_node
+from cddl_verifier.cbor import CBORTag
 
 RULES = "\nm = {a: uint}\nn = {b: tstr}\nt = #6.7(m)"
 
@@ -56,9 +57,9 @@ class TestFieldChoices(ChoiceTestCase):
 
     def test_tagged_alternatives(self):
         self.check([
-            ("r = {x: c}\nc = t / m" + RULES, {"x": (7, {"a": 1})}, True),
+            ("r = {x: c}\nc = t / m" + RULES, {"x": CBORTag(7, {"a": 1})}, True),
             ("r = {x: c}\nc = t / m" + RULES, {"x": {"a": 1}}, True),
-            ("r = {x: c}\nc = t / m" + RULES, {"x": (8, {"a": 1})}, False),  # was accepted
+            ("r = {x: c}\nc = t / m" + RULES, {"x": CBORTag(8, {"a": 1})}, False),  # was accepted
         ])
 
     def test_controls_in_alternatives(self):
@@ -90,20 +91,20 @@ class TestFieldChoices(ChoiceTestCase):
             (cbor_field, {"x": encode({"a": 1})}, True),
             (cbor_field, {"x": encode({"a": "z"})}, False),
             ("r = {x: #6.7(uint) / tstr}", {"x": "s"}, True),
-            ("r = {x: #6.7(uint) / tstr}", {"x": (7, 1)}, True),
-            ("r = {x: #6.7(uint) / tstr}", {"x": (8, 1)}, False),
+            ("r = {x: #6.7(uint) / tstr}", {"x": CBORTag(7, 1)}, True),
+            ("r = {x: #6.7(uint) / tstr}", {"x": CBORTag(8, 1)}, False),
             ("r = [#6.7(uint) / tstr]", ["s"], True),
             ("n = #6.7(uint) / tstr", "s", True),
-            ("n = #6.7(uint) / tstr", (8, 1), False),
+            ("n = #6.7(uint) / tstr", CBORTag(8, 1), False),
         ])
 
     def test_tagged_text_literal_with_parenthesis(self):
         schema = 'n = #6.7(")") / uint'
         self.check([
-            (schema, (7, ")"), True),
+            (schema, CBORTag(7, ")"), True),
             (schema, 5, True),
-            (schema, (7, "x"), False),
-            (schema, (8, ")"), False),
+            (schema, CBORTag(7, "x"), False),
+            (schema, CBORTag(8, ")"), False),
             (schema, "zz", False),
         ])
 
@@ -166,9 +167,9 @@ class TestRootRules(ChoiceTestCase):
             ("n = uint / tstr", "x", True),
             ("n = uint / tstr", 1, True),
             ("n = uint / tstr", 1.5, False),
-            ("r = c\nc = t / m" + RULES, (7, {"a": 1}), True),
+            ("r = c\nc = t / m" + RULES, CBORTag(7, {"a": 1}), True),
             ("r = c\nc = t / m" + RULES, {"a": 1}, True),
-            ("r = c\nc = t / m" + RULES, (8, {"a": 1}), False),
+            ("r = c\nc = t / m" + RULES, CBORTag(8, {"a": 1}), False),
         ])
 
     def test_root_controlled_primitive(self):
@@ -201,8 +202,8 @@ class TestParenthesizedTypes(ChoiceTestCase):
             ("r = { o: ((tstr)) }", {"o": 1}, False),
             ("r = { o: (m) }" + RULES, {"o": {"a": 1}}, True),
             ("r = { o: (m) }" + RULES, {"o": {"a": "x"}}, False),
-            ("r = { o: (#6.7(uint)) }", {"o": (7, 1)}, True),
-            ("r = { o: (#6.7(uint)) }", {"o": (7, "x")}, False),
+            ("r = { o: (#6.7(uint)) }", {"o": CBORTag(7, 1)}, True),
+            ("r = { o: (#6.7(uint)) }", {"o": CBORTag(7, "x")}, False),
         ])
 
     def test_controls_apply_to_each_alternative(self):
@@ -429,9 +430,9 @@ class TestCorimChoices(unittest.TestCase):
         schema = Path(__file__).resolve().parent.parent / "cddl-schemas" / "unified.cddl"
         cases = [
             (5, True),                    # svn = uint
-            ((552, 5), True),             # tagged-svn
-            ((553, 5), True),             # tagged-min-svn
-            ((554, 5), False),            # some other tag
+            (CBORTag(552, 5), True),             # tagged-svn
+            (CBORTag(553, 5), True),             # tagged-min-svn
+            (CBORTag(554, 5), False),            # some other tag
             ("five", False),
         ]
         for data, expected in cases:

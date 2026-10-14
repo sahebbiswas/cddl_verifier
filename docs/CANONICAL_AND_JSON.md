@@ -312,7 +312,7 @@ Converts to Python `bytes` object.
 }
 ```
 
-Converts to Python tuple `(32, "http://example.com")`.
+Converts to `CBORTag(32, "http://example.com")`.
 
 #### Map With Non-String Keys
 

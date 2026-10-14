@@ -134,9 +134,8 @@ its items. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/blob/m
 - **CBOR**: indefinite-length items, `undefined` and the other simple values
   decode; the encoder writes definite-length items. `decode` rejects a CBOR
   sequence; `decode_sequence` reads one.
-- **Value types**: tags decode to `(tag, value)` tuples. This is provisional
-  and expected to change
-  ([#78](https://github.com/sahebbiswas/cddl_verifier/issues/78)). Map keys
+- **Value types**: tags decode to `CBORTag(tag, value)`; a `(tag, value)` tuple
+  is not a tag (the encoder raises `TypeError` for one, since 0.24.0). Map keys
   that are booleans, floats, arrays, maps or tags decode to `CBORKey`, so
   `{1: a, true: b}` keeps both entries and re-encodes to the same bytes.
 

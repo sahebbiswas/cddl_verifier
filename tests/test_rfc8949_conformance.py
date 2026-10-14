@@ -21,6 +21,7 @@ from cddl_verifier._cbor import (
     CBORTrailingDataError,
     cbor_decode,
 )
+from cddl_verifier.cbor import CBORTag
 
 
 # (RFC concept, encoded bytes, expected Python value). Tags currently decode to
@@ -43,9 +44,9 @@ VALID_VECTORS = [
     ("false", "f4", False),
     ("true", "f5", True),
     ("null", "f6", None),
-    ("tag 1 epoch time", "c11a514b67b0", (1, 1363896240)),
+    ("tag 1 epoch time", "c11a514b67b0", CBORTag(1, 1363896240)),
     ("tag 32 URI", "d82076687474703a2f2f7777772e6578616d706c652e636f6d",
-     (32, "http://www.example.com")),
+     CBORTag(32, "http://www.example.com")),
     ("positive bignum", "c249010000000000000000", 2**64),
     ("negative bignum", "c349010000000000000000", -(2**64) - 1),
     # RFC 8949 permits non-preferred integer widths outside deterministic mode.

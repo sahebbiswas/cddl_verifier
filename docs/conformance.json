@@ -1399,10 +1399,8 @@
     "validator": "supported",
     "edn": "supported"
    },
-   "notes": "Tag number and content are checked; nesting works. Tags are `(number, value)` tuples for now (#78).",
-   "issues": [
-    78
-   ],
+   "notes": "Tag number and content are checked; nesting works. Data holds a tag as a `CBORTag`.",
+   "issues": [],
    "tests": [
     "tests/test_tag_validation.py"
    ],
@@ -4190,19 +4188,18 @@
    "area": "cbor",
    "construct": "Tags (major type 6)",
    "spec": "RFC 8949",
-   "status": "partial",
+   "status": "supported",
    "layers": {
-    "decoder": "partial",
-    "encoder": "partial",
+    "decoder": "supported",
+    "encoder": "supported",
     "validator": "supported",
     "edn": "supported",
     "json": "supported"
    },
-   "notes": "Tags decode to `(number, value)` tuples, so a two-element tuple is ambiguous with a tag; a dedicated type is planned (#78). Bignums (2, 3) decode to Python ints in values.",
-   "issues": [
-    78
-   ],
+   "notes": "Tags decode to `CBORTag(number, value)` and `CBORTag` encodes as a tag. A `(number, value)` tuple is not a tag: the encoder and the typed JSON conversion raise `TypeError` for one. Bignums (2, 3) outside the 64-bit range decode to Python ints in values.",
+   "issues": [],
    "tests": [
+    "tests/test_cbor_tag.py",
     "tests/test_tag_validation.py",
     "tests/test_rfc8949_conformance.py"
    ],

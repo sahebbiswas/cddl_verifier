@@ -242,7 +242,7 @@ def classify_message(message: str) -> str:
 
 #: CBOR names for the Python type names analyzer messages report.
 _CBOR_NAMES = {'str': 'tstr', 'bytes': 'bstr', 'list': 'array', 'dict': 'map',
-               'NoneType': 'null', 'tuple': 'tag'}
+               'NoneType': 'null', 'CBORTag': 'tag'}
 
 
 def expected_and_found(message: str) -> Tuple[Optional[str], Optional[str]]:

@@ -14,9 +14,6 @@ Modules whose names start with an underscore are internal: they can change in
 any release without notice. The public names above follow the versioning policy
 in the [README](../README.md#versioning).
 
-> **Provisional value types.** Decoded CBOR values currently represent tags as
-> `(tag, value)` tuples. This is expected to change ([#78](https://github.com/sahebbiswas/cddl_verifier/issues/78)).
-
 ---
 
 ## `cddl_verifier`: validation
@@ -241,10 +238,36 @@ data = cbor_decode(raw)
 
 Decoded values map to Python as follows: integers to `int`, byte strings to
 `bytes`, text to `str`, arrays to `list`, maps to `dict` (see
-[Map keys](#map-keys) for their keys), tags to `(tag_number, value)` tuples
+[Map keys](#map-keys) for their keys), tags to [`CBORTag`](#tags)
 (except bignums, tags 2/3, whose value is outside the 64-bit range: those
 decode to `int`), and `true` / `false` / `null` / floats to their Python
 equivalents.
+
+### Tags
+
+A tag decodes to a `CBORTag` with the tag number in `.tag` and the tagged item
+in `.value`, and the encoder writes a `CBORTag` as a tag. It is immutable, equal
+only to another `CBORTag` with the same number and an equal value, and it
+unpacks (`tag, value = item`).
+
+```python
+from cddl_verifier.cbor import CBORTag, decode, encode
+
+item = decode(bytes.fromhex("c11a514b67b0"))   # 1(1363896240)
+item                                           # CBORTag(1, 1363896240)
+item.tag, item.value                           # (1, 1363896240)
+encode(CBORTag(32, "https://example.com"))     # d820...
+```
+
+A `(tag, value)` tuple is not a tag (it was before 0.24.0). Code that wrote
+`encode((1, 100))` for a tag, or read a decoded tag as `item[0]` and `item[1]`,
+changes to `CBORTag(1, 100)` and `item.tag` / `item.value`. The tuple `(1, 100)`
+could also mean an array of two integers, so the encoder and the typed JSON
+conversion raise `TypeError` for a tuple shaped `(int >= 0, x)` and ask which
+was meant: `CBORTag(1, 100)` for the tag, `[1, 100]` for the array. Other
+tuples are arrays as before. `CBORTag(tag, value)` raises `TypeError` for a tag
+number that is not an `int` and `ValueError` outside 0 to 2**64 - 1. The
+tagged value itself can be a mutable list or dict, as in any Python container.
 
 ### Map keys
 
@@ -466,7 +489,7 @@ With `typed=True`, CBOR values that have no JSON equivalent are kept as objects:
 | CBOR value | JSON representation |
 |-----------|---------------------|
 | `b'\x01\x02'` | `{"$cbor": "bytes", "$value": "AQI="}` |
-| `(32, "https://…")` | `{"$cbor": "tag", "$tag": 32, "$value": "https://…"}` |
+| `CBORTag(32, "https://…")` | `{"$cbor": "tag", "$tag": 32, "$value": "https://…"}` |
 | `UNDEFINED` | `{"$cbor": "undefined"}` |
 | `CBORSimple(16)` | `{"$cbor": "simple", "$value": 16}` |
 | `float('nan')` | `{"$cbor": "NaN"}` |

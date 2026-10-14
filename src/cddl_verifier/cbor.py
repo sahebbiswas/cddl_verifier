@@ -15,11 +15,12 @@ definite-length ones. ``undefined`` decodes to :data:`UNDEFINED` and the other
 simple values to :class:`CBORSimple`. ``decode(data, keep_encoding=True)`` also
 records how each item was written (see :func:`head_info`).
 
-Decoded tags are provisional: they currently decode to ``(tag, value)`` tuples,
-which is expected to change in a later release.
+A tag decodes to a :class:`CBORTag` and the encoder writes one as a tag. A
+``(tag, value)`` tuple is not a tag (it was before 0.24.0): ``encode((1, 2))``
+raises ``TypeError``, which asks for a ``CBORTag`` or a list.
 """
 
-from ._cbor_values import UNDEFINED, CBORSimple, CBORUndefined, head_info
+from ._cbor_values import UNDEFINED, CBORSimple, CBORTag, CBORUndefined, head_info
 from ._cbor import (
     CBOR,
     CBORDecodeError,
@@ -38,6 +39,7 @@ __all__ = [
     "CBORDecodeError",
     "CBORKey",
     "CBORSimple",
+    "CBORTag",
     "CBORTrailingDataError",
     "CBORTruncatedError",
     "CBORUndefined",

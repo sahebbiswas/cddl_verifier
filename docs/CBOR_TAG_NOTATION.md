@@ -124,18 +124,18 @@ Full registry: https://www.iana.org/assignments/cbor-tags/cbor-tags.xhtml
 
 ### Detection
 
-When the decoder encounters a CBOR tagged value, it returns a tuple:
+When the decoder encounters a CBOR tagged value, it returns a `CBORTag`:
 ```python
-(tag_number, value)
+CBORTag(tag_number, value)
 ```
 
 ### Generation
 
-The EDN generator detects tagged tuples and wraps the content:
+The EDN generator detects a `CBORTag` and wraps the content:
 ```python
-if isinstance(value, tuple) and len(value) == 2 and isinstance(value[0], int):
-    tag_num = value[0]
-    inner_value = value[1]
+if isinstance(value, CBORTag):
+    tag_num = value.tag
+    inner_value = value.value
     
     # Generate EDN for inner value
     inner_edn = self._generate_value(inner_value, type_name, annotate)

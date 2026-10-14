@@ -20,6 +20,7 @@ except ImportError:
 import unittest
 
 from cddl_verifier import validate
+from cddl_verifier.cbor import CBORTag
 
 ROOT = Path(__file__).resolve().parent.parent
 NON_EMPTY = 'non-empty<M> = (M) .and ({ + any => any })\n'
@@ -73,7 +74,7 @@ class TestNonEmptyGeneric(unittest.TestCase):
         schema = (ROOT / 'cddl-schemas' / 'unified.cddl')
         from cddl_verifier.cbor import encode
         comid = {1: {0: 'urn:example:comid:1'}, 4: {}}
-        data = (501, {0: 'urn:example:corim:1', 1: [(506, encode(comid))]})
+        data = CBORTag(501, {0: 'urn:example:corim:1', 1: [CBORTag(506, encode(comid))]})
         result = validate(schema, encode(data), root_type='tagged-unsigned-corim-map')
         self.assertFalse(result.valid)
         self.assertIn('triples-map', ' '.join(result.errors))

@@ -20,6 +20,7 @@ import unittest
 
 from cddl_verifier import validate
 from cddl_verifier._analyzer import CDDLParser
+from cddl_verifier.cbor import CBORTag
 
 
 def length(schema, name='r'):
@@ -119,9 +120,9 @@ class TestValidation(unittest.TestCase):
         self.assertEqual(CDDLParser('r = [int // tstr]').types['r']['element_types'], {})
 
     def test_tagged_arrays(self):
-        self.assertTrue(validate('r = decfrac', (4, [1, 2])).valid)
-        self.assert_rejects('r = decfrac', (4, [1]), "missing element [1]")
-        self.assert_rejects('r = bigfloat', (5, [1, 2, 3]), "unexpected element [2]")
+        self.assertTrue(validate('r = decfrac', CBORTag(4, [1, 2])).valid)
+        self.assert_rejects('r = decfrac', CBORTag(4, [1]), "missing element [1]")
+        self.assert_rejects('r = bigfloat', CBORTag(5, [1, 2, 3]), "unexpected element [2]")
 
 
 if __name__ == '__main__':
