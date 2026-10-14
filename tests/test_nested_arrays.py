@@ -90,6 +90,24 @@ class TestSequenceMatcherPaths(unittest.TestCase):
         self.assertEqual(diag.path_expr, "$[2]")
         self.assertEqual(diag.offset, 3)
 
+    def test_failure_inside_the_element_keeps_its_path_and_offset(self):
+        schema = "r = [ ? uint, [* uint] ]"
+        cases = (("81 81 61 78", "$[0][0]", 2),           # [["x"]]
+                 ("82 01 81 61 78", "$[1][0]", 3))        # [1, ["x"]]
+        for hexed, path, offset in cases:
+            with self.subTest(path):
+                diag = validate(schema, bytes.fromhex(hexed.replace(" ", "")), "r").diagnostics[0]
+                self.assertEqual((diag.path_expr, diag.offset), (path, offset))
+
+    def test_parenthesized_arrays(self):
+        bad = bytes.fromhex("82036178")
+        self.assertTrue(validate("r = uint / ([* uint])", bytes.fromhex("820102"), "r").valid)
+        self.assertFalse(validate("r = uint / ([* uint])", bad, "r").valid)
+        result = validate("r = [* ([* uint])]", bytes.fromhex("81") + bad, "r")
+        self.assertFalse(result.valid)
+        self.assertEqual(result.diagnostics[0].path_expr, "$[0][1]")
+        self.assertTrue(validate("r = [* ([* uint])]", bytes.fromhex("81820102"), "r").valid)
+
     def test_missing_element_stays_on_the_array(self):
         diag = validate("r = [uint, ? uint, tstr]", bytes.fromhex("8101"), "r").diagnostics[0]
         self.assertEqual(diag.path_expr, "$")

@@ -509,7 +509,7 @@ class LegacyTables:
             return None if group is None else {'group': group}
         if isinstance(entry, Member):
             if text is None:
-                text = self._type_of(entry.value, path)
+                text = self._structured_type(entry.value, path)
             return {'type': text}
         if isinstance(entry, InlineGroup):
             group = self._sequence(entry.group, path, expanding)
@@ -645,10 +645,10 @@ class LegacyTables:
                     # a generic instance that is a choice ('opt<uint>' gives
                     # 'uint / nil'): its alternatives join this choice
                     lifted.extend(new.type.alternatives)
-                elif len(alts) > 1 and isinstance(new, Array):
+                elif len(alts) > 1 and isinstance(_unparen(new), Array):
                     # 'uint / [* uint]': an array that is one alternative is
                     # a structure of its own, so its elements are checked (#196)
-                    lifted.append(Name(self._synthetic(new, alt_path)))
+                    lifted.append(Name(self._synthetic(_unparen(new), alt_path)))
                 else:
                     lifted.append(new)
             return Type(tuple(lifted))
@@ -750,8 +750,8 @@ class LegacyTables:
         structure of its own, so each element of it is checked (#196)."""
         lifted = self._lift(value, path)
         if isinstance(lifted, Type) and len(lifted.alternatives) == 1 \
-                and isinstance(lifted.alternatives[0], Array):
-            return Type((Name(self._synthetic(lifted.alternatives[0], path)),))
+                and isinstance(_unparen(lifted.alternatives[0]), Array):
+            return Type((Name(self._synthetic(_unparen(lifted.alternatives[0]), path)),))
         return lifted
 
     def _uniform(self, array: Array) -> bool:
@@ -901,6 +901,13 @@ def _deeper_than(node, limit: int) -> bool:
 
 def _is_optional(entry) -> bool:
     return entry.occurrence is not None and entry.occurrence.text in _OPTIONAL
+
+
+def _unparen(node):
+    """*node* without the parentheses around it: ``([* uint])`` is ``[* uint]``."""
+    while isinstance(node, Paren) and len(node.type.alternatives) == 1:
+        node = node.type.alternatives[0]
+    return node
 
 
 def _entries(group):
