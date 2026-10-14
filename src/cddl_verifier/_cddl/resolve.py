@@ -634,7 +634,7 @@ class _Resolver:
                 self.collecting(self.fail, "a map entry needs a key: write 'key: type' or "
                                 "'key-type => type'", entry.span)
             self.check_type(entry.value, scope)
-            if in_map and entry.key is None:
+            if in_map and entry.key is None and _is_unwrap(entry.value):
                 self.check_map_splice(entry.value.alternatives[0])
         elif isinstance(entry, GroupRef):
             rule = self.reference(entry.name, entry.args, entry.span, scope, GROUP)
