@@ -84,11 +84,15 @@ class Diagnostic:
     Attributes:
         message:  Human-readable description.
         code:     ``"decode"`` when the CBOR input could not be decoded,
-                  ``"validation"`` when decoded data does not match the schema.
+                  ``"validation"`` when decoded data does not match the schema,
+                  ``"schema"`` for a problem in the schema text itself (see
+                  :func:`~cddl_verifier.schema_diagnostics`).
         severity: ``"error"``, ``"warning"`` or ``"info"``. Every diagnostic
                   is an error in this release.
         offset:   Byte offset into the CBOR input of the offending item, when
                   known. For a missing member it is the map that lacks it.
+                  For ``code == "schema"``: the character offset in the schema
+                  text where the problem starts.
         category: The kind of problem; one of :data:`CATEGORIES`.
         path:     Where the item is in the data: map keys and array indexes
                   from the root, as the decoder returns them.
@@ -102,6 +106,9 @@ class Diagnostic:
         hex:      Hex excerpt of the offending bytes, cut at
                   :data:`MAX_HEX_BYTES` bytes (see ``hex_truncated``).
         hex_truncated: ``True`` when ``hex`` is a prefix of a longer item.
+        line, column: For ``code == "schema"``: the 1-based position of the
+                  problem in the schema (``schema_location`` is the same as
+                  ``file:line:column``). ``None`` otherwise.
         alternatives: For a value that matches none of a type choice
                   (``uint / tstr``): one diagnostic for each alternative that
                   was tried, with its own ``path``, ``offset``, ``expected``
@@ -124,6 +131,8 @@ class Diagnostic:
     hex: Optional[str] = None
     hex_truncated: bool = False
     alternatives: Tuple["Diagnostic", ...] = ()
+    line: Optional[int] = None
+    column: Optional[int] = None
 
     def __str__(self) -> str:
         return self.message
@@ -159,6 +168,8 @@ class Diagnostic:
             "expected": self.expected,
             "actual": self.actual,
             "alternatives": [alternative.to_dict() for alternative in self.alternatives],
+            "line": self.line,
+            "column": self.column,
         }
 
     def to_json(self, indent: Optional[int] = None) -> str:
@@ -169,16 +180,25 @@ class Diagnostic:
         """The message plus where the problem is, over several lines."""
         lines = [f"{self.severity}[{self.category}]: {self.message}"]
         where = []
-        if self.category != "decode" and (self.path or self.offset is not None):
+        if self.code == "schema":
+            where.append("schema " + (self.schema_location or "text"))
+            if self.offset is not None:
+                where.append(f"offset {self.offset}")
+            lines.append("  at " + ", ".join(where))
+            where = []
+        elif self.category != "decode" and (self.path or self.offset is not None):
             where.append(f"data {self.path_text}")
-        if self.offset is not None:
+        if self.offset is not None and self.code != "schema":
             span = f"offset {self.offset}"
             if self.end_offset is not None and self.end_offset > self.offset + 1:
                 span += f"..{self.end_offset}"
             where.append(span)
         if where:
             lines.append("  at " + ", ".join(where))
-        if self.rule is not None or self.schema_location is not None:
+        if self.code == "schema":
+            if self.rule is not None:
+                lines.append(f"  in rule {self.rule}")
+        elif self.rule is not None or self.schema_location is not None:
             rule = f"rule {self.rule}" if self.rule is not None else "rule"
             if self.schema_location is not None:
                 rule += f" ({self.schema_location})"
@@ -209,7 +229,9 @@ def render_text(diagnostics: Iterable[Diagnostic], *, verbose: bool = False) -> 
     """
     if verbose:
         return "\n".join(diagnostic.format() for diagnostic in diagnostics)
-    return "\n".join(diagnostic.message for diagnostic in diagnostics)
+    return "\n".join(
+        f"{d.schema_location}: {d.message}" if d.code == "schema" and d.schema_location
+        else d.message for d in diagnostics)
 
 
 def render_json(diagnostics: Iterable[Diagnostic], *, indent: Optional[int] = 2,
@@ -286,6 +308,34 @@ def decode_diagnostic(error: Any, cbor_bytes: bytes) -> Diagnostic:
         str(error), code="decode", offset=offset, category="decode",
         hex=excerpt.hex(" ") if excerpt else None,
         hex_truncated=bool(excerpt) and len(cbor_bytes) - offset > MAX_HEX_BYTES)
+
+
+#: Most tokens a schema diagnostic's ``expected`` names.
+_MAX_EXPECTED_TOKENS = 8
+
+
+def schema_diagnostic(error: Any) -> Diagnostic:
+    """The diagnostic for a schema problem: a ``SchemaError`` or one of its subclasses.
+
+    A syntax or semantic error says where it is: the diagnostic has the span as
+    character offsets into the schema text, and its line and column. Any other
+    ``SchemaError`` (an unreadable file, a module problem) has only a message.
+    """
+    span = getattr(error, "span", None)
+    if span is None:
+        return Diagnostic(str(error), code="schema", category="schema")
+    source = getattr(error, "source", None)
+    name = (getattr(source, "name", None) or "<schema>")
+    tokens = tuple(getattr(error, "expected", ()) or ())
+    expected = None
+    if tokens:
+        shown = ", ".join(tokens[:_MAX_EXPECTED_TOKENS])
+        expected = shown + (", ..." if len(tokens) > _MAX_EXPECTED_TOKENS else "")
+    return Diagnostic(
+        getattr(error, "message", str(error)), code="schema", category="schema",
+        offset=span.start, end_offset=span.end, rule=getattr(error, "rule", None),
+        schema_location=f"{name}:{error.line}:{error.column}", expected=expected,
+        line=error.line, column=error.column)
 
 
 class _Finding(str):

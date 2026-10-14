@@ -5,7 +5,7 @@ consumer workflows, see [Recipes](RECIPES.md).
 
 | Module | Status | Main entry points |
 |--------|--------|-------------------|
-| [`cddl_verifier`](#cddl_verifier-validation) | Public | `validate`, `Validator`, `ValidationResult`, `Diagnostic`, `render_text`, `render_json`, `SchemaError`, `CBORDecodeError`, `__version__` |
+| [`cddl_verifier`](#cddl_verifier-validation) | Public | `validate`, `Validator`, `ValidationResult`, `Diagnostic`, `render_text`, `render_json`, `schema_diagnostics`, `SchemaError`, `CBORDecodeError`, `__version__` |
 | [`cddl_verifier.cbor`](#cddl_verifiercbor-encoding-and-decoding) | Public | `encode`, `decode`, `diag_dump`, `CBOR`, `CBORKey`, decode errors |
 | [`cddl_verifier.json_codec`](#cddl_verifierjson_codec-json-conversion) | Public | `cbor_to_json`, `json_to_cbor`, file helpers |
 | [`cddl_verifier._analyzer`](#internal-parser-validator-and-edn-generator) | Internal | `CDDLParser`, `CBORAnalyzer`, `EDNGenerator` |
@@ -69,6 +69,11 @@ Parses a schema once so it can check many items.
   SchemaError: <schema>:1:10: undefined name 'unit'; did you mean 'uint'?
   ```
 
+  When the schema parses, the exception is for the first problem in it; for a
+  problem in what a rule contains (an undefined name, a control that does not
+  apply), `exception.errors` holds every problem the check found, the first
+  one first. [`schema_diagnostics`](#schema_diagnostics) returns them as diagnostics.
+
 Members:
 
 | Member | Description |
@@ -80,6 +85,41 @@ Members:
 `data` is either CBOR bytes (`bytes`, `bytearray`, `memoryview`), which are
 decoded with the strict single-item decoder, or an already-decoded Python value.
 If `root_type` is `None` and the schema has no rules, `SchemaError` is raised.
+
+### `schema_diagnostics`
+
+`schema_diagnostics(schema, *, modules=None, module_path=()) -> tuple[Diagnostic, ...]`
+
+The problems in a schema as `Diagnostic`s, instead of the `SchemaError` that
+`Validator` raises: an empty tuple for a schema that is fine. They render with
+`render_text` and `render_json` like any other finding, and a schema with several
+problems gives all of them. The arguments are those of `Validator`; an unreadable
+schema file is a diagnostic too, and only a `schema` of the wrong type raises
+(`TypeError`).
+
+```python
+>>> found = schema_diagnostics("r = { a: nope, b: tstr .size \"x\" }\nq = { z: missing }")
+>>> print(render_text(found))
+<schema>:1:10: undefined name 'nope'
+<schema>:1:30: the argument of '.size' must be an unsigned integer, not a text string
+<schema>:2:10: undefined name 'missing'
+>>> print(render_text(found[:1], verbose=True))
+error[schema]: undefined name 'nope'
+  at schema <schema>:1:10, offset 9
+  in rule r
+```
+
+Each has `code == "schema"` and `category == "schema"`, the `rule` it is in, the
+position as `offset` / `end_offset` (character offsets into the schema text) and
+as `line`, `column` and `schema_location` (`file:line:column`), and, for a syntax
+error, `expected` (the tokens that would have been accepted). Their `message` has
+no location in it; `render_text` puts `schema_location` in front.
+
+Text that is not valid CDDL gives that one syntax error. A schema that parses is
+checked in full: a problem in a rule's contents does not stop the check of the
+other members and rules, so each is reported, in the order the schema is written.
+A problem in the names (a rule defined twice, a rule that is its own definition)
+is reported alone, because nothing else can be checked without them.
 
 ### `ValidationResult`
 
@@ -105,7 +145,7 @@ one `Diagnostic` with `code == "decode"` and the byte `offset` of the problem.
 | Attribute | Description |
 |-----------|-------------|
 | `message` | Human-readable text (also `str(diagnostic)`) |
-| `code` | `"decode"` or `"validation"` |
+| `code` | `"decode"`, `"validation"`, or `"schema"` for a problem in the schema text (see [`schema_diagnostics`](#schema_diagnostics)) |
 | `severity` | `"error"`, `"warning"` or `"info"`; every diagnostic is an `"error"` today |
 | `category` | The kind of problem: `decode`, `schema`, `tag`, `type`, `value`, `missing`, `unknown`, `occurrence`, `nested` or `other` |
 | `path` | Where the item is in the data: the map keys and array indexes from the root, as the decoder returns them (`(1, 2)`); `()` is the root |
@@ -115,6 +155,7 @@ one `Diagnostic` with `code == "decode"` and the byte `offset` of the problem.
 | `schema_location` | `file:line:column` of that rule (`<schema>` for schema text) |
 | `schema_path` | The rules and members the check went through, root first |
 | `expected`, `actual` | What the schema asks for and what the data has, as short text, when known: `at most 100` and `200` for `uint .le 100`, `uint / tstr` and `bstr` for a choice |
+| `line`, `column` | For `code == "schema"`: the 1-based position of the problem in the schema. `None` otherwise |
 | `alternatives` | For a value that matches none of a type choice (`uint / tstr`): one `Diagnostic` for each alternative tried, with its own `path`, offsets, `expected` and `actual`. At most 16 (`MAX_ALTERNATIVES`); empty for any other finding |
 
 `path_text` and `schema_path_text` give the paths as `/1/2` and `/measurement/1/[2]`.

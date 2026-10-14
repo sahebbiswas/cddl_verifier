@@ -12,14 +12,16 @@ from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Sequence, Tuple, Union
 
 from . import _analyzer
-from ._cddl.modules import ModuleLoader
+from ._cddl import parse_cddl
+from ._cddl.modules import ModuleLoader, link
+from ._cddl.resolve import resolve_all
 from ._cbor import CBOR, CBORDecodeError
 from ._diagnostics import (JSON_FORMAT_VERSION, Diagnostic, decode_diagnostic, render_json,
-                           render_text)
+                           render_text, schema_diagnostic)
 from ._errors import SchemaError
 
 __all__ = ["Diagnostic", "SchemaError", "ValidationResult", "Validator", "render_json",
-           "render_text", "validate"]
+           "render_text", "schema_diagnostics", "validate"]
 
 #: CDDL schema input: schema text (``str``) or a path to a ``.cddl`` file.
 SchemaSource = Union[str, "os.PathLike[str]"]
@@ -83,6 +85,46 @@ def _read_schema(schema: SchemaSource) -> str:
     raise TypeError(
         "schema must be CDDL text (str) or a path (os.PathLike), "
         f"not {type(schema).__name__}")
+
+
+def schema_diagnostics(schema: SchemaSource, *,
+                       modules: Optional[Mapping[str, SchemaSource]] = None,
+                       module_path: Sequence[Union[str, "os.PathLike[str]"]] = ()
+                       ) -> Tuple[Diagnostic, ...]:
+    """The problems in a CDDL schema, as diagnostics; none for a schema that is fine.
+
+    This is what :class:`Validator` raises :class:`SchemaError` for, returned
+    instead so that it renders (:func:`render_text`, :func:`render_json`) like
+    any other finding, and with every problem the check could find rather than
+    the first. Each has ``code == "schema"`` and ``category == "schema"``, the
+    ``rule`` it is in, the position as ``offset`` / ``end_offset`` into the
+    schema text and as ``line``, ``column`` and ``schema_location``.
+
+    A text that is not valid CDDL gives that one syntax error. A schema that
+    parses is checked in full: a problem in a rule's contents (an undefined
+    name, a control that does not apply) does not stop the check of the rest,
+    so each is reported, in the order the rules and their members are written.
+    A problem in the names (a rule defined twice, a cycle) is reported alone.
+
+    Args:
+        schema, modules, module_path: As for :class:`Validator`.
+
+    Raises:
+        TypeError: *schema* is neither ``str`` nor ``os.PathLike``.
+    """
+    try:
+        text = _read_schema(schema)
+    except SchemaError as e:
+        return (schema_diagnostic(e),)
+    name = os.fspath(schema) if isinstance(schema, os.PathLike) else None
+    search = list(module_path)
+    if name is not None:
+        search.append(Path(name).parent)
+    try:
+        linked = link(parse_cddl(text, source_name=name), ModuleLoader(modules, search))
+    except SchemaError as e:
+        return (schema_diagnostic(e),)
+    return tuple(schema_diagnostic(e) for e in resolve_all(linked.schema, linked.imports)[1])
 
 
 class Validator:

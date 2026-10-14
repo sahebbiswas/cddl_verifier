@@ -370,7 +370,7 @@ class TestRenderers(unittest.TestCase):
         self.assertEqual(len(document["diagnostics"]), len(self.found))
         keys = {"severity", "category", "code", "message", "path", "offset", "end_offset",
                 "hex", "hex_truncated", "rule", "schema_path", "schema_location",
-                "expected", "actual", "alternatives"}
+                "expected", "actual", "alternatives", "line", "column"}
         for item in document["diagnostics"]:
             self.assertEqual(set(item), keys)
 
