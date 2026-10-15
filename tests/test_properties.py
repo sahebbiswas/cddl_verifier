@@ -122,12 +122,19 @@ class TestDecoderRobustness(unittest.TestCase):
             with self.subTest(header=header):
                 decode_controlled(CBOR.loads, bytes.fromhex(header))
 
+    @given(st.binary(max_size=96))
+    def test_the_deterministic_check_fails_in_a_controlled_way(self, data):
+        decode_controlled(lambda d: CBOR.loads(d, require_deterministic=True), data)
+        decode_controlled(lambda d: cbor_decode_sequence(d, require_deterministic=True), data)
+
     @given(st.binary(max_size=64))
     def test_a_decoded_value_encodes_again(self, data):
-        value = decode_controlled(CBOR.loads, data)
-        if value is not None or data[:1] == b"\xf6":
-            again = cbor_encode(value)
-            assert cbor_decode(again) == value or value != value  # NaN is not equal to itself
+        try:
+            value = CBOR.loads(data)
+        except CONTROLLED:
+            return
+        again = cbor_encode(value)
+        assert cbor_decode(again) == value or value != value  # NaN is not equal to itself
 
 
 # ---------------------------------------------------------------- round trips
@@ -154,6 +161,25 @@ class TestRoundTrips(unittest.TestCase):
                 return CBORTag(item.tag, reversed_keys(item.value))
             return item
         assert cbor_encode(reversed_keys(value), canonical=True) == cbor_encode(value, canonical=True)
+
+    @given(cbor_values)
+    def test_canonical_encoding_is_deterministic_input(self, value):
+        data = cbor_encode(value, canonical=True)
+        cbor_decode(data, require_deterministic=True)
+
+    @given(cbor_values.flatmap(lambda v: damaged(cbor_encode(v, canonical=True))))
+    def test_what_the_deterministic_check_accepts_is_canonical(self, data):
+        # accepted bytes are exactly what the canonical encoder writes for what they decode to
+        try:
+            value = cbor_decode(data, require_deterministic=True)
+        except CONTROLLED:
+            return
+        assert cbor_encode(value, canonical=True) == data
+
+    @given(cbor_values.flatmap(lambda v: damaged(cbor_encode(v))))
+    def test_the_deterministic_check_never_accepts_more_than_the_plain_decoder(self, data):
+        if decode_controlled(lambda d: cbor_decode(d, require_deterministic=True), data) is not None:
+            assert decode_controlled(cbor_decode, data) is not None
 
     @given(cbor_values)
     def test_locations_cover_the_item(self, value):

@@ -44,6 +44,11 @@ Byte-for-byte vectors from RFC 8949 Appendix A are in
 Without `canonical=True`, maps keep insertion order and floats are written as
 8-byte doubles. Integers are shortest-form in both modes.
 
+To *check* that received bytes are in this form, decode them with
+`require_deterministic=True` (or pass `--require-deterministic` to `cddl-verify`):
+the bytes that pass are exactly the bytes `canonical=True` writes
+([API.md](API.md#requiring-deterministic-encoding)).
+
 ### Usage
 
 ```python

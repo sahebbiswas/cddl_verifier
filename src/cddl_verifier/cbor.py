@@ -25,6 +25,7 @@ from ._cbor import (
     CBOR,
     CBORDecodeError,
     CBORKey,
+    CBORNotDeterministicError,
     CBORTrailingDataError,
     CBORTruncatedError,
     CBORUnsupportedError,
@@ -38,6 +39,7 @@ __all__ = [
     "CBOR",
     "CBORDecodeError",
     "CBORKey",
+    "CBORNotDeterministicError",
     "CBORSimple",
     "CBORTag",
     "CBORTrailingDataError",
@@ -66,7 +68,7 @@ def encode(obj, canonical: bool = False) -> bytes:
     return cbor_encode(obj, canonical=canonical)
 
 
-def decode(data: bytes, keep_encoding: bool = False):
+def decode(data: bytes, keep_encoding: bool = False, require_deterministic: bool = False):
     """Decode exactly one CBOR data item from *data*.
 
     With ``keep_encoding=True``, a float, and an integer, string, array or map
@@ -74,18 +76,26 @@ def decode(data: bytes, keep_encoding: bool = False):
     back as a subclass of their Python type whose ``info`` attribute is the
     additional information of the item's initial byte. They compare and print
     as the plain value does. :func:`head_info` reads it for any value.
+
+    With ``require_deterministic=True`` the input must also be deterministically
+    encoded (RFC 8949 section 4.2.1): heads as short as they can be, no
+    indefinite lengths, shortest floats (NaN as ``f9 7e 00``), map keys in
+    bytewise order, and bignums only past 64 bits. The first violation raises
+    :class:`CBORNotDeterministicError` (a ``CBORDecodeError``) at its offset.
+    What passes is exactly what ``encode(canonical=True)`` writes.
     """
-    return cbor_decode(data, keep_encoding)
+    return cbor_decode(data, keep_encoding, require_deterministic)
 
 
-def decode_sequence(data: bytes, keep_encoding: bool = False):
+def decode_sequence(data: bytes, keep_encoding: bool = False, require_deterministic: bool = False):
     """Decode a CBOR sequence (RFC 8742) from *data* to the list of its items.
 
     Empty input is the empty sequence. A truncated or malformed item raises
     ``CBORDecodeError`` that names the item and carries the offset. :func:`decode`
-    still rejects trailing data.
+    still rejects trailing data. ``require_deterministic=True`` applies to every
+    item, as for :func:`decode`.
     """
-    return cbor_decode_sequence(data, keep_encoding)
+    return cbor_decode_sequence(data, keep_encoding, require_deterministic)
 
 
 def diag_dump(data: bytes, indent: str = "  ") -> str:

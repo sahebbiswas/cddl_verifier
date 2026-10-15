@@ -3602,6 +3602,9 @@ Examples:
   # Use human-readable key names instead of integer indices
   %(prog)s schema.cddl data.cbor --edn-format keyname
 
+  # Reject CBOR that is not deterministically encoded (signed payloads)
+  %(prog)s schema.cddl data.cbor --type corim-map --require-deterministic
+
   # Machine-readable diagnostics: stdout is one JSON document, nothing else
   %(prog)s schema.cddl data.cbor --type corim-map --diagnostics json
 
@@ -3637,6 +3640,10 @@ Examples:
                         help='How problems are reported: text (messages on stderr, the default) '
                              'or json (one JSON document on stdout, progress and logs on stderr; '
                              'EDN is written only with -o)')
+    parser.add_argument('--require-deterministic', action='store_true',
+                        help='Fail when the CBOR is not deterministically encoded '
+                             '(RFC 8949 section 4.2.1): shortest heads and floats, '
+                             'definite lengths, map keys in bytewise order')
     parser.add_argument('--verbose', action='store_true',
                         help='Enable verbose logging of validation and type resolution')
     parser.add_argument('--show-types', action='store_true', 
@@ -3754,7 +3761,8 @@ Examples:
         print(f"Error: cannot read CBOR file {args.cbor_file}: {e}", file=sys.stderr)
         sys.exit(1)
     try:
-        cbor_data = CBOR.loads(cbor_bytes, keep_encoding=True)
+        cbor_data = CBOR.loads(cbor_bytes, keep_encoding=True,
+                               require_deterministic=args.require_deterministic)
     except Exception as _e:  # noqa: BLE001 — loader raises CBORDecodeError (empty/truncated/trailing/malformed) or TypeError
         if json_mode:
             _exit_json([decode_diagnostic(_e, cbor_bytes) if isinstance(_e, CBORDecodeError)

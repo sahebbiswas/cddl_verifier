@@ -33,6 +33,9 @@ cddl-verify schema.cddl data.cbor --no-annotate
 # Report problems as one JSON document on stdout (for scripts and CI)
 cddl-verify schema.cddl data.cbor --type corim-map --diagnostics json
 
+# Refuse CBOR that is not deterministically encoded (a signed payload, say)
+cddl-verify schema.cddl data.cbor --type corim-map --require-deterministic
+
 # Print all parsed CDDL types and exit (useful for debugging schemas)
 cddl-verify schema.cddl data.cbor --show-types
 
@@ -52,6 +55,7 @@ cddl-verify --version
 | `-o / --output PATH` | Write EDN to a file instead of stdout |
 | `-t / --type TYPE` | Root CDDL type name; validation failures are fatal |
 | `--no-annotate` | Suppress field-name comments in EDN output |
+| `--require-deterministic` | Fail when the CBOR is not deterministically encoded (RFC 8949 §4.2.1), with the offset of the first violation; see [API.md](API.md#requiring-deterministic-encoding) for the rules |
 | `--unique-choices` | Fail when data matches more than one map, array or tag alternative of a choice |
 | `--edn-format {keyindex,keyname,both}` | EDN key format (default: `keyindex`) |
 | `-M DIR`, `--module-path DIR` | Directory searched for imported CDDL modules (`<name>.cddl`); repeatable. The schema file's own directory is always searched, last |
@@ -62,8 +66,8 @@ cddl-verify --version
 | `--version` | Print the version and exit |
 
 Exit status: `0` on success, `1` when a file is missing, the schema cannot be
-loaded, the CBOR cannot be decoded, or validation against an explicit `--type`
-fails. `--diagnostics json` uses the same statuses.
+loaded, the CBOR cannot be decoded (or, with `--require-deterministic`, is not
+deterministically encoded), or validation against an explicit `--type` fails. `--diagnostics json` uses the same statuses.
 
 When `--type` is omitted, the first type defined in the CDDL file is used as the
 root. Validation errors are then reported as warnings and unannotated EDN is
@@ -215,6 +219,22 @@ cddl-verify schema.cddl data.cbor --type doc --diagnostics json -o data.edn > re
 If validation fails with an explicit `--type`, no EDN is written (as in text
 mode). Without `--type` the first rule is used as a guess: its failures are then
 `"severity": "warning"`, the exit status is `0`, and unannotated EDN is written.
+
+### Deterministic encoding
+
+`--require-deterministic` rejects input that is well-formed but not written the
+one way RFC 8949 section 4.2.1 prescribes, before the schema is checked. It is
+for payloads whose bytes are signed or hashed, where two encodings of the same
+value would be two different messages.
+
+```
+$ cddl-verify schema.cddl data.cbor --type doc --require-deterministic
+Error decoding CBOR: Not deterministically encoded: integer is not in its shortest form (additional information 24) (at offset 3)
+```
+
+The offset is the start of the first item that breaks a rule. With
+`--diagnostics json` the same failure is one `decode` diagnostic with that
+`offset`. See [API.md](API.md#requiring-deterministic-encoding) for the rules.
 
 ### Imported modules
 

@@ -88,6 +88,17 @@ class CBORTrailingDataError(CBORDecodeError):
     """Raised when bytes remain after the single top-level data item."""
 
 
+class CBORNotDeterministicError(CBORDecodeError):
+    """Raised when ``require_deterministic=True`` and the input is well-formed
+    but not deterministically encoded (RFC 8949 §4.2.1).
+
+    ``offset`` is the start of the first item that breaks a rule: a head longer
+    than needed, an indefinite length, a float wider than needed or a NaN other
+    than ``f9 7e 00``, a map key out of bytewise order, or a bignum that has a
+    leading zero byte or fits in 64 bits. ``reason`` says which.
+    """
+
+
 class CBORUnsupportedError(CBORDecodeError, NotImplementedError):
     """Raised for well-formed encodings this decoder does not support.
 
@@ -318,13 +329,15 @@ class CBOR:
         self._indent_str = "  "
         self._locations = None  # a CBORLocations while decoding with locations
         self._loc_path: list = []
+        self._deterministic = False  # reject input that is not deterministically encoded
 
     # ========================================================================
     # CLASS METHODS - Loading and Convenience
     # ========================================================================
     
     @classmethod
-    def load(cls, cbor_bytes: bytes, keep_encoding: bool = False) -> 'CBOR':
+    def load(cls, cbor_bytes: bytes, keep_encoding: bool = False,
+             require_deterministic: bool = False) -> 'CBOR':
         """
         Load CBOR bytes and decode to Python object.
         
@@ -340,6 +353,15 @@ class CBOR:
                 information of its initial byte. They behave as the plain
                 value does. Off by default; the validator turns it on to check
                 ``float32`` and ``#0.26`` (#171).
+            require_deterministic: Also require the input to be deterministically
+                encoded (RFC 8949 §4.2.1, #95): every head as short as it can
+                be, no indefinite lengths, floats in the shortest form that
+                keeps the value and NaN as ``f9 7e 00``, map keys in bytewise
+                order of their encodings, bignums only for values past 64 bits
+                and without leading zeros. A violation raises
+                :class:`CBORNotDeterministicError` at the offset of the first
+                one. What passes is exactly what ``encode(canonical=True)``
+                writes back.
             
         Returns:
             CBOR object with decoded data
@@ -356,12 +378,14 @@ class CBOR:
                 f"CBOR input must be bytes-like, not {type(cbor_bytes).__name__}"
             )
         obj = cls()
+        obj._deterministic = require_deterministic
         obj.data = obj._decode(cbor_bytes, keep_encoding)
         obj._cached_bytes = cbor_bytes
         return obj
     
     @classmethod
-    def loads(cls, cbor_bytes: bytes, keep_encoding: bool = False) -> Any:
+    def loads(cls, cbor_bytes: bytes, keep_encoding: bool = False,
+              require_deterministic: bool = False) -> Any:
         """
         Decode exactly one CBOR data item directly to a Python object.
         
@@ -371,6 +395,7 @@ class CBOR:
         Args:
             cbor_bytes: CBOR encoded bytes
             keep_encoding: See :meth:`load`.
+            require_deterministic: See :meth:`load`.
             
         Returns:
             Decoded Python object
@@ -378,10 +403,11 @@ class CBOR:
         Raises:
             CBORDecodeError: See :meth:`load`.
         """
-        return cls.load(cbor_bytes, keep_encoding).data
+        return cls.load(cbor_bytes, keep_encoding, require_deterministic).data
     
     @classmethod
-    def loads_sequence(cls, cbor_bytes: bytes, keep_encoding: bool = False) -> List[Any]:
+    def loads_sequence(cls, cbor_bytes: bytes, keep_encoding: bool = False,
+                       require_deterministic: bool = False) -> List[Any]:
         """
         Decode a CBOR sequence (RFC 8742) to the list of its items.
 
@@ -395,6 +421,7 @@ class CBOR:
         Args:
             cbor_bytes: CBOR encoded bytes
             keep_encoding: See :meth:`load`.
+            require_deterministic: See :meth:`load`; each item must be.
 
         Returns:
             The decoded items, in order.
@@ -410,6 +437,7 @@ class CBOR:
                 f"CBOR input must be bytes-like, not {type(cbor_bytes).__name__}"
             )
         obj = cls()
+        obj._deterministic = require_deterministic
         obj._decode_data = cbor_bytes
         obj._decode_pos = 0
         obj._keep_encoding = keep_encoding
@@ -736,30 +764,39 @@ class CBOR:
         additional_info = initial_byte & 0x1f
         
         keep = self._keep_encoding
+        head = self._decode_pos - 1  # where this item starts
         if major_type == MAJOR_TYPE_UINT:
             value = self._decode_uint(additional_info)
-            if keep and additional_info != shortest_info(value):
-                value = with_info(value, additional_info)
+            if additional_info != shortest_info(value):
+                self._not_shortest(head, additional_info, "integer")
+                if keep:
+                    value = with_info(value, additional_info)
             return value
         elif major_type == MAJOR_TYPE_NINT:
             argument = self._decode_uint(additional_info)
             value = -1 - argument
-            if keep and additional_info != shortest_info(argument):
-                value = with_info(value, additional_info)
+            if additional_info != shortest_info(argument):
+                self._not_shortest(head, additional_info, "integer")
+                if keep:
+                    value = with_info(value, additional_info)
             return value
         elif major_type == MAJOR_TYPE_BSTR:
             if additional_info == INDEFINITE:
+                self._not_deterministic("An indefinite-length byte string", head)
                 value = self._decode_chunks(MAJOR_TYPE_BSTR, b'')
             else:
                 length = self._decode_uint(additional_info)
+                self._check_length_head(head, additional_info, length, "a byte string")
                 value = self._read_bytes(length)
             return self._with_length_info(value, additional_info, len(value))
         elif major_type == MAJOR_TYPE_TSTR:
             if additional_info == INDEFINITE:
+                self._not_deterministic("An indefinite-length text string", head)
                 value = self._decode_chunks(MAJOR_TYPE_TSTR, '')
                 length = len(value.encode('utf-8'))
             else:
                 length = self._decode_uint(additional_info)
+                self._check_length_head(head, additional_info, length, "a text string")
                 value = self._decode_text(length)
             return self._with_length_info(value, additional_info, length)
         elif major_type == MAJOR_TYPE_ARRAY:
@@ -771,7 +808,16 @@ class CBOR:
                 raise CBORDecodeError("A tag number cannot have an indefinite length",
                                       self._decode_pos - 1)
             tag_num = self._decode_uint(additional_info)
+            if additional_info != shortest_info(tag_num):
+                self._not_shortest(head, additional_info, "tag number")
             tagged_value = self._decode_item()
+            if self._deterministic and tag_num in (2, 3) and isinstance(tagged_value, bytes):
+                if tagged_value[:1] == b'\x00':
+                    self._not_deterministic("A bignum has a leading zero byte", head)
+                if int.from_bytes(tagged_value, 'big') < 2**64:
+                    self._not_deterministic(
+                        "A bignum is used for a value that fits in 64 bits "
+                        "(it is an integer of major type 0 or 1)", head)
             if tag_num in (2, 3) and isinstance(tagged_value, bytes):
                 # Bignums beyond the 64-bit range decode to int so encode()
                 # round-trips. In-range bignums stay a CBORTag of bytes: they are not
@@ -782,6 +828,22 @@ class CBOR:
             return CBORTag(tag_num, tagged_value)
         else:  # MAJOR_TYPE_SIMPLE (major type is 3 bits, so 0-7 are exhaustive)
             return self._decode_simple(additional_info)
+
+    def _not_deterministic(self, reason: str, offset: int) -> None:
+        """Raise when input must be deterministically encoded (RFC 8949 §4.2.1, #95)."""
+        if self._deterministic:
+            raise CBORNotDeterministicError(f"Not deterministically encoded: {reason}", offset)
+
+    def _not_shortest(self, head: int, additional_info: int, what: str) -> None:
+        """The head at *head* is not the shortest for its argument."""
+        if self._deterministic:
+            raise CBORNotDeterministicError(
+                f"Not deterministically encoded: {what} is not in its shortest form "
+                f"(additional information {additional_info})", head)
+
+    def _check_length_head(self, head: int, additional_info: int, length: int, what: str) -> None:
+        if additional_info != shortest_info(length):
+            self._not_shortest(head, additional_info, f"the length of {what}")
 
     def _with_length_info(self, value: Any, additional_info: int, length: int) -> Any:
         """*value* with its head's additional information, if kept and not the shortest."""
@@ -856,8 +918,13 @@ class CBOR:
     
     def _decode_array(self, additional_info: int) -> List[Any]:
         """Decode array."""
+        head = self._decode_pos - 1
         indefinite = additional_info == INDEFINITE
         length = None if indefinite else self._decode_uint(additional_info)
+        if indefinite:
+            self._not_deterministic("An indefinite-length array", head)
+        else:
+            self._check_length_head(head, additional_info, length, "an array")
         array = []
         tracking = self._locations is not None
         index = 0
@@ -877,8 +944,14 @@ class CBOR:
     
     def _decode_map(self, additional_info: int) -> Dict[Any, Any]:
         """Decode map."""
+        head = self._decode_pos - 1
         indefinite = additional_info == INDEFINITE
         length = None if indefinite else self._decode_uint(additional_info)
+        if indefinite:
+            self._not_deterministic("An indefinite-length map", head)
+        else:
+            self._check_length_head(head, additional_info, length, "a map")
+        previous_key = None  # the encoded previous key, when keys must be in order
         map_dict = {}
         locations = self._locations
         count = 0
@@ -903,16 +976,35 @@ class CBOR:
                     key_path = tuple(self._loc_path)
                     if locations._spend(len(key_path) + 2):
                         locations._keys[(key_path, key)] = (key_offset, self._decode_pos)
+                if self._deterministic:
+                    previous_key = self._check_key_order(key_offset, previous_key)
                 self._loc_path.append(key)
                 value = self._decode_value_of_key(indefinite)
                 self._loc_path.pop()
             else:
                 key = map_key(self._decode_item())
+                if self._deterministic:
+                    previous_key = self._check_key_order(key_offset, previous_key)
                 value = self._decode_value_of_key(indefinite)
             if key in map_dict:
                 raise CBORDecodeError(f"Duplicate map key: {key!r}", key_offset)
             map_dict[key] = value
         return self._with_length_info(map_dict, additional_info, len(map_dict))
+
+    def _check_key_order(self, key_offset: int, previous: Optional[bytes]) -> bytes:
+        """The map key just decoded, as bytes; it must sort after the *previous* one.
+
+        The key is deterministically encoded (it was checked as it was read), so
+        its bytes in the input are its encoding, and keys are ordered by those
+        bytes (RFC 8949 §4.2.1). Equal keys are reported as duplicates.
+        """
+        encoded = self._decode_data[key_offset:self._decode_pos]
+        if previous is not None and encoded < previous:
+            raise CBORNotDeterministicError(
+                "Not deterministically encoded: map keys are not in bytewise order of "
+                f"their encodings (0x{encoded.hex()} comes after 0x{previous.hex()})",
+                key_offset)
+        return encoded
 
     def _decode_value_of_key(self, indefinite: bool) -> Any:
         """The value after a map key; a break there leaves the key without one."""
@@ -943,11 +1035,22 @@ class CBOR:
                     f"(RFC 8949 §3.3: two-byte simple values start at 32)", start)
             return CBORSimple(number)
         elif additional_info == SIMPLE_FLOAT16:
-            return self._float(struct.unpack('>e', self._read_bytes(2))[0], additional_info)
+            raw = self._read_bytes(2)
+            value = struct.unpack('>e', raw)[0]
+            if value != value and raw != b'\x7e\x00':
+                self._not_deterministic(f"the NaN f9{raw.hex()} is not the quiet NaN f97e00",
+                                        self._decode_pos - 3)
+            return self._float(value, additional_info)
         elif additional_info == SIMPLE_FLOAT32:
-            return self._float(struct.unpack('>f', self._read_bytes(4))[0], additional_info)
+            raw = self._read_bytes(4)
+            value = struct.unpack('>f', raw)[0]
+            self._check_float_width(value, "float32", self._decode_pos - 5)
+            return self._float(value, additional_info)
         elif additional_info == SIMPLE_FLOAT64:
-            return self._float(struct.unpack('>d', self._read_bytes(8))[0], additional_info)
+            raw = self._read_bytes(8)
+            value = struct.unpack('>d', raw)[0]
+            self._check_float_width(value, "float64", self._decode_pos - 9)
+            return self._float(value, additional_info)
         elif additional_info == INDEFINITE:
             raise CBORDecodeError("Unexpected break (no indefinite-length item to end)",
                                   self._decode_pos - 1)
@@ -956,6 +1059,25 @@ class CBOR:
                 f"Reserved additional information {additional_info} in major type 7 "
                 f"(not well-formed)", self._decode_pos - 1
             )
+
+    def _check_float_width(self, value: float, name: str, head: int) -> None:
+        """A float written wider than the shortest form that keeps its value.
+
+        A NaN must be ``f9 7e 00``, so any NaN written wider is reported too.
+        """
+        if not self._deterministic:
+            return
+        if value != value:
+            self._not_deterministic(f"a {name} NaN is not the quiet NaN f97e00", head)
+        for fmt, bits in ((('>e', 16),) if name == "float32" else (('>e', 16), ('>f', 32))):
+            try:
+                unpacked = struct.unpack(fmt, struct.pack(fmt, value))[0]
+            except OverflowError:
+                continue
+            # copysign keeps -0.0 distinct from 0.0
+            if unpacked == value and math.copysign(1.0, unpacked) == math.copysign(1.0, value):
+                self._not_deterministic(
+                    f"a {name} holds a value that fits in a float{bits}", head)
 
     def _float(self, value: float, additional_info: int) -> float:
         return with_info(value, additional_info) if self._keep_encoding else value
@@ -1887,14 +2009,16 @@ def cbor_encode(obj: Any, canonical: bool = False) -> bytes:
     return CBOR(obj).encode(canonical=canonical)
 
 
-def cbor_decode(data: bytes, keep_encoding: bool = False) -> Any:
+def cbor_decode(data: bytes, keep_encoding: bool = False,
+                require_deterministic: bool = False) -> Any:
     """Decode exactly one CBOR item to a Python object (see ``CBOR.loads``)."""
-    return CBOR.loads(data, keep_encoding)
+    return CBOR.loads(data, keep_encoding, require_deterministic)
 
 
-def cbor_decode_sequence(data: bytes, keep_encoding: bool = False) -> List[Any]:
+def cbor_decode_sequence(data: bytes, keep_encoding: bool = False,
+                         require_deterministic: bool = False) -> List[Any]:
     """Decode a CBOR sequence to the list of its items (see ``CBOR.loads_sequence``)."""
-    return CBOR.loads_sequence(data, keep_encoding)
+    return CBOR.loads_sequence(data, keep_encoding, require_deterministic)
 
 
 def cbor_diag_dump(data: bytes, indent: str = "  ") -> str:
