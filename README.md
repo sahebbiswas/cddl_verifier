@@ -26,7 +26,7 @@ pip install cddl-verifier
 
 Requires Python 3.9 or newer. There are no runtime dependencies: CBOR encoding
 and decoding are bundled. Extras for contributors: `pip install "cddl-verifier[test]"`
-(pytest) and `[dev]` (pytest, build, twine).
+(pytest, Hypothesis, pycddl) and `[dev]` (the same plus build, twine).
 
 ## Quick start
 

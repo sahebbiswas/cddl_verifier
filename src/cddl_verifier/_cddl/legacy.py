@@ -391,7 +391,7 @@ class LegacyTables:
             self._computed += 1
             computed = {
                 'key': self._type_of(Type((member.key.type,)), f'{owner}@key{self._computed}'),
-                'type': self._type_of(member.value, f'{owner}@value{self._computed}'),
+                'type': self._structured_type(member.value, f'{owner}@value{self._computed}'),
                 'min': low, 'max': high,
             }
             if member.key.cut:

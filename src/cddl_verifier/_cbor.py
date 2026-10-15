@@ -1006,7 +1006,12 @@ class CBOR:
         if not data:
             return "# Empty CBOR data"
 
-        self._diag_dump_item()
+        try:
+            self._diag_dump_item()
+        except RecursionError:
+            # as the decoder does: nesting beyond what can be followed ends the dump
+            self._diag_current_indent = 0
+            self._diag_add_line(self._diag_pos, b'', "# ERROR: Nesting too deep")
 
         # ── Dynamic comment column ──────────────────────────────────────────
         # Each raw entry is (offset_str, hex_str, indent_str, comment).
