@@ -16,11 +16,18 @@ RFC 8610 says a ``.regexp`` pattern is an XML Schema (XSD) regular expression
 * there are no lazy quantifiers, back references, look-arounds, flags or
   non-capturing groups.
 
-``translate`` turns an XSD pattern into an equivalent Python pattern for
-``re.fullmatch``. Every character class is computed as a set of code points,
-so negation, subtraction and the multi-character escapes combine as XSD says.
-A construct XSD does not have, or that this module does not cover, raises
-``XsdRegexError`` naming it.
+``compile_pattern`` parses an XSD pattern and builds a Thompson NFA; ``fullmatch``
+runs it. Every character class is computed as a set of code points, so negation,
+subtraction and the multi-character escapes combine as XSD says. A construct XSD
+does not have, or that this module does not cover, raises ``XsdRegexError`` naming
+it.
+
+Matching is linear in the length of the text (#185). Python's ``re`` backtracks, so
+``(a+)+b`` or ``(a|a)*b`` against a long text of ``a`` takes exponential time. The
+NFA is simulated one character at a time over the set of live states instead, so the
+work is at most (text length) x (states), and both are bounded: a pattern that needs
+more than ``_MAX_STATES`` states is rejected as a pattern, and a match that would take
+more than ``MATCH_BUDGET`` steps raises ``XsdRegexLimit``.
 
 What is covered: the whole XSD 1.0 grammar, with the Unicode categories of the
 running Python (``unicodedata``) and the Unicode blocks in ``_BLOCKS``. Other
@@ -29,20 +36,31 @@ blocks are reported as unsupported rather than guessed.
 
 import re
 import unicodedata
+from bisect import bisect_right
 from functools import lru_cache
 from typing import Dict, List, Optional, Tuple
 
-__all__ = ['XsdRegexError', 'translate', 'fullmatch']
+__all__ = ['XsdRegexError', 'XsdRegexLimit', 'MATCH_BUDGET', 'compile_pattern', 'fullmatch']
 
 _MAX_CODE_POINT = 0x10FFFF
 _MAX_DEPTH = 64
 _MAX_REPEAT = 1000
+_MAX_STATES = 50_000
+
+#: Most (live states x characters) steps one match may take. A realistic pattern keeps a
+#: handful of states live, so this allows texts of millions of characters; a pattern built
+#: to keep thousands of states live on a long text is stopped here.
+MATCH_BUDGET = 10_000_000
 
 Ranges = List[Tuple[int, int]]
 
 
 class XsdRegexError(ValueError):
     """A pattern that is not valid XSD, or that uses something not supported."""
+
+
+class XsdRegexLimit(XsdRegexError):
+    """The pattern is valid, but matching this text would exceed ``MATCH_BUDGET``."""
 
 
 # ----------------------------------------------------------- code point sets
@@ -161,20 +179,17 @@ def _multi(letter: str) -> Ranges:
     return _complement(base) if letter.isupper() else list(base)
 
 
-# ---------------------------------------------------------------- emitting
+# ------------------------------------------------------------------ syntax tree
+# ('set', ranges)            one character from the code points
+# ('cat', [node, ...])       a sequence (empty: matches the empty text)
+# ('alt', [node, ...])       a choice
+# ('rep', node, low, high)   low..high repeats, high None for no limit
 
-def _emit_char(code: int) -> str:
-    return '\\U%08x' % code
-
-
-def _emit_class(ranges: Ranges) -> str:
+def _set(ranges: Ranges):
+    """A character class node. The bound lists are made once here, so every copy of a
+    repeated body in the NFA shares them (``\\W{1000}`` has 770 ranges per state)."""
     ranges = _normalize(ranges)
-    if not ranges:
-        return '(?!)'
-    parts = []
-    for lo, hi in ranges:
-        parts.append(_emit_char(lo) if lo == hi else f'{_emit_char(lo)}-{_emit_char(hi)}')
-    return '[' + ''.join(parts) + ']'
+    return ('set', ranges, [lo for lo, _ in ranges], [hi for _, hi in ranges])
 
 
 # ----------------------------------------------------------------- parsing
@@ -195,57 +210,57 @@ class _Parser:
     def peek(self) -> Optional[str]:
         return self.text[self.pos] if self.pos < len(self.text) else None
 
-    def parse(self) -> str:
+    def parse(self):
         out = self.regexp(0)
         if self.pos < len(self.text):
             raise self.error(f"unmatched '{self.text[self.pos]}'")
         return out
 
-    def regexp(self, depth: int) -> str:
+    def regexp(self, depth: int):
         if depth > _MAX_DEPTH:
             raise self.error(f"groups are nested more than {_MAX_DEPTH} deep")
         branches = [self.branch(depth)]
         while self.peek() == '|':
             self.pos += 1
             branches.append(self.branch(depth))
-        return '|'.join(branches)
+        return branches[0] if len(branches) == 1 else ('alt', branches)
 
-    def branch(self, depth: int) -> str:
+    def branch(self, depth: int):
         pieces = []
         while self.peek() is not None and self.peek() not in '|)':
             pieces.append(self.piece(depth))
-        return ''.join(pieces)
+        return ('cat', pieces)
 
-    def piece(self, depth: int) -> str:
+    def piece(self, depth: int):
         atom = self.atom(depth)
         quantifier = self.quantifier()
         nxt = self.peek()
         if quantifier and nxt is not None and nxt in '?*+{':
             raise self.error("XSD has no lazy, possessive or repeated quantifier "
                              f"(a second '{nxt}' after a quantifier)")
-        return atom + quantifier
+        return ('rep', atom, *quantifier) if quantifier else atom
 
-    def quantifier(self) -> str:
+    def quantifier(self) -> Optional[Tuple[int, Optional[int]]]:
         ch = self.peek()
         if ch in ('?', '*', '+'):
             self.pos += 1
-            return ch
+            return {'?': (0, 1), '*': (0, None), '+': (1, None)}[ch]
         if ch != '{':
-            return ''
+            return None
         end = self.text.find('}', self.pos)
         match = re.fullmatch(r'\{(\d+)(?:(,)(\d*))?\}', self.text[self.pos:end + 1]) if end >= 0 else None
         if not match:
             raise self.error("a '{' must start a quantifier {n}, {n,} or {n,m}; write \\{ for the character")
         low = int(match.group(1))
-        high = int(match.group(3)) if match.group(3) else None
+        high = int(match.group(3)) if match.group(3) else (None if match.group(2) else low)
         if high is not None and high < low:
             raise self.error(f"the quantifier {{{low},{high}}} has a maximum below its minimum")
         if max(low, high or 0) > _MAX_REPEAT:
             raise self.error(f"a repeat count above {_MAX_REPEAT} is not supported")
         self.pos = end + 1
-        return match.group(0)
+        return low, high
 
-    def atom(self, depth: int) -> str:
+    def atom(self, depth: int):
         ch = self.peek()
         if ch == '(':
             if self.text.startswith('(?', self.pos):
@@ -256,20 +271,20 @@ class _Parser:
             if self.peek() != ')':
                 raise self.error("missing ')'")
             self.pos += 1
-            return f'(?:{inner})'
+            return inner
         if ch == '[':
-            return _emit_class(self.class_expr())
+            return _set(self.class_expr())
         if ch == '.':
             self.pos += 1
-            return _emit_class(_complement([(0x0A, 0x0A), (0x0D, 0x0D)]))
+            return _set(_complement([(0x0A, 0x0A), (0x0D, 0x0D)]))
         if ch == '\\':
-            return _emit_class(self.escape())
+            return _set(self.escape())
         if ch in ('?', '*', '+', '{'):
             raise self.error(f"a quantifier '{ch}' has nothing to repeat")
         if ch in ('}', ']'):
             raise self.error(f"'{ch}' must be written \\{ch}")
         self.pos += 1
-        return _emit_char(ord(ch))
+        return _set([(ord(ch), ord(ch))])
 
     # an escape outside or inside a class: the code points it stands for
     def escape(self) -> Ranges:
@@ -368,27 +383,122 @@ class _Parser:
         return ord(ch)
 
 
+class _Nfa:
+    """A Thompson NFA: ``steps[i]`` is ``(starts, ends, next)`` for a character class
+    state, ``None`` for the match state; ``splits[i]`` lists the epsilon moves of a
+    split state."""
+
+    def __init__(self):
+        self.classes: List[Optional[Tuple[List[int], List[int], int]]] = []
+        self.splits: List[Optional[List[int]]] = []
+
+    def add(self, cls=None, split=None) -> int:
+        if len(self.classes) >= _MAX_STATES:
+            raise XsdRegexError(f"the pattern needs more than {_MAX_STATES} states to match "
+                                "(a large repeat count inside another repeat)")
+        self.classes.append(cls)
+        self.splits.append(split)
+        return len(self.classes) - 1
+
+    def build(self, node, after: int) -> int:
+        """Add the states of *node*, continuing at *after*; return its entry state."""
+        kind = node[0]
+        if kind == 'set':
+            return self.add((node[2], node[3], after))
+        if kind == 'cat':
+            for part in reversed(node[1]):
+                after = self.build(part, after)
+            return after
+        if kind == 'alt':
+            destinations: List[int] = []
+            seen = set()
+            for part in node[1]:  # empty branches all lead to *after*: keep one
+                destination = self.build(part, after)
+                if destination not in seen:
+                    seen.add(destination)
+                    destinations.append(destination)
+            return self.add(split=destinations)
+        _, body, low, high = node
+        if high is None:
+            loop = self.add(split=[])
+            self.splits[loop] = [self.build(body, loop), after]
+            entry = loop
+        else:
+            entry = after
+            for _ in range(high - low):
+                entry = self.add(split=[self.build(body, entry), after])
+        for _ in range(low):
+            entry = self.build(body, entry)
+        return entry
+
+
+class _Compiled:
+    def __init__(self, tree):
+        self.nfa = _Nfa()
+        self.match = self.nfa.add()
+        self.start = self.nfa.build(tree, self.match)
+
+    def closure(self, seeds, live: set) -> int:
+        """Add to *live* every state reachable from *seeds* by epsilon moves.
+
+        Returns the work done (states looked at), which the caller charges to the budget."""
+        splits = self.nfa.splits
+        stack = list(seeds)
+        work = len(stack)
+        while stack:
+            state = stack.pop()
+            if state in live:
+                continue
+            live.add(state)
+            if splits[state] is not None:
+                stack.extend(splits[state])
+                work += len(splits[state])
+        return work
+
+    def fullmatch(self, text: str) -> bool:
+        classes = self.nfa.classes
+        live: set = set()
+        steps = self.closure([self.start], live)
+        for char in text:
+            if not live:
+                return False
+            steps += len(live)
+            if steps > MATCH_BUDGET:
+                raise self._limit(text)
+            code = ord(char)
+            moves = []
+            for state in live:
+                cls = classes[state]
+                if cls is not None:
+                    starts, ends, nxt = cls
+                    i = bisect_right(starts, code) - 1
+                    if i >= 0 and code <= ends[i]:
+                        moves.append(nxt)
+            live = set()
+            steps += self.closure(moves, live)
+            if steps > MATCH_BUDGET:  # also after the last character: no verdict past the budget
+                raise self._limit(text)
+        return self.match in live
+
+    @staticmethod
+    def _limit(text: str) -> XsdRegexLimit:
+        return XsdRegexLimit(f"matching a text of {len(text)} characters needs more than "
+                             f"{MATCH_BUDGET} steps")
+
+
 @lru_cache(maxsize=256)
-def translate(pattern: str) -> str:
-    """The Python pattern equal to the XSD *pattern*, for ``re.fullmatch``.
+def compile_pattern(pattern: str) -> _Compiled:
+    """The matcher of the XSD *pattern*.
 
     Raises ``XsdRegexError`` for a pattern that is not valid XSD, or uses a
     construct this module does not support, naming it.
     """
     try:
-        return _Parser(pattern).parse()
+        return _Compiled(_Parser(pattern).parse())
     except RecursionError:
         raise XsdRegexError(f"/{pattern}/ is nested too deeply") from None
 
 
-@lru_cache(maxsize=256)
-def _compiled(pattern: str):
-    try:
-        return re.compile(translate(pattern))
-    except re.error as exc:  # pragma: no cover - the translation is always valid
-        raise XsdRegexError(f"/{pattern}/ cannot be matched: {exc}") from None
-
-
 def fullmatch(pattern: str, text: str) -> bool:
-    """Whether the whole of *text* matches the XSD *pattern*."""
-    return _compiled(pattern).fullmatch(text) is not None
+    """Whether the whole of *text* matches the XSD *pattern*, in time linear in *text*."""
+    return compile_pattern(pattern).fullmatch(text)

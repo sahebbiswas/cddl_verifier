@@ -257,9 +257,9 @@ Note how IANA registered parameter keys (0, 1, 2, etc.) are displayed as their s
 2. **Imported modules:** A CoRIM schema that imports CoSWID needs that file given
    (`-M` / `--module`); a name from a module that is not loaded matches any value and a
    warning says so ([CLI.md](CLI.md#imported-modules)).
-3. **`.regexp` limits:** Patterns are read as XSD regular expressions and matched with a
-   backtracking engine; do not use it with schemas or data you do not trust
-   ([#185](https://github.com/sahebbiswas/cddl_verifier/issues/185)).
+3. **`.regexp` limits:** Patterns are read as XSD regular expressions and matched in time
+   linear in the text. A pattern over 50 000 NFA states is a schema error, and a match
+   over 10 million steps is refused ([CDDL_SUPPORT.md](CDDL_SUPPORT.md)).
 4. **Tag 36 content:** The content of tag 36 (`mime-message`) is checked only as text
    ([#187](https://github.com/sahebbiswas/cddl_verifier/issues/187)).
 

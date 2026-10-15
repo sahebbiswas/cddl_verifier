@@ -857,7 +857,7 @@ class _Resolver:
             pattern = self.literal(node.arg)
             if isinstance(pattern, TextLit):
                 try:
-                    xsd_regex.translate(pattern.value)
+                    xsd_regex.compile_pattern(pattern.value)
                 except xsd_regex.XsdRegexError as exc:
                     return f"the argument of '.regexp' is not a valid XSD regular expression: {exc}"
         elif node.op == 'bits':

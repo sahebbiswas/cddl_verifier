@@ -201,10 +201,84 @@ class TestXsdRegexpRejected(unittest.TestCase):
         with self.assertRaises(SchemaError):
             validate('p = "a+?"\nr = tstr .regexp p', 'a', root_type='r')
 
-    def test_translate_is_cached_and_total(self):
-        self.assertEqual(xsd_regex.translate('ab'), xsd_regex.translate('ab'))
+    def test_compile_is_cached_and_total(self):
+        self.assertEqual(xsd_regex.compile_pattern('ab'), xsd_regex.compile_pattern('ab'))
         with self.assertRaises(xsd_regex.XsdRegexError):
-            xsd_regex.translate('(' * 100 + ')' * 100)
+            xsd_regex.compile_pattern('(' * 100 + ')' * 100)
+
+
+class LinearTimeTests(unittest.TestCase):
+    """#185: a pattern and a text built to make a backtracking engine stall return quickly."""
+
+    HOSTILE = ['(a+)+b', '(a|a)*b', '(a*)*b', '(a|aa)+b', '(a?){30}a{30}', '((a|b)*)*c', '(.*)*x']
+
+    def test_pathological_patterns_return_a_verdict_quickly(self):
+        import time
+        text = 'a' * 50000
+        for pattern in self.HOSTILE:
+            started = time.monotonic()
+            self.assertFalse(xsd_regex.fullmatch(pattern, text), pattern)
+            self.assertLess(time.monotonic() - started, 5, pattern)
+
+    def test_verdicts_are_still_right_on_the_same_patterns(self):
+        self.assertTrue(xsd_regex.fullmatch('(a+)+b', 'a' * 50000 + 'b'))
+        self.assertTrue(xsd_regex.fullmatch('(a|a)*b', 'aab'))
+        self.assertTrue(xsd_regex.fullmatch('(a?){3}a{3}', 'aaa'))
+        self.assertFalse(xsd_regex.fullmatch('(a?){3}a{3}', 'aa'))
+        self.assertTrue(xsd_regex.fullmatch('(a*)*', ''))
+        self.assertTrue(xsd_regex.fullmatch('(a|)*b', 'aab'))
+
+    def test_validation_of_a_hostile_text_is_quick_and_fails(self):
+        import time
+        started = time.monotonic()
+        self.assertFalse(validate('r = tstr .regexp "(a+)+b"', 'a' * 50000, root_type='r'))
+        self.assertLess(time.monotonic() - started, 5)
+
+    def test_a_pattern_too_big_to_build_is_a_schema_error(self):
+        with self.assertRaisesRegex(xsd_regex.XsdRegexError, 'states'):
+            xsd_regex.compile_pattern('((((a{1000}){1000}){1000}){1000})')
+        with self.assertRaises(SchemaError):
+            validate('r = tstr .regexp "((a{1000}){1000}){1000}"', 'a', root_type='r')
+
+    def test_a_match_over_the_step_budget_is_refused_not_guessed(self):
+        pattern = '(' + '|'.join(['a'] * 400) + ')*'
+        original = xsd_regex.MATCH_BUDGET
+        xsd_regex.MATCH_BUDGET = 10_000
+        try:
+            with self.assertRaises(xsd_regex.XsdRegexLimit):
+                xsd_regex.fullmatch(pattern, 'a' * 1000)
+            result = validate('r = tstr .regexp "%s"' % pattern, 'a' * 1000, root_type='r')
+        finally:
+            xsd_regex.MATCH_BUDGET = original
+        self.assertFalse(result)
+
+    def test_repeated_classes_share_their_range_lists(self):
+        matcher = xsd_regex.compile_pattern('(\\W{200}){5}')
+        lists = {id(cls[0]) for cls in matcher.nfa.classes if cls is not None}
+        self.assertEqual(len(lists), 1)
+        self.assertEqual(len([c for c in matcher.nfa.classes if c is not None]), 1000)
+
+    def test_empty_alternatives_are_one_destination_and_work_is_charged(self):
+        import time
+        pattern = '(' + '|' * 5000 + 'a)*b'
+        matcher = xsd_regex.compile_pattern(pattern)
+        for targets in matcher.nfa.splits:
+            if targets is not None:
+                self.assertEqual(len(targets), len(set(targets)))
+        started = time.monotonic()
+        self.assertFalse(xsd_regex.fullmatch(pattern, 'a' * 50000))
+        self.assertLess(time.monotonic() - started, 5)
+
+    def test_the_budget_is_checked_after_the_last_character_too(self):
+        original = xsd_regex.MATCH_BUDGET
+        try:
+            xsd_regex.MATCH_BUDGET = 2
+            with self.assertRaises(xsd_regex.XsdRegexLimit):
+                xsd_regex.fullmatch('a', 'a')
+            xsd_regex.MATCH_BUDGET = 100
+            self.assertTrue(xsd_regex.fullmatch('a', 'a'))
+        finally:
+            xsd_regex.MATCH_BUDGET = original
 
 
 if __name__ == '__main__':
