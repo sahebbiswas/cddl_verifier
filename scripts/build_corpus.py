@@ -138,29 +138,7 @@ def explain_cddlc(entry, detail):
     return notes.get(name)
 
 
-def explain_suit(entry, detail):
-    # every envelope fails inside `{+ $$SUIT_Parameters}` (a map in a command sequence)
-    if entry["expect"] == "valid" and re.search(
-            r"(SUIT_Shared_Commands|SUIT_Directive)@\d+: Unknown field \d+ not in schema", detail):
-        return ("gap", 201, "The envelope's parameters are `{+ $$SUIT_Parameters}`, a repeated group "
-                "choice in a map, which is checked as if every entry had to take the same alternative.")
-
-
-def explain_cose(entry, detail):
-    if entry["id"] == "cose-wg/x509-examples/signed-01":
-        return ("source-defect", None,
-                "The example encodes the `kid` header (4) as a text string (`6e 416c...`), although its "
-                "own `cbor_diag` shows a byte string and RFC 9052 defines `kid` as `bstr`; "
-                "signed-02 has the same defect. The library is right to reject it.")
-
-
-def explain_rfc8610(entry, detail):
-    if "§3.5.4 no cut" in entry["source"] and "wildcard may claim" in entry["source"]:
-        return ("gap", 202, "A literal key written with `=>` claims its key as if it had a cut, so the "
-                "wildcard cannot take an entry whose value the member rejects (RFC 8610 §3.5.4).")
-
-
-EXPLAIN = {"rfc8610-sections": explain_rfc8610, "cddlc-tests": explain_cddlc, "suit-manifest": explain_suit, "cose-rfc9052": explain_cose}
+EXPLAIN = {"cddlc-tests": explain_cddlc}
 
 
 def classify(suite):
@@ -279,8 +257,9 @@ def cose_constructed():
          "the unprotected header is a map"),
         ("sign1-protected-not-a-map", "invalid", CBORTag(18, [b"\x01", {}, b"hi", sig]),
          "the protected header holds CBOR that is not a map (`bstr .cbor header_map`)"),
-        ("sign1-bad-alg-type", "invalid", CBORTag(18, [encode({1: b""}), {}, b"hi", sig]),
-         "the alg header (1) is `int / tstr`"),
+        ("sign1-alg-bytes", "valid", CBORTag(18, [encode({1: b""}), {}, b"hi", sig]),
+         "the alg header is written `? 1 => int / tstr` and `=>` does not cut (RFC 8610 §3.5.4), so "
+         "`* label => values` takes an alg that is not an int or text string: the CDDL cannot forbid it"),
         ("sign1-signature-text", "invalid", CBORTag(18, [b"", {}, b"hi", "sig"]), "signature is a byte string"),
         ("tag-around-map", "invalid", CBORTag(18, {1: 2}), "tag 18 wraps a COSE_Sign1 array"),
         ("mac0-minimal", "valid", CBORTag(17, [b"", {}, b"hi", sig]), "a tagged COSE_Mac0"),

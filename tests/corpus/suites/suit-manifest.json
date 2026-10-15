@@ -37,10 +37,7 @@
     "syntax.tag"
    ],
    "provenance": "verbatim",
-   "source": "examples/example0.txt: Envelope",
-   "status": "gap",
-   "issue": 201,
-   "reason": "The envelope's parameters are `{+ $$SUIT_Parameters}`, a repeated group choice in a map, which is checked as if every entry had to take the same alternative."
+   "source": "examples/example0.txt: Envelope"
   },
   {
    "id": "suit/example0/2",
@@ -55,10 +52,7 @@
     "syntax.tag"
    ],
    "provenance": "verbatim",
-   "source": "examples/example0.txt: Envelope with COSE authentication object",
-   "status": "gap",
-   "issue": 201,
-   "reason": "The envelope's parameters are `{+ $$SUIT_Parameters}`, a repeated group choice in a map, which is checked as if every entry had to take the same alternative."
+   "source": "examples/example0.txt: Envelope with COSE authentication object"
   },
   {
    "id": "suit/example1/1",
@@ -73,10 +67,7 @@
     "syntax.tag"
    ],
    "provenance": "verbatim",
-   "source": "examples/example1.txt: Envelope",
-   "status": "gap",
-   "issue": 201,
-   "reason": "The envelope's parameters are `{+ $$SUIT_Parameters}`, a repeated group choice in a map, which is checked as if every entry had to take the same alternative."
+   "source": "examples/example1.txt: Envelope"
   },
   {
    "id": "suit/example1/2",
@@ -91,10 +82,7 @@
     "syntax.tag"
    ],
    "provenance": "verbatim",
-   "source": "examples/example1.txt: Envelope with COSE authentication object",
-   "status": "gap",
-   "issue": 201,
-   "reason": "The envelope's parameters are `{+ $$SUIT_Parameters}`, a repeated group choice in a map, which is checked as if every entry had to take the same alternative."
+   "source": "examples/example1.txt: Envelope with COSE authentication object"
   },
   {
    "id": "suit/example2/1",
@@ -109,10 +97,7 @@
     "syntax.tag"
    ],
    "provenance": "verbatim",
-   "source": "examples/example2.txt: Envelope",
-   "status": "gap",
-   "issue": 201,
-   "reason": "The envelope's parameters are `{+ $$SUIT_Parameters}`, a repeated group choice in a map, which is checked as if every entry had to take the same alternative."
+   "source": "examples/example2.txt: Envelope"
   },
   {
    "id": "suit/example2/2",
@@ -127,10 +112,7 @@
     "syntax.tag"
    ],
    "provenance": "verbatim",
-   "source": "examples/example2.txt: Envelope",
-   "status": "gap",
-   "issue": 201,
-   "reason": "The envelope's parameters are `{+ $$SUIT_Parameters}`, a repeated group choice in a map, which is checked as if every entry had to take the same alternative."
+   "source": "examples/example2.txt: Envelope"
   },
   {
    "id": "suit/example2/3",
@@ -145,10 +127,7 @@
     "syntax.tag"
    ],
    "provenance": "verbatim",
-   "source": "examples/example2.txt: Envelope with COSE authentication object",
-   "status": "gap",
-   "issue": 201,
-   "reason": "The envelope's parameters are `{+ $$SUIT_Parameters}`, a repeated group choice in a map, which is checked as if every entry had to take the same alternative."
+   "source": "examples/example2.txt: Envelope with COSE authentication object"
   },
   {
    "id": "suit/example3/1",
@@ -163,10 +142,7 @@
     "syntax.tag"
    ],
    "provenance": "verbatim",
-   "source": "examples/example3.txt: Envelope",
-   "status": "gap",
-   "issue": 201,
-   "reason": "The envelope's parameters are `{+ $$SUIT_Parameters}`, a repeated group choice in a map, which is checked as if every entry had to take the same alternative."
+   "source": "examples/example3.txt: Envelope"
   },
   {
    "id": "suit/example3/2",
@@ -181,10 +157,7 @@
     "syntax.tag"
    ],
    "provenance": "verbatim",
-   "source": "examples/example3.txt: Envelope with COSE authentication object",
-   "status": "gap",
-   "issue": 201,
-   "reason": "The envelope's parameters are `{+ $$SUIT_Parameters}`, a repeated group choice in a map, which is checked as if every entry had to take the same alternative."
+   "source": "examples/example3.txt: Envelope with COSE authentication object"
   },
   {
    "id": "suit/example4/1",
@@ -199,10 +172,7 @@
     "syntax.tag"
    ],
    "provenance": "verbatim",
-   "source": "examples/example4.txt: Envelope",
-   "status": "gap",
-   "issue": 201,
-   "reason": "The envelope's parameters are `{+ $$SUIT_Parameters}`, a repeated group choice in a map, which is checked as if every entry had to take the same alternative."
+   "source": "examples/example4.txt: Envelope"
   },
   {
    "id": "suit/example4/2",
@@ -217,10 +187,7 @@
     "syntax.tag"
    ],
    "provenance": "verbatim",
-   "source": "examples/example4.txt: Envelope with COSE authentication object",
-   "status": "gap",
-   "issue": 201,
-   "reason": "The envelope's parameters are `{+ $$SUIT_Parameters}`, a repeated group choice in a map, which is checked as if every entry had to take the same alternative."
+   "source": "examples/example4.txt: Envelope with COSE authentication object"
   },
   {
    "id": "suit/example5/1",
@@ -235,10 +202,7 @@
     "syntax.tag"
    ],
    "provenance": "verbatim",
-   "source": "examples/example5.txt: Envelope",
-   "status": "gap",
-   "issue": 201,
-   "reason": "The envelope's parameters are `{+ $$SUIT_Parameters}`, a repeated group choice in a map, which is checked as if every entry had to take the same alternative."
+   "source": "examples/example5.txt: Envelope"
   },
   {
    "id": "suit/example5/2",
@@ -253,10 +217,7 @@
     "syntax.tag"
    ],
    "provenance": "verbatim",
-   "source": "examples/example5.txt: Envelope with COSE authentication object",
-   "status": "gap",
-   "issue": 201,
-   "reason": "The envelope's parameters are `{+ $$SUIT_Parameters}`, a repeated group choice in a map, which is checked as if every entry had to take the same alternative."
+   "source": "examples/example5.txt: Envelope with COSE authentication object"
   },
   {
    "id": "suit/other-tag",

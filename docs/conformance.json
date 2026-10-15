@@ -232,11 +232,12 @@
     "validator": "supported",
     "edn": "supported"
    },
-   "notes": "In maps (including products of several choices, up to 1024 combinations) and in arrays.",
+   "notes": "In maps (including products of several choices, up to 1024 combinations) and in arrays. A choice repeated in a map (`{+ g}`, `{* $$socket}`) lets each repetition take any alternative, so entries of several can be mixed (#201).",
    "issues": [],
    "tests": [
     "tests/test_group_composition.py",
-    "tests/test_array_matching.py"
+    "tests/test_array_matching.py",
+    "tests/test_map_repetition.py"
    ],
    "probes": [
     {
@@ -292,6 +293,46 @@
       [
        "a"
       ]
+     ]
+    },
+    {
+     "schema": "r = {+ ((1 => bstr) // (2 => uint))}",
+     "valid": [
+      {
+       "$map": [
+        [
+         1,
+         {
+          "$bytes": ""
+         }
+        ],
+        [
+         2,
+         3
+        ]
+       ]
+      },
+      {
+       "$map": [
+        [
+         2,
+         3
+        ]
+       ]
+      }
+     ],
+     "invalid": [
+      {
+       "$map": []
+      },
+      {
+       "$map": [
+        [
+         3,
+         1
+        ]
+       ]
+      }
      ]
     }
    ]
@@ -615,10 +656,11 @@
     "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "A cut stops later wildcard members from claiming the key.",
+   "notes": "A cut (`^=>`, and `:`) stops later wildcard members from claiming the key. `K => T` has no cut: when its value is not a `T`, a later wildcard may take the entry (#202).",
    "issues": [],
    "tests": [
-    "tests/test_group_composition.py"
+    "tests/test_group_composition.py",
+    "tests/test_map_repetition.py"
    ],
    "probes": [
     {
@@ -647,6 +689,37 @@
         [
          "a",
          "x"
+        ]
+       ]
+      }
+     ]
+    },
+    {
+     "schema": "r = {? \"a\" => int, * tstr => any}",
+     "valid": [
+      {
+       "$map": [
+        [
+         "a",
+         1
+        ]
+       ]
+      },
+      {
+       "$map": [
+        [
+         "a",
+         "x"
+        ]
+       ]
+      }
+     ],
+     "invalid": [
+      {
+       "$map": [
+        [
+         1,
+         2
         ]
        ]
       }

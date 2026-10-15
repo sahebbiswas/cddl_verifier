@@ -1604,9 +1604,15 @@ class CBORAnalyzer:
                 return self._validate_type_checked(data, closest[1], type_name, cbor_offset)
 
             logger.debug(f"{Colors.CDDL}[{breadcrumb}]{Colors.RESET} Checking {len(type_def['fields'])} field definitions")
-            
+
+            # '? "a" => T' does not cut (RFC 8610 3.5.4): an entry whose value is not
+            # a T is left for a later '* K => V' member that takes it (#202)
+            deferred = self._deferred_keys(data, type_def)
+
             # Check required fields
             for key, field_info in type_def['fields'].items():
+                if key in deferred:
+                    continue
                 field_name = field_info['name']
                 is_optional = field_info.get('optional', False)
                 field_node = field_info.get('type') or _UNKNOWN_TYPE
@@ -1910,7 +1916,7 @@ class CBORAnalyzer:
                 self._pop_breadcrumb()
             
             # Report extra fields
-            defined_keys = set(type_def['fields'].keys())
+            defined_keys = set(type_def['fields'].keys()) - deferred
             actual_keys = set(data.keys())
             extra_keys = actual_keys - defined_keys
             # Keys allowed by computed-key members ('* label => value', #104)
@@ -1964,6 +1970,7 @@ class CBORAnalyzer:
                                  f"with key '{format_node(computed['key'])}', found {count}")
                     logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
                     self._report(error_msg)
+            self._check_repeated_choices(data, type_def, type_name, breadcrumb)
             # One diagnostic per unknown member, in the order they appear in the map (#155)
             for key in [k for k in data if k in extra_keys]:
                 error_msg = f"Unknown field {key!r} not in schema for type '{type_name}'"
@@ -2446,6 +2453,64 @@ class CBORAnalyzer:
         if '@' in text and name is not None and name in self.cddl.types:
             return self.cddl.types[name].get('type') or text  # a lifted 'r@0@2'
         return text
+
+    def _deferred_keys(self, data: dict, type_def: dict) -> set:
+        """Keys of optional members written ``K => T`` that a later member may take (#202).
+
+        An entry whose value is not a ``T`` stays free when some computed-key member
+        (``* K => V``) accepts both its key and its value; otherwise it is the
+        ``K => T`` member's, and its mismatch is reported there.
+        """
+        computed_keys = type_def.get('computed_keys')
+        if not computed_keys:
+            return set()
+        deferred = set()
+        for key, info in type_def['fields'].items():
+            if key not in data or info.get('cut', True) or not info.get('optional'):
+                continue
+            if not self._check_value(data[key], info.get('type') or _UNKNOWN_TYPE):
+                continue  # it matches: the member takes it
+            key_value = key.value if isinstance(key, CBORKey) else key
+            if any(not self._check_value(key_value, c['key'], strict=True)
+                   and not self._check_value(data[key], c['type']) for c in computed_keys):
+                deferred.add(key)
+        return deferred
+
+    def _check_repeated_choices(self, data: dict, type_def: dict, type_name: str, breadcrumb) -> None:
+        """A group choice repeated in a map (``{+ g}``): each repetition took one alternative (#201).
+
+        The members of all the alternatives were checked as optional. An
+        alternative is present when an entry of it matches; its other members
+        are then required, and the number of alternatives present (each at most
+        once, as a fixed key cannot repeat) has to fit the occurrence. An
+        alternative with computed-key members or none at all can repeat, so it
+        leaves the upper end open.
+        """
+        for repeated in type_def.get('repeated', ()):
+            present = 0
+            for alternative in repeated['alternatives']:
+                types = alternative['types']
+                found = [k for k in types if k in data and not self._check_value(data[k], types[k])]
+                if not found:
+                    continue
+                present += 1
+                for key in alternative['required']:
+                    if key not in data:
+                        name = alternative['names'].get(key) or key
+                        error_msg = f"Missing required field '{name}' (key {key}) in type '{type_name}'"
+                        logger.error(f"{Colors.MISMATCH}[{breadcrumb}] [X] MISSING:{Colors.RESET} {error_msg}")
+                        self._report(error_msg, 'missing', at_parent=True,
+                                     expected=f"member '{name}' (key {key})", actual='absent')
+            open_ended = any(a['free'] for a in repeated['alternatives'])
+            low, high = repeated['min'], repeated['max']
+            if (high is not None and present > high) or (not open_ended and present < low):
+                wanted = (f"at least {low}" if high is None else
+                          f"exactly {low}" if low == high else
+                          f"at most {high}" if low == 0 else f"{low} to {high}")
+                error_msg = (f"Type '{type_name}' needs {wanted} of the alternatives of a repeated "
+                             f"group choice, found {present}")
+                logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
+                self._report(error_msg)
 
     def _no_alternative(self, value: Any, alternatives, failures) -> _CheckError:
         """The error for a value that matches none of *alternatives*.

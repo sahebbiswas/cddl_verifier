@@ -147,6 +147,21 @@ to three, `{ ? tstr => int }` at most one, and a member without an occurrence
 and value type both match and that still has room; if several members could
 take it and none matches the value, the first one reports the value. A member
 written `K ^=> V` (a cut) keeps a key matching `K` from the members after it.
+A member written `K => V` with a literal key and no cut leaves its key free
+when its value does not match, so a later wildcard can take the entry (RFC 8610
+§3.5.4): `{ ? "a" => int, * tstr => any }` accepts `{"a": "x"}`. `K: V` and
+`K ^=> V` keep the key. (RFC 9052 relies on this: `? 1 => int / tstr` followed
+by `* label => values` leaves the header `alg` unconstrained to an int or text
+string when an entry does not fit.) A required member still needs an entry of
+its own.
+
+A group choice that is repeated in a map (`{+ $$params}` with several
+`$$params //= (...)`, `{* g}`, `{2*3 g}`) lets each repetition take any of its
+alternatives, so a map can mix entries from several. An alternative with fixed
+keys is taken at most once and needs all its required members; the number of
+alternatives present has to fit the occurrence. A repeated choice is not
+enumerated, so the number of alternatives does not count against the
+1024-combination limit.
 
 ## Schema format
 

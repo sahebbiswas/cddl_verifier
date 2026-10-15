@@ -12,11 +12,11 @@ Schemas and CBOR from the RFCs and IETF drafts that use CDDL (RFC 8610 and RFC 9
 |---|---|--:|--:|--:|--:|--:|
 | `cddlc-tests` | cddlc test suite: RFC 8610 and RFC 9165 constructs | 270 | 251 | 10 | 9 |  |
 | `corim` | CoRIM and CoMID (draft-ietf-rats-corim) | 36 | 36 |  |  |  |
-| `cose-rfc9052` | COSE messages and keys (RFC 9052) | 124 | 123 |  |  | 1 |
+| `cose-rfc9052` | COSE messages and keys (RFC 9052) | 124 | 124 |  |  |  |
 | `coswid-rfc9393` | Concise Software Identification tags (RFC 9393) | 26 | 26 |  |  |  |
 | `edhoc-rfc9528` | EDHOC messages (RFC 9528, traces of RFC 9529) | 41 | 41 |  |  |  |
-| `rfc8610-sections` | RFC 8610 sections: one schema per construct | 93 | 92 | 1 |  |  |
-| `suit-manifest` | SUIT manifest envelopes (draft-ietf-suit-manifest) | 15 | 2 | 13 |  |  |
+| `rfc8610-sections` | RFC 8610 sections: one schema per construct | 93 | 93 |  |  |  |
+| `suit-manifest` | SUIT manifest envelopes (draft-ietf-suit-manifest) | 15 | 15 |  |  |  |
 
 ## Statuses
 
@@ -66,9 +66,6 @@ Every source is pinned to the commit it was taken from. Text published in IETF d
 | `cddlc-tests` | `gap` | [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `cddlc/21-cat/01`, `cddlc/21-cat/03` | `.cat` is parsed but not enforced. |
 | `cddlc-tests` | `gap` | [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `cddlc/22-det/03`, `cddlc/22a-det/03`, `cddlc/22b-det/05` and 3 more | `.det` is parsed but not enforced. |
 | `cddlc-tests` | `divergence` |  | `cddlc/6-bigint/03`, `cddlc/6-bigint/04`, `cddlc/6-bigint/05` | The RFC 8610 prelude defines `bigint = biguint / bignint` (tags 2 and 3 only) and this library follows it: an integer that fits in 64 bits is an `int` or `integer`, not a `bigint`. The cddlc test also accepts such integers. |
-| `cose-rfc9052` | `source-defect` |  | `cose-wg/x509-examples/signed-01` | The example encodes the `kid` header (4) as a text string (`6e 416c...`), although its own `cbor_diag` shows a byte string and RFC 9052 defines `kid` as `bstr`; signed-02 has the same defect. The library is right to reject it. |
-| `rfc8610-sections` | `gap` | [#202](https://github.com/sahebbiswas/cddl_verifier/issues/202) | `rfc8610/09/02` | A literal key written with `=>` claims its key as if it had a cut, so the wildcard cannot take an entry whose value the member rejects (RFC 8610 §3.5.4). |
-| `suit-manifest` | `gap` | [#201](https://github.com/sahebbiswas/cddl_verifier/issues/201) | `suit/example0/1`, `suit/example0/2`, `suit/example1/1` and 10 more | The envelope's parameters are `{+ $$SUIT_Parameters}`, a repeated group choice in a map, which is checked as if every entry had to take the same alternative. |
 
 ## Unsupported constructs
 
