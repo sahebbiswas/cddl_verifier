@@ -269,6 +269,17 @@ class LinearTimeTests(unittest.TestCase):
         self.assertFalse(xsd_regex.fullmatch(pattern, 'a' * 50000))
         self.assertLess(time.monotonic() - started, 5)
 
+    def test_the_budget_is_checked_after_the_last_character_too(self):
+        original = xsd_regex.MATCH_BUDGET
+        try:
+            xsd_regex.MATCH_BUDGET = 2
+            with self.assertRaises(xsd_regex.XsdRegexLimit):
+                xsd_regex.fullmatch('a', 'a')
+            xsd_regex.MATCH_BUDGET = 100
+            self.assertTrue(xsd_regex.fullmatch('a', 'a'))
+        finally:
+            xsd_regex.MATCH_BUDGET = original
+
 
 if __name__ == '__main__':
     unittest.main()

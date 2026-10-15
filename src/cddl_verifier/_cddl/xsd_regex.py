@@ -411,9 +411,11 @@ class _Nfa:
             return after
         if kind == 'alt':
             destinations: List[int] = []
+            seen = set()
             for part in node[1]:  # empty branches all lead to *after*: keep one
                 destination = self.build(part, after)
-                if destination not in destinations:
+                if destination not in seen:
+                    seen.add(destination)
                     destinations.append(destination)
             return self.add(split=destinations)
         _, body, low, high = node
@@ -462,8 +464,7 @@ class _Compiled:
                 return False
             steps += len(live)
             if steps > MATCH_BUDGET:
-                raise XsdRegexLimit(f"matching a text of {len(text)} characters needs more than "
-                                    f"{MATCH_BUDGET} steps")
+                raise self._limit(text)
             code = ord(char)
             moves = []
             for state in live:
@@ -475,7 +476,14 @@ class _Compiled:
                         moves.append(nxt)
             live = set()
             steps += self.closure(moves, live)
+            if steps > MATCH_BUDGET:  # also after the last character: no verdict past the budget
+                raise self._limit(text)
         return self.match in live
+
+    @staticmethod
+    def _limit(text: str) -> XsdRegexLimit:
+        return XsdRegexLimit(f"matching a text of {len(text)} characters needs more than "
+                             f"{MATCH_BUDGET} steps")
 
 
 @lru_cache(maxsize=256)
