@@ -1,0 +1,2 @@
+; §3.8.1 .size on a byte string
+r = bstr .size (2..4)

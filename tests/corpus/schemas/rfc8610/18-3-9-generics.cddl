@@ -1,0 +1,3 @@
+; §3.9 generics
+pair<K, V> = [K, V]
+r = pair<int, tstr>

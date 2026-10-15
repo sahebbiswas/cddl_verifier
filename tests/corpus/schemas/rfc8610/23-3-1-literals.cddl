@@ -1,0 +1,2 @@
+; §3.1 literals
+r = "a" / 1 / true / null / h'01'

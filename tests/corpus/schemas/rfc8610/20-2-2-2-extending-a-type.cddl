@@ -1,0 +1,3 @@
+; §2.2.2 extending a type
+r = int
+r /= tstr

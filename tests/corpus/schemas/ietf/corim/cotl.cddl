@@ -1,0 +1,36 @@
+; CoRIM cotl schema
+; Concatenation, in this order, of cddl/concise-tl-tag.cddl cddl/validity-map.cddl cddl/version-map.cddl cddl/tag-id-type-choice.cddl cddl/tag-identity-map.cddl cddl/uuid.cddl cddl/tag-version-type.cddl
+; from https://github.com/ietf-rats-wg/draft-ietf-rats-corim at commit 59622953f734bbd7bb86108a3689c71c1db7cefc.
+; The text below this header is unchanged.
+
+concise-tl-tag = {
+  &(tag-identity: 0) => tag-identity-map
+  &(tags-list: 1) => [ + tag-identity-map ],
+  &(tl-validity: 2) => validity-map
+}
+
+validity-map = {
+  ? &(not-before: 0) => time
+  &(not-after: 1) => time
+}
+
+;# import rfc9393 as coswid
+
+version-map = {
+  &(version: 0) => text
+  ? &(version-scheme: 1) => coswid.$version-scheme
+}
+
+$tag-id-type-choice /= tstr
+$tag-id-type-choice /= uuid-type
+
+tag-identity-map = {
+  &(tag-id: 0) => $tag-id-type-choice
+  ? &(tag-version: 1) => tag-version-type
+}
+
+uuid-type = bytes .size 16
+tagged-uuid-type = #6.37(uuid-type)
+
+tag-version-type = uint .default 0
+

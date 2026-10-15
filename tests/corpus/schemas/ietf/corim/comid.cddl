@@ -1,0 +1,338 @@
+; CoRIM comid schema
+; Concatenation, in this order, of cddl/concise-mid-tag.cddl cddl/attest-key-triple-record.cddl cddl/class-id-type-choice.cddl cddl/class-map.cddl cddl/comid-entity-map.cddl cddl/comid-role-type-choice.cddl cddl/conditional-endorsement-series-triple-record.cddl cddl/conditional-series-record.cddl cddl/cose-key.cddl cddl/cose-label-and-value.cddl cddl/coswid-triple-record.cddl cddl/crypto-key-type-choice.cddl cddl/trust-dependency-triple-record.cddl cddl/domain-membership-triple-record.cddl cddl/conditional-endorsement-triple-record.cddl cddl/domain-type.cddl cddl/endorsed-triple-record.cddl cddl/entity-map.cddl cddl/entity-name-type-choice.cddl cddl/environment-map.cddl cddl/flags-map.cddl cddl/group-id-type-choice.cddl cddl/identity-triple-record.cddl cddl/instance-id-type-choice.cddl cddl/ip-addr-type-choice.cddl cddl/int-range-type-choice.cddl cddl/matcher.cddl cddl/linked-tag-map.cddl cddl/mac-addr-type-choice.cddl cddl/measured-element-type-choice.cddl cddl/measurement-map.cddl cddl/measurement-values-map.cddl cddl/non-empty.cddl cddl/oid.cddl cddl/raw-value.cddl cddl/tagged-masked-raw-value.cddl cddl/reference-triple-record.cddl cddl/stateful-environment-record.cddl cddl/svn-type-choice.cddl cddl/tag-id-type-choice.cddl cddl/tag-identity-map.cddl cddl/tag-rel-type-choice.cddl cddl/tag-version-type.cddl cddl/tagged-bytes.cddl cddl/triples-map.cddl cddl/ueid.cddl cddl/uuid.cddl cddl/version-map.cddl cddl/digest.cddl cddl/integrity-registers.cddl cddl/psa-sac-ext.cddl
+; from https://github.com/ietf-rats-wg/draft-ietf-rats-corim at commit 59622953f734bbd7bb86108a3689c71c1db7cefc.
+; The text below this header is unchanged.
+
+concise-mid-tag = {
+  ? &(language: 0) => text
+  &(tag-identity: 1) => tag-identity-map
+  ? &(entities: 2) => [ + comid-entity-map ]
+  ? &(linked-tags: 3) => [ + linked-tag-map ]
+  &(triples: 4) => triples-map
+  * $$concise-mid-tag-extension
+}
+
+attest-key-triple-record = [
+  environment: environment-map
+  key-list: [ + $crypto-key-type-choice ]
+  ? conditions: non-empty< {
+    ? &(mkey: 0) => $measured-element-type-choice,
+    ? &(authorized-by: 1) => [ + $crypto-key-type-choice ]
+  }>
+]
+
+$class-id-type-choice /= tagged-oid-type
+$class-id-type-choice /= tagged-uuid-type
+$class-id-type-choice /= tagged-bytes
+
+class-map = non-empty<{
+  ? &(class-id: 0) => $class-id-type-choice
+  ? &(vendor: 1) => tstr
+  ? &(model: 2) => tstr
+  ? &(layer: 3) => uint
+  ? &(index: 4) => uint
+}>
+
+comid-entity-map =
+  entity-map<$comid-role-type-choice, $$comid-entity-map-extension>
+
+$comid-role-type-choice /= &(tag-creator: 0)
+$comid-role-type-choice /= &(creator: 1)
+$comid-role-type-choice /= &(maintainer: 2)
+
+conditional-endorsement-series-triple-record = [
+  common-condition: [
+    environment: environment-map
+    claims-list: [ * measurement-map ]
+    ? authorized-by: [ + $crypto-key-type-choice ]
+  ]
+  series: [ + conditional-series-record ]
+]
+
+conditional-series-record = [
+  condition: [ + measurement-map]
+  addition: [ + measurement-map ]
+]
+
+COSE_Key = {
+    1 => tstr / int
+    ? 2 => bstr 
+    ? 3 => tstr / int 
+    ? 4 => [+ (tstr / int) ]
+    ? 5 => bstr
+    * cose-label => cose-value
+}
+
+cose-label = int / tstr
+cose-value = any
+
+;# import rfc9393 as coswid
+
+coswid-triple-record = [
+  environment-map
+  [ + coswid.tag-id ]
+]
+
+;# import measured-component as eatmc
+
+$crypto-key-type-choice /= tagged-pkix-base64-key-type
+$crypto-key-type-choice /= tagged-pkix-base64-cert-type
+$crypto-key-type-choice /= tagged-pkix-base64-cert-path-type
+$crypto-key-type-choice /= tagged-cose-key-type
+$crypto-key-type-choice /= tagged-pkix-asn1der-cert-type
+$crypto-key-type-choice /= tagged-key-thumbprint-type
+$crypto-key-type-choice /= tagged-cert-thumbprint-type
+$crypto-key-type-choice /= tagged-cert-path-thumbprint-type
+$crypto-key-type-choice /= tagged-bytes
+tagged-pkix-base64-key-type = #6.554(tstr)
+tagged-pkix-base64-cert-type = #6.555(tstr)
+tagged-pkix-base64-cert-path-type = #6.556(tstr)
+tagged-key-thumbprint-type = #6.557(eatmc.digest)
+tagged-cose-key-type = #6.558(COSE_Key)
+tagged-cert-thumbprint-type = #6.559(eatmc.digest)
+tagged-cert-path-thumbprint-type = #6.561(eatmc.digest)
+tagged-pkix-asn1der-cert-type = #6.562(bstr)
+
+trust-dependency-triple-record = [
+  domain-id: domain-type
+  trustees: [ + domain-type ]
+]
+
+domain-membership-triple-record = [
+  domain-id: domain-type
+  members: [ +  domain-type ]
+]
+
+conditional-endorsement-triple-record = [
+  conditions: [ + stateful-environment-record ]
+  endorsements: [ + endorsed-triple-record ]
+]
+
+domain-type = environment-map
+
+endorsed-triple-record = [
+  condition: environment-map
+  endorsement: [ + measurement-map ]
+]
+
+entity-map<role-type-choice, extension-socket> = {
+  &(entity-name: 0) => $entity-name-type-choice
+  ? &(reg-id: 1) => uri
+  &(role: 2) => [ + role-type-choice ]
+  * extension-socket
+}
+
+$entity-name-type-choice /= text
+
+environment-map = non-empty<{
+  ? &(class: 0) => class-map
+  ? &(instance: 1) => $instance-id-type-choice
+  ? &(group: 2) => $group-id-type-choice
+}>
+
+flags-map = non-empty<{
+  ? &(is-configured: 0) => bool
+  ? &(is-secure: 1) => bool
+  ? &(is-recovery: 2) => bool
+  ? &(is-debug: 3) => bool
+  ? &(is-replay-protected: 4) => bool
+  ? &(is-integrity-protected: 5) => bool
+  ? &(is-runtime-meas: 6) => bool
+  ? &(is-immutable: 7) => bool
+  ? &(is-tcb: 8) => bool
+  ? &(is-confidentiality-protected: 9) => bool
+  ? &(is-runtime-updatable: 10) => bool
+  * $$flags-map-extension
+}>
+
+$group-id-type-choice /= tagged-uuid-type
+$group-id-type-choice /= tagged-bytes
+
+identity-triple-record = [
+  environment: environment-map
+  key-list: [ + $crypto-key-type-choice ]
+  ? conditions: non-empty<{
+    ? &(mkey: 0) => $measured-element-type-choice,
+    ? &(authorized-by: 1) => [ + $crypto-key-type-choice ] 
+  }>
+]
+
+$instance-id-type-choice /= tagged-ueid-type
+$instance-id-type-choice /= tagged-uuid-type
+$instance-id-type-choice /= tagged-bytes
+$instance-id-type-choice /= tagged-pkix-base64-key-type
+$instance-id-type-choice /= tagged-pkix-base64-cert-type
+$instance-id-type-choice /= tagged-cose-key-type
+$instance-id-type-choice /= tagged-key-thumbprint-type
+$instance-id-type-choice /= tagged-cert-thumbprint-type
+$instance-id-type-choice /= tagged-pkix-asn1der-cert-type
+
+;# import rfc9164 as cbor-ip
+
+ip-addr-type-choice /= cbor-ip.ipv4-address
+ip-addr-type-choice /= cbor-ip.ipv6-address
+
+int-range-type-choice = int / tagged-int-range
+int-range = [min: int / negative-inf, max: int / positive-inf]
+tagged-int-range = #6.564(int-range)
+positive-inf = null
+negative-inf = null
+
+; Set match: target value must equal one of the listed alternatives (two or more)
+tagged-number-set = #6.566([2* number])
+tagged-text-set = #6.566([2* text])
+tagged-bytes-set = #6.566([2* bytes])
+
+; Range match: target value must lie within the inclusive [min, max] interval
+; null means unbounded.  Defined for numeric types only.
+tagged-number-range = #6.565([number / null, number / null])
+
+; Composed matchers: the bare type means exact match
+bool-matcher = bool
+number-matcher = number / tagged-number-range / tagged-number-set
+text-matcher = text / tagged-text-set
+bytes-matcher = bytes / tagged-bytes-set
+
+linked-tag-map = {
+  &(linked-tag-id: 0) => $tag-id-type-choice
+  &(tag-rel: 1) => $tag-rel-type-choice
+}
+
+mac-addr-type-choice = eui48-addr-type / eui64-addr-type
+eui48-addr-type = bytes .size 6
+eui64-addr-type = bytes .size 8
+
+$measured-element-type-choice /= tagged-oid-type
+$measured-element-type-choice /= tagged-uuid-type
+$measured-element-type-choice /= uint
+$measured-element-type-choice /= tstr
+
+measurement-map = {
+  ? &(mkey: 0) => $measured-element-type-choice
+  &(mval: 1) => measurement-values-map
+  ? &(authorized-by: 2) => [ + $crypto-key-type-choice ]
+}
+
+measurement-values-map = non-empty<{
+  ? &(version: 0) => version-map
+  ? &(svn: 1) => svn-type-choice
+  ? &(digests: 2) => digests-type
+  ? &(flags: 3) => flags-map
+  ? (
+      &(raw-value: 4) => $raw-value-type-choice,
+      ? &(raw-value-mask-DEPRECATED: 5) => raw-value-mask-type
+    )
+  ? &(mac-addr: 6) => mac-addr-type-choice
+  ? &(ip-addr: 7) => ip-addr-type-choice
+  ? &(serial-number: 8) => text
+  ? &(ueid: 9) => ueid-type
+  ? &(uuid: 10) => uuid-type
+  ? &(name: 11) => text
+  ? &(cryptokeys: 13) => [ + $crypto-key-type-choice ]
+  ? &(integrity-registers: 14) => integrity-registers
+  ? &(int-range: 15) => int-range-type-choice
+  ? &(bool: 16) => bool-matcher
+  ? &(number: 17) => number-matcher
+  ? &(text: 18) => text-matcher
+  ? &(bytes: 19) => bytes-matcher
+  * $$measurement-values-map-extension
+}>
+
+non-empty<M> = (M) .and ({ + any => any })
+
+oid-type = bytes
+tagged-oid-type = #6.111(oid-type)
+
+$raw-value-type-choice /= tagged-bytes
+$raw-value-type-choice /= tagged-masked-raw-value
+
+raw-value-mask-type = bytes
+
+tagged-masked-raw-value = #6.563([
+  value: bytes
+  mask : bytes
+])
+
+reference-triple-record = [
+  ref-env: environment-map
+  ref-claims: [ + measurement-map ]
+]
+
+stateful-environment-record = [
+  environment: environment-map,
+  claims-list: [ + measurement-map ]
+]
+
+svn-type = uint
+svn = svn-type
+min-svn = svn-type
+tagged-svn = #6.552(svn)
+tagged-min-svn = #6.553(min-svn)
+svn-type-choice = svn / tagged-svn / tagged-min-svn
+
+$tag-id-type-choice /= tstr
+$tag-id-type-choice /= uuid-type
+
+tag-identity-map = {
+  &(tag-id: 0) => $tag-id-type-choice
+  ? &(tag-version: 1) => tag-version-type
+}
+
+$tag-rel-type-choice /= &(supplements: 0)
+$tag-rel-type-choice /= &(replaces: 1)
+
+tag-version-type = uint .default 0
+
+tagged-bytes = #6.560(bytes)
+
+triples-map = non-empty<{
+  ? &(reference-triples: 0) =>
+    [ + reference-triple-record ]
+  ? &(endorsed-triples: 1) =>
+    [ + endorsed-triple-record ]
+  ? &(identity-triples: 2) =>
+    [ + identity-triple-record ]
+  ? &(attest-key-triples: 3) =>
+    [ + attest-key-triple-record ]
+  ? &(dependency-triples: 4) =>
+    [ + trust-dependency-triple-record ]
+  ? &(membership-triples: 5) =>
+    [ + domain-membership-triple-record ]
+  ? &(coswid-triples: 6) =>
+    [ + coswid-triple-record ]
+  ? &(conditional-endorsement-series-triples: 8) =>
+    [ + conditional-endorsement-series-triple-record ]
+  ? &(conditional-endorsement-triples: 10) =>
+    [ + conditional-endorsement-triple-record ]
+  * $$triples-map-extension
+}>
+
+ueid-type = bytes .size (7..33)
+tagged-ueid-type = #6.550(ueid-type)
+
+uuid-type = bytes .size 16
+tagged-uuid-type = #6.37(uuid-type)
+
+;# import rfc9393 as coswid
+
+version-map = {
+  &(version: 0) => text
+  ? &(version-scheme: 1) => coswid.$version-scheme
+}
+
+;# import measured-component as eatmc
+
+digests-type = [ + eatmc.digest ]
+
+integrity-register-id-type-choice = uint / text
+
+integrity-registers = {
+  + integrity-register-id-type-choice => digests-type
+}
+
+$$measurement-values-map-extension //= (
+  &(psa-cert-num: 100) => psa-cert-num-type
+)
+
+psa-cert-num-type = text .regexp "[0-9]{13} - [0-9]{5}"
+

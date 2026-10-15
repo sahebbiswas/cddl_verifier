@@ -303,6 +303,11 @@ class LegacyTables:
             group = self.resolved.instantiate(entry.name, entry.args)
         except ValueError:
             return None
+        if group is None and entry.name.startswith('$$'):
+            # '* $$ext' that nothing extends takes no entries; giving up here would
+            # drop every other group of the map (#80)
+            occurrence = entry.occurrence
+            return [({}, [])] if occurrence is not None and occurrence.min == 0 else None
         if not isinstance(group, Group):
             return None
         partials = self._group_partials(group, f'{owner}', expanding + (key,))
@@ -432,7 +437,8 @@ class LegacyTables:
                 field = self._field(entry, owner)
                 if field is not None:
                     fields[field[0]] = field[1]
-                    element_types[index] = field[1]['type']
+                    # '[ sigs: [+ s] ]': the label changes nothing about the element
+                    element_types[index] = self._as_structure(field[1]['type'], f'{owner}@{index}')
                     continue
                 value = entry.value
             else:
@@ -748,7 +754,11 @@ class LegacyTables:
         """*value* (an array element or a choice alternative) lifted like any
         type, but an array written in place (``[* [* uint]]``) becomes a
         structure of its own, so each element of it is checked (#196)."""
-        lifted = self._lift(value, path)
+        return self._as_structure(self._lift(value, path), path)
+
+    def _as_structure(self, lifted, path: str):
+        """*lifted*, a type already lifted, with an array that is all of it made a
+        structure of its own (see :meth:`_structured_type`)."""
         if isinstance(lifted, Type) and len(lifted.alternatives) == 1 \
                 and isinstance(_unparen(lifted.alternatives[0]), Array):
             return Type((Name(self._synthetic(_unparen(lifted.alternatives[0]), path)),))

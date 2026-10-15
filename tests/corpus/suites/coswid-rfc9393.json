@@ -1,0 +1,408 @@
+{
+ "id": "coswid-rfc9393",
+ "title": "Concise Software Identification tags (RFC 9393)",
+ "schema": "schemas/ietf/rfc9393.cddl",
+ "sources": [
+  {
+   "name": "RFC 9393 CDDL, extracted by cddlc",
+   "url": "https://github.com/cabo/cddlc",
+   "commit": "261bea5ccd0082c7d6adab098bd74e8b3fcaaf0a",
+   "date": "2025-02-16",
+   "license": "MIT (the extraction); CDDL and examples published in IETF documents: IETF Trust Legal Provisions (code components under the Revised BSD License)",
+   "path": "data/rfc9393.cddl"
+  }
+ ],
+ "provenance": "constructed",
+ "cases": [
+  {
+   "id": "constructed/both-payload-and-evidence",
+   "hex": "a600781b6578616d706c652e61636d652e726f616472756e6e65722d312e300c00016f41434d4520526f616452756e6e657202a2181f6941434d4520496e632e18210106a003a0",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.map",
+    "syntax.sockets",
+    "syntax.generics",
+    "syntax.group-choice",
+    "syntax.type-choice",
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 9393 CDDL: `payload-or-evidence` is one of the two"
+  },
+  {
+   "id": "constructed/corpus-float",
+   "hex": "a600781b6578616d706c652e61636d652e726f616472756e6e65722d312e300c00016f41434d4520526f616452756e6e657202a2181f6941434d4520496e632e18210106a008fb3ff8000000000000",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.map",
+    "syntax.sockets",
+    "syntax.generics",
+    "syntax.group-choice",
+    "syntax.type-choice",
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 9393 CDDL: `corpus` is a boolean, and a float is no global attribute either"
+  },
+  {
+   "id": "constructed/corpus-int-is-a-global-attribute",
+   "hex": "a600781b6578616d706c652e61636d652e726f616472756e6e65722d312e300c00016f41434d4520526f616452756e6e657202a2181f6941434d4520496e632e18210106a00801",
+   "expect": "valid",
+   "constructs": [
+    "syntax.map",
+    "syntax.sockets",
+    "syntax.generics",
+    "syntax.group-choice",
+    "syntax.type-choice",
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 9393 CDDL: a member without a cut does not claim its key (RFC 8610 §3.5.4): `8: 1` fails `corpus => bool` and matches `label => one-or-more<int>` of `any-attribute`"
+  },
+  {
+   "id": "constructed/entities-array",
+   "hex": "a500781b6578616d706c652e61636d652e726f616472756e6e65722d312e300c00016f41434d4520526f616452756e6e65720282a2181f6941434d4520496e632e182101a2181f654f74686572182182010206a0",
+   "expect": "valid",
+   "constructs": [
+    "syntax.map",
+    "syntax.sockets",
+    "syntax.generics",
+    "syntax.group-choice",
+    "syntax.type-choice",
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 9393 CDDL: `one-or-more<entity-entry>`: an array of two or more"
+  },
+  {
+   "id": "constructed/entities-array-of-one",
+   "hex": "a500781b6578616d706c652e61636d652e726f616472756e6e65722d312e300c00016f41434d4520526f616452756e6e65720281a2181f6941434d4520496e632e18210106a0",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.map",
+    "syntax.sockets",
+    "syntax.generics",
+    "syntax.group-choice",
+    "syntax.type-choice",
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 9393 CDDL: `one-or-more<T>` is `T / [2* T]`: an array of one is not allowed"
+  },
+  {
+   "id": "constructed/evidence",
+   "hex": "a50061740c0001616e02a2181f6941434d4520496e632e18210103a0",
+   "expect": "valid",
+   "constructs": [
+    "syntax.map",
+    "syntax.sockets",
+    "syntax.generics",
+    "syntax.group-choice",
+    "syntax.type-choice",
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 9393 CDDL: evidence instead of payload"
+  },
+  {
+   "id": "constructed/global-attribute",
+   "hex": "a700781b6578616d706c652e61636d652e726f616472756e6e65722d312e300c00016f41434d4520526f616452756e6e657202a2181f6941434d4520496e632e18210106a00f62656e246178",
+   "expect": "valid",
+   "constructs": [
+    "syntax.map",
+    "syntax.sockets",
+    "syntax.generics",
+    "syntax.group-choice",
+    "syntax.type-choice",
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 9393 CDDL: `lang` and other labels (`global-attributes`)"
+  },
+  {
+   "id": "constructed/hash-wrong-shape",
+   "hex": "a500781b6578616d706c652e61636d652e726f616472756e6e65722d312e300c00016f41434d4520526f616452756e6e657202a2181f6941434d4520496e632e18210106a111a218186178078158200000000000000000000000000000000000000000000000000000000000000000",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.map",
+    "syntax.sockets",
+    "syntax.generics",
+    "syntax.group-choice",
+    "syntax.type-choice",
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 9393 CDDL: `hash-entry` is `[hash-alg-id: int, hash-value: bytes]`"
+  },
+  {
+   "id": "constructed/link",
+   "hex": "a600781b6578616d706c652e61636d652e726f616472756e6e65722d312e300c00016f41434d4520526f616452756e6e657202a2181f6941434d4520496e632e18210106a004a21826d8207568747470733a2f2f61636d652e6578616d706c652f182806",
+   "expect": "valid",
+   "constructs": [
+    "syntax.map",
+    "syntax.sockets",
+    "syntax.generics",
+    "syntax.group-choice",
+    "syntax.type-choice",
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 9393 CDDL: a link entry with `href` (an `any-uri`, tag 32) and `rel`"
+  },
+  {
+   "id": "constructed/link-href-text",
+   "hex": "a600781b6578616d706c652e61636d652e726f616472756e6e65722d312e300c00016f41434d4520526f616452756e6e657202a2181f6941434d4520496e632e18210106a004a218267568747470733a2f2f61636d652e6578616d706c652f182806",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.map",
+    "syntax.sockets",
+    "syntax.generics",
+    "syntax.group-choice",
+    "syntax.type-choice",
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 9393 CDDL: `any-uri = uri` is tag 32: a plain text string is not one"
+  },
+  {
+   "id": "constructed/link-no-href",
+   "hex": "a600781b6578616d706c652e61636d652e726f616472756e6e65722d312e300c00016f41434d4520526f616452756e6e657202a2181f6941434d4520496e632e18210106a004a1182806",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.map",
+    "syntax.sockets",
+    "syntax.generics",
+    "syntax.group-choice",
+    "syntax.type-choice",
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 9393 CDDL: `href` is required in a link"
+  },
+  {
+   "id": "constructed/minimal",
+   "hex": "a500781b6578616d706c652e61636d652e726f616472756e6e65722d312e300c00016f41434d4520526f616452756e6e657202a2181f6941434d4520496e632e18210106a0",
+   "expect": "valid",
+   "constructs": [
+    "syntax.map",
+    "syntax.sockets",
+    "syntax.generics",
+    "syntax.group-choice",
+    "syntax.type-choice",
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 9393 CDDL: the required members and an empty payload"
+  },
+  {
+   "id": "constructed/no-entity",
+   "hex": "a400781b6578616d706c652e61636d652e726f616472756e6e65722d312e300c00016f41434d4520526f616452756e6e657206a0",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.map",
+    "syntax.sockets",
+    "syntax.generics",
+    "syntax.group-choice",
+    "syntax.type-choice",
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 9393 CDDL: `entity` is required"
+  },
+  {
+   "id": "constructed/no-payload-or-evidence",
+   "hex": "a40061740c0001616e02a2181f6941434d4520496e632e182101",
+   "expect": "valid",
+   "constructs": [
+    "syntax.map",
+    "syntax.sockets",
+    "syntax.generics",
+    "syntax.group-choice",
+    "syntax.type-choice",
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 9393 CDDL: `? payload-or-evidence` is optional"
+  },
+  {
+   "id": "constructed/no-tag-id",
+   "hex": "a40c00016f41434d4520526f616452756e6e657202a2181f6941434d4520496e632e18210106a0",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.map",
+    "syntax.sockets",
+    "syntax.generics",
+    "syntax.group-choice",
+    "syntax.type-choice",
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 9393 CDDL: `tag-id` is required"
+  },
+  {
+   "id": "constructed/not-a-map",
+   "hex": "81a500781b6578616d706c652e61636d652e726f616472756e6e65722d312e300c00016f41434d4520526f616452756e6e657202a2181f6941434d4520496e632e18210106a0",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.map",
+    "syntax.sockets",
+    "syntax.generics",
+    "syntax.group-choice",
+    "syntax.type-choice",
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 9393 CDDL: a CoSWID tag is a map"
+  },
+  {
+   "id": "constructed/payload-file",
+   "hex": "a500781b6578616d706c652e61636d652e726f616472756e6e65722d312e300c00016f41434d4520526f616452756e6e657202a2181f6941434d4520496e632e18210106a111a318186672722e6578651419040007820158200000000000000000000000000000000000000000000000000000000000000000",
+   "expect": "valid",
+   "constructs": [
+    "syntax.map",
+    "syntax.sockets",
+    "syntax.generics",
+    "syntax.group-choice",
+    "syntax.type-choice",
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 9393 CDDL: a file with a name, a size and a hash"
+  },
+  {
+   "id": "constructed/payload-file-no-name",
+   "hex": "a500781b6578616d706c652e61636d652e726f616472756e6e65722d312e300c00016f41434d4520526f616452756e6e657202a2181f6941434d4520496e632e18210106a111a114190400",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.map",
+    "syntax.sockets",
+    "syntax.generics",
+    "syntax.group-choice",
+    "syntax.type-choice",
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 9393 CDDL: `fs-name` is required in a file"
+  },
+  {
+   "id": "constructed/role-missing",
+   "hex": "a500781b6578616d706c652e61636d652e726f616472756e6e65722d312e300c00016f41434d4520526f616452756e6e657202a1181f614506a0",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.map",
+    "syntax.sockets",
+    "syntax.generics",
+    "syntax.group-choice",
+    "syntax.type-choice",
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 9393 CDDL: `role` is required in an entity"
+  },
+  {
+   "id": "constructed/role-unknown-int",
+   "hex": "a500781b6578616d706c652e61636d652e726f616472756e6e65722d312e300c00016f41434d4520526f616452756e6e657202a2181f61451821184d06a0",
+   "expect": "valid",
+   "constructs": [
+    "syntax.map",
+    "syntax.sockets",
+    "syntax.generics",
+    "syntax.group-choice",
+    "syntax.type-choice",
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 9393 CDDL: `$role` ends with `int / text`"
+  },
+  {
+   "id": "constructed/software-name-int",
+   "hex": "a500781b6578616d706c652e61636d652e726f616472756e6e65722d312e300c00010502a2181f6941434d4520496e632e18210106a0",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.map",
+    "syntax.sockets",
+    "syntax.generics",
+    "syntax.group-choice",
+    "syntax.type-choice",
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 9393 CDDL: `software-name` is text"
+  },
+  {
+   "id": "constructed/tag-id-bytes-15",
+   "hex": "a5004f0000000000000000000000000000000c00016f41434d4520526f616452756e6e657202a2181f6941434d4520496e632e18210106a0",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.map",
+    "syntax.sockets",
+    "syntax.generics",
+    "syntax.group-choice",
+    "syntax.type-choice",
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 9393 CDDL: `tag-id` is `text / bstr .size 16`"
+  },
+  {
+   "id": "constructed/tag-id-uuid",
+   "hex": "a50050000102030405060708090a0b0c0d0e0f0c00016f41434d4520526f616452756e6e657202a2181f6941434d4520496e632e18210106a0",
+   "expect": "valid",
+   "constructs": [
+    "syntax.map",
+    "syntax.sockets",
+    "syntax.generics",
+    "syntax.group-choice",
+    "syntax.type-choice",
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 9393 CDDL: `tag-id` may be a 16 byte string"
+  },
+  {
+   "id": "constructed/tag-version-text",
+   "hex": "a500781b6578616d706c652e61636d652e726f616472756e6e65722d312e300c6131016f41434d4520526f616452756e6e657202a2181f6941434d4520496e632e18210106a0",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.map",
+    "syntax.sockets",
+    "syntax.generics",
+    "syntax.group-choice",
+    "syntax.type-choice",
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 9393 CDDL: `tag-version` is an integer"
+  },
+  {
+   "id": "constructed/version-scheme-bytes",
+   "hex": "a600781b6578616d706c652e61636d652e726f616472756e6e65722d312e300c00016f41434d4520526f616452756e6e657202a2181f6941434d4520496e632e18210106a00e4178",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.map",
+    "syntax.sockets",
+    "syntax.generics",
+    "syntax.group-choice",
+    "syntax.type-choice",
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 9393 CDDL: `$version-scheme` is an int or text"
+  },
+  {
+   "id": "constructed/version-scheme-semver",
+   "hex": "a600781b6578616d706c652e61636d652e726f616472756e6e65722d312e300c00016f41434d4520526f616452756e6e657202a2181f6941434d4520496e632e18210106a00e194000",
+   "expect": "valid",
+   "constructs": [
+    "syntax.map",
+    "syntax.sockets",
+    "syntax.generics",
+    "syntax.group-choice",
+    "syntax.type-choice",
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 9393 CDDL: `$version-scheme` accepts semver (16384)"
+  }
+ ]
+}

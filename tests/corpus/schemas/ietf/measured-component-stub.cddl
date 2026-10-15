@@ -1,0 +1,5 @@
+; A stand-in for the module `measured-component` of draft-ietf-rats-eat-measured-component,
+; which the CoRIM schemas import as `eatmc` and which is not bundled here. It gives
+; `eatmc.digest` the shape the CoRIM examples use ([alg-id, bytes]); nothing else of the
+; module is defined.
+digest = [ alg: int / text, val: bytes ]

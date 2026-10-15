@@ -115,5 +115,33 @@ class WildcardBounds(unittest.TestCase):
         self.assertTrue(ok(s, {"a": 1, "b": "x"}))
 
 
+class EmptyGroupSockets(unittest.TestCase):
+    """A group socket nothing extends takes no entries; it must not hide the other groups (#80)."""
+
+    # RFC 9393 writes `? payload-or-evidence, * $$coswid-extension, global-attributes`
+    SCHEMA = ("r = { 0 => text, ? poe, * $$ext, g }\n"
+              "poe //= ( 6 => tstr )\n"
+              "poe //= ( 3 => int )\n"
+              "g = ( ? 15 => text )")
+
+    def test_optional_group_choice_beside_an_empty_socket(self):
+        self.assertTrue(ok(self.SCHEMA, {0: "a"}))
+        self.assertTrue(ok(self.SCHEMA, {0: "a", 6: "x"}))
+        self.assertTrue(ok(self.SCHEMA, {0: "a", 3: 1, 15: "en"}))
+
+    def test_what_the_other_groups_say_still_applies(self):
+        self.assertFalse(ok(self.SCHEMA, {0: "a", 6: 1}))
+        self.assertFalse(ok(self.SCHEMA, {0: "a", 6: "x", 3: 1}))
+        self.assertFalse(ok(self.SCHEMA, {6: "x"}))
+
+    def test_an_empty_socket_matches_no_extra_entry(self):
+        self.assertFalse(ok(self.SCHEMA, {0: "a", 99: 1}))
+
+    def test_the_socket_still_takes_its_extensions(self):
+        schema = self.SCHEMA + "\n$$ext //= ( 99 => bool )"
+        self.assertTrue(ok(schema, {0: "a", 6: "x", 99: True}))
+        self.assertFalse(ok(schema, {0: "a", 6: "x", 99: 1}))
+
+
 if __name__ == "__main__":
     unittest.main()

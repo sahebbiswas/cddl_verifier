@@ -1,0 +1,11 @@
+; Adapter rules for the corpus, not part of RFC 9528. The CDDL of RFC 9528 defines the
+; messages as groups, and EDHOC messages are CBOR sequences; a sequence is checked as
+; the array of its items (`encoding: "sequence"`), so each message is wrapped in an array.
+message_1_seq = [message_1]
+message_2_seq = [message_2]
+message_3_seq = [message_3]
+message_4_seq = [message_4]
+plaintext_2_seq = [PLAINTEXT_2]
+plaintext_3_seq = [PLAINTEXT_3]
+plaintext_4_seq = [PLAINTEXT_4]
+error_seq = [error]

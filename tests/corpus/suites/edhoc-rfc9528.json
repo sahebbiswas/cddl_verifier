@@ -1,0 +1,666 @@
+{
+ "id": "edhoc-rfc9528",
+ "title": "EDHOC messages (RFC 9528, traces of RFC 9529)",
+ "schema": [
+  "schemas/ietf/rfc9528.cddl",
+  "schemas/ietf/rfc9052.cddl",
+  "schemas/adapters/edhoc.cddl"
+ ],
+ "sources": [
+  {
+   "name": "EDHOC traces",
+   "url": "https://github.com/lake-wg/edhoc",
+   "commit": "54806ab8ad2780bb9d302a3a69315b35f312f767",
+   "date": "2024-09-19",
+   "license": "CDDL and examples published in IETF documents: IETF Trust Legal Provisions (code components under the Revised BSD License)",
+   "path": "draft-ietf-lake-traces.md"
+  },
+  {
+   "name": "RFC 9528 and RFC 9052 CDDL, extracted by cddlc",
+   "url": "https://github.com/cabo/cddlc",
+   "commit": "261bea5ccd0082c7d6adab098bd74e8b3fcaaf0a",
+   "date": "2025-02-16",
+   "license": "MIT (the extraction); CDDL and examples published in IETF documents: IETF Trust Legal Provisions (code components under the Revised BSD License)",
+   "path": "data/"
+  }
+ ],
+ "provenance": "verbatim",
+ "cases": [
+  {
+   "id": "constructed/message_1-c-i-bstr",
+   "root": "message_1_seq",
+   "encoding": "sequence",
+   "hex": "0000582031f82c7b5b9cbbf0f194d913cc12ef1532d328ef32632a4881a1c0701e237f044101",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "derived",
+   "source": "RFC 9528 CDDL: `C_I : bstr / -24..23`"
+  },
+  {
+   "id": "constructed/message_1-c-i-out-of-range",
+   "root": "message_1_seq",
+   "encoding": "sequence",
+   "hex": "0000582031f82c7b5b9cbbf0f194d913cc12ef1532d328ef32632a4881a1c0701e237f041818",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "derived",
+   "source": "RFC 9528 CDDL: `C_I : bstr / -24..23`"
+  },
+  {
+   "id": "constructed/message_1-ead",
+   "root": "message_1_seq",
+   "encoding": "sequence",
+   "hex": "0000582031f82c7b5b9cbbf0f194d913cc12ef1532d328ef32632a4881a1c0701e237f042d014100",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "derived",
+   "source": "RFC 9528 CDDL: `EAD_1` with a label and a value"
+  },
+  {
+   "id": "constructed/message_1-ead-label-only",
+   "root": "message_1_seq",
+   "encoding": "sequence",
+   "hex": "0000582031f82c7b5b9cbbf0f194d913cc12ef1532d328ef32632a4881a1c0701e237f042d20",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "derived",
+   "source": "RFC 9528 CDDL: `? ead_value`: the value is optional"
+  },
+  {
+   "id": "constructed/message_1-ead-label-text",
+   "root": "message_1_seq",
+   "encoding": "sequence",
+   "hex": "0000582031f82c7b5b9cbbf0f194d913cc12ef1532d328ef32632a4881a1c0701e237f042d6178",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "derived",
+   "source": "RFC 9528 CDDL: `ead_label : int`"
+  },
+  {
+   "id": "constructed/message_1-empty-sequence",
+   "root": "message_1_seq",
+   "encoding": "sequence",
+   "hex": "",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "derived",
+   "source": "RFC 9528 CDDL: the message has four items at least"
+  },
+  {
+   "id": "constructed/message_1-method-text",
+   "root": "message_1_seq",
+   "encoding": "sequence",
+   "hex": "617800582031f82c7b5b9cbbf0f194d913cc12ef1532d328ef32632a4881a1c0701e237f042d",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "derived",
+   "source": "RFC 9528 CDDL: METHOD is an int"
+  },
+  {
+   "id": "constructed/message_1-no-c-i",
+   "root": "message_1_seq",
+   "encoding": "sequence",
+   "hex": "0000582031f82c7b5b9cbbf0f194d913cc12ef1532d328ef32632a4881a1c0701e237f04",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "derived",
+   "source": "RFC 9528 CDDL: C_I is required"
+  },
+  {
+   "id": "constructed/message_1-suites-array",
+   "root": "message_1_seq",
+   "encoding": "sequence",
+   "hex": "00820203582031f82c7b5b9cbbf0f194d913cc12ef1532d328ef32632a4881a1c0701e237f042d",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "derived",
+   "source": "RFC 9528 CDDL: `suites = [ 2* int ] / int`: two or more"
+  },
+  {
+   "id": "constructed/message_1-suites-array-of-one",
+   "root": "message_1_seq",
+   "encoding": "sequence",
+   "hex": "008102582031f82c7b5b9cbbf0f194d913cc12ef1532d328ef32632a4881a1c0701e237f042d",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "derived",
+   "source": "RFC 9528 CDDL: an array of one suite is not `[ 2* int ]`"
+  },
+  {
+   "id": "invalid/curve-point-of-low-order",
+   "root": "message_1_seq",
+   "encoding": "sequence",
+   "hex": "03005820edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f0e",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "verbatim",
+   "note": "a cryptographic check on G_X, not part of the CDDL. The trace says: Curve25519 point of low order which fails the check for all-zero output according to Section 9.2 of {{I-D.ietf-lake-edhoc}}.",
+   "source": "draft-ietf-lake-traces.md, Invalid Traces: Curve point of low order"
+  },
+  {
+   "id": "invalid/error-in-elliptic-curve-encoding",
+   "root": "message_1_seq",
+   "encoding": "sequence",
+   "hex": "0302581fd9697725d23a688b12d1c7e0108a08c9f71a85a09c20814976ab21122248fc0e",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "verbatim",
+   "note": "the leading zeros of G_X are a rule of the encoding of keys, not of the CDDL. The trace says: Invalid encoding of third element (G_X). Correct encoding is with leading zeros according to Section 3.7 of {{I-D.ietf-lake-edhoc}} and Section 7.1.1 of {{RFC9053}}.",
+   "source": "draft-ietf-lake-traces.md, Invalid Traces: Error in elliptic curve encoding"
+  },
+  {
+   "id": "invalid/error-in-elliptic-curve-point",
+   "root": "message_1_seq",
+   "encoding": "sequence",
+   "hex": "03025820a04e73601df544a70ba7ea1e57030f7d4b4eb7f673924e58d54ca77a5e7d4d4a0e",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "verbatim",
+   "note": "a cryptographic check on G_X, not part of the CDDL. The trace says: Invalid x-coordinate in (G_X) not corresponding to a point on the P-256 curve. Requirement that y<sup>2</sup> {{{≡}}} x<sup>3</sup> + a {{{⋅}}} x + b (mod p) according to Section 9.2 of {{I-D.ietf-lake-edhoc}} and Section 5.6.2.3 of {{SP-80",
+   "source": "draft-ietf-lake-traces.md, Invalid Traces: Error in elliptic curve point"
+  },
+  {
+   "id": "invalid/error-in-elliptic-curve-representation",
+   "root": "message_1_seq",
+   "encoding": "sequence",
+   "hex": "03025820ffffffff00000001000000000000000000000000ffffffffffffffffffffffff0e",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "verbatim",
+   "note": "a cryptographic check on G_X, not part of the CDDL. The trace says: Invalid x-coordinate in G_X as x {{{≥}}} p. Requirement that x < p according to Section 9.2 of {{I-D.ietf-lake-edhoc}} and Section 5.6.2.3 of {{SP-800-56A}}.",
+   "source": "draft-ietf-lake-traces.md, Invalid Traces: Error in elliptic curve representation"
+  },
+  {
+   "id": "invalid/error-in-length-of-ephemeral-key",
+   "root": "message_1_seq",
+   "encoding": "sequence",
+   "hex": "03820218185820741a13d7ba048fbb615e94386aa3b61bea5b3d8f65f32620b749bee8d278efa90e",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "verbatim",
+   "note": "the length of G_X depends on the cipher suite, not on the CDDL. The trace says: Invalid length of the third element (G_X). Selected cipher suite is cipher suite 24 with curve P-384 according to Sections 5.2.2, and 10.2 of {{I-D.ietf-lake-edhoc}}. Correct length of x-coordinate is 48 bytes according to Section 3.7 of {{",
+   "source": "draft-ietf-lake-traces.md, Invalid Traces: Error in length of ephemeral key"
+  },
+  {
+   "id": "invalid/error-in-length-of-mac",
+   "root": "plaintext_2_seq",
+   "encoding": "sequence",
+   "hex": "273244fa5efa2e",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "verbatim",
+   "note": "the length of the MAC depends on the cipher suite, not on the CDDL. The trace says: Invalid length of third element (Signature_or_MAC_2). The length of Signature_or_MAC_2 is given by the cipher suite and the MAC length is at least 8 bytes according to Section 9.3 of {{I-D.ietf-lake-edhoc}}.",
+   "source": "draft-ietf-lake-traces.md, Invalid Traces: Error in length of MAC"
+  },
+  {
+   "id": "invalid/indefinite-length-array-encoding",
+   "root": "message_1_seq",
+   "encoding": "sequence",
+   "hex": "039f0602ff5820741a13d7ba048fbb615e94386aa3b61bea5b3d8f65f32620b749bee8d278efa90e",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice",
+    "cbor.canonical"
+   ],
+   "provenance": "verbatim",
+   "note": "valid CDDL, but not deterministically encoded (RFC 8949 §4.2.1), which EDHOC requires: checked with `require_deterministic`. The trace says: Invalid indefinite-length array encoding 9F 06 02 FF of SUITES_I = [6, 2]. Correct encoding is 82 06 02 according to Section 5.2.2 of {{I-D.ietf-lake-edhoc}}.",
+   "deterministic": true,
+   "source": "draft-ietf-lake-traces.md, Invalid Traces: Indefinite-length array encoding"
+  },
+  {
+   "id": "invalid/indefinite-length-array-encoding-cddl-only",
+   "root": "message_1_seq",
+   "encoding": "sequence",
+   "hex": "039f0602ff5820741a13d7ba048fbb615e94386aa3b61bea5b3d8f65f32620b749bee8d278efa90e",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "verbatim",
+   "note": "without `require_deterministic` only the CDDL is checked",
+   "source": "draft-ietf-lake-traces.md, Invalid Traces: Indefinite-length array encoding"
+  },
+  {
+   "id": "invalid/surplus-array-encoding-of-ciphersuite",
+   "root": "message_1_seq",
+   "encoding": "sequence",
+   "hex": "0381025820741a13d7ba048fbb615e94386aa3b61bea5b3d8f65f32620b749bee8d278efa90e",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "verbatim",
+   "note": "`suites = [ 2* int ] / int`: an array of one is not allowed. The trace says: Invalid array encoding 81 02 of SUITES_I = 2. Correct encoding is 02 according to Section 5.2.2 of {{I-D.ietf-lake-edhoc}}.",
+   "source": "draft-ietf-lake-traces.md, Invalid Traces: Surplus array encoding of ciphersuite"
+  },
+  {
+   "id": "invalid/surplus-array-encoding-of-message",
+   "root": "message_1_seq",
+   "encoding": "sequence",
+   "hex": "8403025820741a13d7ba048fbb615e94386aa3b61bea5b3d8f65f32620b749bee8d278efa90e",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "verbatim",
+   "note": "the message is one array, not a sequence. The trace says: Invalid encoding of message_1 as array. Correct encoding is a CBOR sequence according to Section 5.2.1 of {{I-D.ietf-lake-edhoc}}.",
+   "source": "draft-ietf-lake-traces.md, Invalid Traces: Surplus array encoding of message"
+  },
+  {
+   "id": "invalid/surplus-bstr-encoding-of-connection-identifier",
+   "root": "message_1_seq",
+   "encoding": "sequence",
+   "hex": "03025820741a13d7ba048fbb615e94386aa3b61bea5b3d8f65f32620b749bee8d278efa9410e",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "verbatim",
+   "note": "`C_I : bstr / -24..23` allows a byte string: EDHOC's own rule against it is not in the CDDL. The trace says: Invalid encoding 41 0e of C_I = 0x0e. Correct encoding is 0e according to Section 3.3.2 of {{I-D.ietf-lake-edhoc}}.",
+   "source": "draft-ietf-lake-traces.md, Invalid Traces: Surplus bstr encoding of connection identifier"
+  },
+  {
+   "id": "invalid/surplus-bstr-encoding-of-id-cred-field",
+   "root": "plaintext_2_seq",
+   "encoding": "sequence",
+   "hex": "27413248fa5efa2ebf920bf3",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "verbatim",
+   "note": "`ID_CRED_R` allows a byte string: EDHOC's own rule against it is not in the CDDL. The trace says: Invalid encoding 41 32 of ID_CRED_R in PLAINTEXT_2. Correct encoding is 32 according to Section 3.5.3.2 of {{I-D.ietf-lake-edhoc}}.",
+   "source": "draft-ietf-lake-traces.md, Invalid Traces: Surplus bstr encoding of ID_CRED field"
+  },
+  {
+   "id": "invalid/surplus-map-encoding-of-id-cred-field",
+   "root": "plaintext_2_seq",
+   "encoding": "sequence",
+   "hex": "27a10442321048fa5efa2ebf920bf3",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "verbatim",
+   "note": "`ID_CRED_R : header_map / bstr / -24..23` allows a map: EDHOC's own rule against it is not in the CDDL. The trace says: Invalid encoding a1 04 42 32 10 of ID_CRED_R in PLAINTEXT_2. Correct encoding is 42 32 10 according to Section 3.5.3.2 of {{I-D.ietf-lake-edhoc}}.",
+   "source": "draft-ietf-lake-traces.md, Invalid Traces: Surplus map encoding of ID_CRED field"
+  },
+  {
+   "id": "invalid/text-string-encoding-of-ephemeral-key",
+   "root": "message_1_seq",
+   "encoding": "sequence",
+   "hex": "0302782020616972207370656564206f66206120756e6c6164656e207377616c6c6f77200e",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "verbatim",
+   "note": "G_X is a byte string. The trace says: Invalid type of the third element (G_X). Correct encoding is a byte string according to Section 5.2.1 of {{I-D.ietf-lake-edhoc}}.",
+   "source": "draft-ietf-lake-traces.md, Invalid Traces: Text string encoding of ephemeral key"
+  },
+  {
+   "id": "invalid/unnecessary-long-encoding",
+   "root": "message_1_seq",
+   "encoding": "sequence",
+   "hex": "190003025820741a13d7ba048fbb615e94386aa3b61bea5b3d8f65f32620b749bee8d278efa90e",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice",
+    "cbor.canonical"
+   ],
+   "provenance": "verbatim",
+   "note": "valid CDDL, but not deterministically encoded (RFC 8949 §4.2.1), which EDHOC requires: checked with `require_deterministic`. The trace says: Invalid 16-bit encoding 19 00 03 of METHOD = 3. Correct is the deterministic encoding 03 according to Section 3.1 of {{I-D.ietf-lake-edhoc}} and Section 4.2.1 of {{RFC8949}}, which states that the arguments for integers, lengths in major ty",
+   "deterministic": true,
+   "source": "draft-ietf-lake-traces.md, Invalid Traces: Unnecessary long encoding"
+  },
+  {
+   "id": "invalid/unnecessary-long-encoding-cddl-only",
+   "root": "message_1_seq",
+   "encoding": "sequence",
+   "hex": "190003025820741a13d7ba048fbb615e94386aa3b61bea5b3d8f65f32620b749bee8d278efa90e",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "verbatim",
+   "note": "without `require_deterministic` only the CDDL is checked",
+   "source": "draft-ietf-lake-traces.md, Invalid Traces: Unnecessary long encoding"
+  },
+  {
+   "id": "invalid/wrong-number-of-cbor-sequence-elements",
+   "root": "message_2_seq",
+   "encoding": "sequence",
+   "hex": "5820419701d7f00a26c2dc587a36dd752549f33763c893422c8ea0f955a13a4ff5d54b9862a11de42a95d785386a",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "verbatim",
+   "note": "message_2 is one byte string. The trace says: Invalid number of elements in the CBOR sequence. Correct number of elements is 1 according to Section 5.3.1 of {{I-D.ietf-lake-edhoc}}.",
+   "source": "draft-ietf-lake-traces.md, Invalid Traces: Wrong number of CBOR sequence elements"
+  },
+  {
+   "id": "trace-1/PLAINTEXT_2",
+   "root": "plaintext_2_seq",
+   "encoding": "sequence",
+   "hex": "4118a11822822e4879f2a41b510c1f9b5840c3b5bd44d1e44a085c03d3aede4e1e6c11c572a1968cc3629b505f98c681608d3d1de793d1c40eb5dd5d89acf1966aea07022b48cdc99870ebc40374e8fa6e09",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "verbatim",
+   "source": "draft-ietf-lake-traces.md, trace 1 (Authentication with Signatures, X.509 Certificates Identified by 'x5t'): PLAINTEXT_2"
+  },
+  {
+   "id": "trace-1/PLAINTEXT_3",
+   "root": "plaintext_3_seq",
+   "encoding": "sequence",
+   "hex": "a11822822e48c24ab2fd7643c79f584096e1cd5fceadfac1b5af819443f70924f5719955957fd02655beb4775e1a73186a0d1d3ea683f08f8d03dcecb9cf154e1c6f555a1e12ca118ce42bdba6878907",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "verbatim",
+   "source": "draft-ietf-lake-traces.md, trace 1 (Authentication with Signatures, X.509 Certificates Identified by 'x5t'): PLAINTEXT_3"
+  },
+  {
+   "id": "trace-1/PLAINTEXT_4",
+   "root": "plaintext_4_seq",
+   "encoding": "sequence",
+   "hex": "",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "verbatim",
+   "source": "draft-ietf-lake-traces.md, trace 1 (Authentication with Signatures, X.509 Certificates Identified by 'x5t'): PLAINTEXT_4"
+  },
+  {
+   "id": "trace-1/message_1",
+   "root": "message_1_seq",
+   "encoding": "sequence",
+   "hex": "0000582031f82c7b5b9cbbf0f194d913cc12ef1532d328ef32632a4881a1c0701e237f042d",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "verbatim",
+   "source": "draft-ietf-lake-traces.md, trace 1 (Authentication with Signatures, X.509 Certificates Identified by 'x5t'): message_1"
+  },
+  {
+   "id": "trace-1/message_2",
+   "root": "message_2_seq",
+   "encoding": "sequence",
+   "hex": "5872dc88d2d51da5ed67fc4616356bc8ca74ef9ebe8b387e623a360ba480b9b29d1cbc26dd270fe9c02c44ce3934794b1cc62ba22f05459f8d358c8d12275ac42c5f96ded5f13cc9084e5b201889a45e5a60a5562dc118619c3daa2fd9f4c9f4d6edad109dd4edf95962aafbaf9ab3f4a1f6b98f",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "verbatim",
+   "source": "draft-ietf-lake-traces.md, trace 1 (Authentication with Signatures, X.509 Certificates Identified by 'x5t'): message_2"
+  },
+  {
+   "id": "trace-1/message_3",
+   "root": "message_3_seq",
+   "encoding": "sequence",
+   "hex": "585825c345884aaaeb22c527f9b1d2b6787207e0163c69b62a0d43928150427203c31674e4514ea6e383b566eb29763efeb0afa518776ae1c65f856d84bf32af3a7836970466dcb71f76745d39d3025e7703e0c032ebad51947c",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "verbatim",
+   "source": "draft-ietf-lake-traces.md, trace 1 (Authentication with Signatures, X.509 Certificates Identified by 'x5t'): message_3"
+  },
+  {
+   "id": "trace-1/message_4",
+   "root": "message_4_seq",
+   "encoding": "sequence",
+   "hex": "484f0edee366e5c883",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "verbatim",
+   "source": "draft-ietf-lake-traces.md, trace 1 (Authentication with Signatures, X.509 Certificates Identified by 'x5t'): message_4"
+  },
+  {
+   "id": "trace-2/PLAINTEXT_2",
+   "root": "plaintext_2_seq",
+   "encoding": "sequence",
+   "hex": "2732480943305c899f5c54",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "verbatim",
+   "source": "draft-ietf-lake-traces.md, trace 2 (Authentication with Static DH, CCS Identified by 'kid'): PLAINTEXT_2"
+  },
+  {
+   "id": "trace-2/PLAINTEXT_3",
+   "root": "plaintext_3_seq",
+   "encoding": "sequence",
+   "hex": "2b48623c91df41e34c2f",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "verbatim",
+   "source": "draft-ietf-lake-traces.md, trace 2 (Authentication with Static DH, CCS Identified by 'kid'): PLAINTEXT_3"
+  },
+  {
+   "id": "trace-2/message_1",
+   "root": "message_1_seq",
+   "encoding": "sequence",
+   "hex": "03065820741a13d7ba048fbb615e94386aa3b61bea5b3d8f65f32620b749bee8d278efa90e",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "verbatim",
+   "source": "draft-ietf-lake-traces.md, trace 2 (Authentication with Static DH, CCS Identified by 'kid'): message_1"
+  },
+  {
+   "id": "trace-2/message_1-2",
+   "root": "message_1_seq",
+   "encoding": "sequence",
+   "hex": "0382060258208af6f430ebe18d34184017a9a11bf511c8dff8f834730b96c1b7c8dbca2fc3b637",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "verbatim",
+   "source": "draft-ietf-lake-traces.md, trace 2 (Authentication with Static DH, CCS Identified by 'kid'): message_1"
+  },
+  {
+   "id": "trace-2/message_2",
+   "root": "message_2_seq",
+   "encoding": "sequence",
+   "hex": "582b419701d7f00a26c2dc587a36dd752549f33763c893422c8ea0f955a13a4ff5d59862a1eef9e0e7e1886fcd",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "verbatim",
+   "source": "draft-ietf-lake-traces.md, trace 2 (Authentication with Static DH, CCS Identified by 'kid'): message_2"
+  },
+  {
+   "id": "trace-2/message_3",
+   "root": "message_3_seq",
+   "encoding": "sequence",
+   "hex": "52e562097bc417dd5919485ac7891ffd90a9fc",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "verbatim",
+   "source": "draft-ietf-lake-traces.md, trace 2 (Authentication with Static DH, CCS Identified by 'kid'): message_3"
+  },
+  {
+   "id": "trace-2/message_4",
+   "root": "message_4_seq",
+   "encoding": "sequence",
+   "hex": "4828c966b7ca304f83",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group",
+    "syntax.occurrence",
+    "syntax.range",
+    "syntax.type-choice"
+   ],
+   "provenance": "verbatim",
+   "source": "draft-ietf-lake-traces.md, trace 2 (Authentication with Static DH, CCS Identified by 'kid'): message_4"
+  }
+ ]
+}

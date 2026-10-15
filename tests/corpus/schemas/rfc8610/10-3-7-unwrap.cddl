@@ -1,0 +1,3 @@
+; §3.7 unwrap
+pair = [int, int]
+r = [~pair, tstr]

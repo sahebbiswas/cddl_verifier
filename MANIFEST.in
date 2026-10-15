@@ -7,3 +7,4 @@ recursive-include cddl-schemas *.cddl *.edn
 recursive-include test-data *.cbor
 include docs/conformance.json
 recursive-include scripts *.py
+recursive-include tests/corpus *.json *.cddl

@@ -1,0 +1,2 @@
+; §3.4 arrays: entries in order, with an optional entry before a repeated one
+r = [ name: tstr, ? age: uint, * bool ]

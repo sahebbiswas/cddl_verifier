@@ -1,0 +1,1134 @@
+{
+ "id": "rfc8610-sections",
+ "title": "RFC 8610 sections: one schema per construct",
+ "sources": [
+  {
+   "name": "RFC 8610",
+   "url": "https://www.rfc-editor.org/rfc/rfc8610",
+   "license": "written for this corpus; modelled on the sections named",
+   "note": "not extracted from the RFC text"
+  }
+ ],
+ "provenance": "constructed",
+ "cases": [
+  {
+   "id": "rfc8610/01/01",
+   "schema": "schemas/rfc8610/01-3-5-1-maps-are-closed.cddl",
+   "root": "r",
+   "hex": "a1646e616d6563416461",
+   "expect": "valid",
+   "constructs": [
+    "syntax.map"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.5.1 maps are closed: the optional member may be absent"
+  },
+  {
+   "id": "rfc8610/01/02",
+   "schema": "schemas/rfc8610/01-3-5-1-maps-are-closed.cddl",
+   "root": "r",
+   "hex": "a2646e616d6563416461636167651824",
+   "expect": "valid",
+   "constructs": [
+    "syntax.map"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.5.1 maps are closed: both members"
+  },
+  {
+   "id": "rfc8610/01/03",
+   "schema": "schemas/rfc8610/01-3-5-1-maps-are-closed.cddl",
+   "root": "r",
+   "hex": "a1636167651824",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.map"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.5.1 maps are closed: a required member is missing"
+  },
+  {
+   "id": "rfc8610/01/04",
+   "schema": "schemas/rfc8610/01-3-5-1-maps-are-closed.cddl",
+   "root": "r",
+   "hex": "a2646e616d6563416461617801",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.map"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.5.1 maps are closed: a map lists every key it allows"
+  },
+  {
+   "id": "rfc8610/01/05",
+   "schema": "schemas/rfc8610/01-3-5-1-maps-are-closed.cddl",
+   "root": "r",
+   "hex": "a1646e616d6501",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.map"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.5.1 maps are closed: the value has the wrong type"
+  },
+  {
+   "id": "rfc8610/01/06",
+   "schema": "schemas/rfc8610/01-3-5-1-maps-are-closed.cddl",
+   "root": "r",
+   "hex": "80",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.map"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.5.1 maps are closed: a map is not an array"
+  },
+  {
+   "id": "rfc8610/02/01",
+   "schema": "schemas/rfc8610/02-3-3-groups-used-in-a-map.cddl",
+   "root": "person",
+   "hex": "a26361676503646e616d656178",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.3 groups used in a map: the entries of the group are the entries of the map"
+  },
+  {
+   "id": "rfc8610/02/02",
+   "schema": "schemas/rfc8610/02-3-3-groups-used-in-a-map.cddl",
+   "root": "person",
+   "hex": "a16361676503",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.group"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.3 groups used in a map: an entry of the group is missing"
+  },
+  {
+   "id": "rfc8610/03/01",
+   "schema": "schemas/rfc8610/03-2-2-2-group-choice-the-postal-address.cddl",
+   "root": "address",
+   "hex": "a36673747265657469486567656c7374722e646e616d65654d61696e7a687a69702d636f646519d74c",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group-choice"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §2.2.2 group choice (the postal address): the first alternative"
+  },
+  {
+   "id": "rfc8610/03/02",
+   "schema": "schemas/rfc8610/03-2-2-2-group-choice-the-postal-address.cddl",
+   "root": "address",
+   "hex": "a46673747265657469486567656c7374722e666e756d62657204646e616d65654d61696e7a687a69702d636f646519d74c",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group-choice"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §2.2.2 group choice (the postal address): with its optional member"
+  },
+  {
+   "id": "rfc8610/03/03",
+   "schema": "schemas/rfc8610/03-2-2-2-group-choice-the-postal-address.cddl",
+   "root": "address",
+   "hex": "a366706f2d626f7805646e616d65654d61696e7a687a69702d636f646519d74c",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group-choice"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §2.2.2 group choice (the postal address): the second alternative"
+  },
+  {
+   "id": "rfc8610/03/04",
+   "schema": "schemas/rfc8610/03-2-2-2-group-choice-the-postal-address.cddl",
+   "root": "address",
+   "hex": "a16a7065722d7069636b7570f5",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group-choice"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §2.2.2 group choice (the postal address): the third alternative has no city"
+  },
+  {
+   "id": "rfc8610/03/05",
+   "schema": "schemas/rfc8610/03-2-2-2-group-choice-the-postal-address.cddl",
+   "root": "address",
+   "hex": "a36a7065722d7069636b7570f5646e616d65654d61696e7a687a69702d636f646519d74c",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.group-choice"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §2.2.2 group choice (the postal address): the third alternative takes no city"
+  },
+  {
+   "id": "rfc8610/03/06",
+   "schema": "schemas/rfc8610/03-2-2-2-group-choice-the-postal-address.cddl",
+   "root": "address",
+   "hex": "a16a7065722d7069636b7570f4",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.group-choice"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §2.2.2 group choice (the postal address): `per-pickup` is `true`"
+  },
+  {
+   "id": "rfc8610/03/07",
+   "schema": "schemas/rfc8610/03-2-2-2-group-choice-the-postal-address.cddl",
+   "root": "address",
+   "hex": "a466737472656574617866706f2d626f7801646e616d65654d61696e7a687a69702d636f646519d74c",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.group-choice"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §2.2.2 group choice (the postal address): alternatives do not mix"
+  },
+  {
+   "id": "rfc8610/03/08",
+   "schema": "schemas/rfc8610/03-2-2-2-group-choice-the-postal-address.cddl",
+   "root": "address",
+   "hex": "a1667374726565746178",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.group-choice"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §2.2.2 group choice (the postal address): the first alternative needs `city`"
+  },
+  {
+   "id": "rfc8610/04/01",
+   "schema": "schemas/rfc8610/04-2-2-2-type-choice.cddl",
+   "root": "r",
+   "hex": "676e65636b746965",
+   "expect": "valid",
+   "constructs": [
+    "syntax.type-choice"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §2.2.2 type choice: a literal of the choice"
+  },
+  {
+   "id": "rfc8610/04/02",
+   "schema": "schemas/rfc8610/04-2-2-2-type-choice.cddl",
+   "root": "r",
+   "hex": "657363617266",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.type-choice"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §2.2.2 type choice: no literal matches"
+  },
+  {
+   "id": "rfc8610/04/03",
+   "schema": "schemas/rfc8610/04-2-2-2-type-choice.cddl",
+   "root": "r",
+   "hex": "05",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.type-choice"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §2.2.2 type choice: the wrong type"
+  },
+  {
+   "id": "rfc8610/05/01",
+   "schema": "schemas/rfc8610/05-2-2-2-numeric-choice.cddl",
+   "root": "protocol",
+   "hex": "06",
+   "expect": "valid",
+   "constructs": [
+    "syntax.type-choice"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §2.2.2 numeric choice: a literal of the choice"
+  },
+  {
+   "id": "rfc8610/05/02",
+   "schema": "schemas/rfc8610/05-2-2-2-numeric-choice.cddl",
+   "root": "protocol",
+   "hex": "11",
+   "expect": "valid",
+   "constructs": [
+    "syntax.type-choice"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §2.2.2 numeric choice: a literal of the choice"
+  },
+  {
+   "id": "rfc8610/05/03",
+   "schema": "schemas/rfc8610/05-2-2-2-numeric-choice.cddl",
+   "root": "protocol",
+   "hex": "07",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.type-choice"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §2.2.2 numeric choice: no literal matches"
+  },
+  {
+   "id": "rfc8610/06/01",
+   "schema": "schemas/rfc8610/06-3-4-arrays-entries-in-order-with-an-optional-ent.cddl",
+   "root": "r",
+   "hex": "816161",
+   "expect": "valid",
+   "constructs": [
+    "syntax.array"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.4 arrays: entries in order, with an optional entry before a repeated one: only the required entry"
+  },
+  {
+   "id": "rfc8610/06/02",
+   "schema": "schemas/rfc8610/06-3-4-arrays-entries-in-order-with-an-optional-ent.cddl",
+   "root": "r",
+   "hex": "82616103",
+   "expect": "valid",
+   "constructs": [
+    "syntax.array"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.4 arrays: entries in order, with an optional entry before a repeated one: the optional entry"
+  },
+  {
+   "id": "rfc8610/06/03",
+   "schema": "schemas/rfc8610/06-3-4-arrays-entries-in-order-with-an-optional-ent.cddl",
+   "root": "r",
+   "hex": "84616103f5f4",
+   "expect": "valid",
+   "constructs": [
+    "syntax.array"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.4 arrays: entries in order, with an optional entry before a repeated one: repeated entries"
+  },
+  {
+   "id": "rfc8610/06/04",
+   "schema": "schemas/rfc8610/06-3-4-arrays-entries-in-order-with-an-optional-ent.cddl",
+   "root": "r",
+   "hex": "826161f5",
+   "expect": "valid",
+   "constructs": [
+    "syntax.array"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.4 arrays: entries in order, with an optional entry before a repeated one: the optional entry is skipped and `* bool` takes the value"
+  },
+  {
+   "id": "rfc8610/06/05",
+   "schema": "schemas/rfc8610/06-3-4-arrays-entries-in-order-with-an-optional-ent.cddl",
+   "root": "r",
+   "hex": "8103",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.array"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.4 arrays: entries in order, with an optional entry before a repeated one: the first entry is a text string"
+  },
+  {
+   "id": "rfc8610/06/06",
+   "schema": "schemas/rfc8610/06-3-4-arrays-entries-in-order-with-an-optional-ent.cddl",
+   "root": "r",
+   "hex": "80",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.array"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.4 arrays: entries in order, with an optional entry before a repeated one: a required entry is missing"
+  },
+  {
+   "id": "rfc8610/07/01",
+   "schema": "schemas/rfc8610/07-3-2-occurrence-bounds.cddl",
+   "root": "r",
+   "hex": "8101",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.occurrence"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.2 occurrence bounds: one is below the minimum"
+  },
+  {
+   "id": "rfc8610/07/02",
+   "schema": "schemas/rfc8610/07-3-2-occurrence-bounds.cddl",
+   "root": "r",
+   "hex": "820102",
+   "expect": "valid",
+   "constructs": [
+    "syntax.occurrence"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.2 occurrence bounds: the minimum"
+  },
+  {
+   "id": "rfc8610/07/03",
+   "schema": "schemas/rfc8610/07-3-2-occurrence-bounds.cddl",
+   "root": "r",
+   "hex": "83010203",
+   "expect": "valid",
+   "constructs": [
+    "syntax.occurrence"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.2 occurrence bounds: the maximum"
+  },
+  {
+   "id": "rfc8610/07/04",
+   "schema": "schemas/rfc8610/07-3-2-occurrence-bounds.cddl",
+   "root": "r",
+   "hex": "8401020304",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.occurrence"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.2 occurrence bounds: above the maximum"
+  },
+  {
+   "id": "rfc8610/08/01",
+   "schema": "schemas/rfc8610/08-3-5-4-a-cut.cddl",
+   "root": "r",
+   "hex": "a1616101",
+   "expect": "valid",
+   "constructs": [
+    "syntax.cut"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.5.4 a cut: the member matches"
+  },
+  {
+   "id": "rfc8610/08/02",
+   "schema": "schemas/rfc8610/08-3-5-4-a-cut.cddl",
+   "root": "r",
+   "hex": "a0",
+   "expect": "valid",
+   "constructs": [
+    "syntax.cut"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.5.4 a cut: the member is optional"
+  },
+  {
+   "id": "rfc8610/08/03",
+   "schema": "schemas/rfc8610/08-3-5-4-a-cut.cddl",
+   "root": "r",
+   "hex": "a161626178",
+   "expect": "valid",
+   "constructs": [
+    "syntax.cut"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.5.4 a cut: the wildcard takes other keys"
+  },
+  {
+   "id": "rfc8610/08/04",
+   "schema": "schemas/rfc8610/08-3-5-4-a-cut.cddl",
+   "root": "r",
+   "hex": "a161616178",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.cut"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.5.4 a cut: the cut stops the wildcard from claiming the key"
+  },
+  {
+   "id": "rfc8610/09/01",
+   "schema": "schemas/rfc8610/09-3-5-4-no-cut.cddl",
+   "root": "r",
+   "hex": "a1616101",
+   "expect": "valid",
+   "constructs": [
+    "syntax.map"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.5.4 no cut: the member matches"
+  },
+  {
+   "id": "rfc8610/09/02",
+   "schema": "schemas/rfc8610/09-3-5-4-no-cut.cddl",
+   "root": "r",
+   "hex": "a161616178",
+   "expect": "valid",
+   "constructs": [
+    "syntax.map"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.5.4 no cut: without a cut the wildcard may claim the key",
+   "status": "gap",
+   "issue": 202,
+   "reason": "A literal key written with `=>` claims its key as if it had a cut, so the wildcard cannot take an entry whose value the member rejects (RFC 8610 §3.5.4)."
+  },
+  {
+   "id": "rfc8610/09/03",
+   "schema": "schemas/rfc8610/09-3-5-4-no-cut.cddl",
+   "root": "r",
+   "hex": "a261610161626178",
+   "expect": "valid",
+   "constructs": [
+    "syntax.map"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.5.4 no cut: both members"
+  },
+  {
+   "id": "rfc8610/10/01",
+   "schema": "schemas/rfc8610/10-3-7-unwrap.cddl",
+   "root": "r",
+   "hex": "8301026178",
+   "expect": "valid",
+   "constructs": [
+    "syntax.unwrap"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.7 unwrap: the entries of `pair` are spliced in"
+  },
+  {
+   "id": "rfc8610/10/02",
+   "schema": "schemas/rfc8610/10-3-7-unwrap.cddl",
+   "root": "r",
+   "hex": "828201026178",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.unwrap"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.7 unwrap: the pair is not an element of its own"
+  },
+  {
+   "id": "rfc8610/11/01",
+   "schema": "schemas/rfc8610/11-2-2-2-2-choice-from-a-group.cddl",
+   "root": "r",
+   "hex": "01",
+   "expect": "valid",
+   "constructs": [
+    "syntax.choice-from"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §2.2.2.2 choice from a group: a value of the group"
+  },
+  {
+   "id": "rfc8610/11/02",
+   "schema": "schemas/rfc8610/11-2-2-2-2-choice-from-a-group.cddl",
+   "root": "r",
+   "hex": "02",
+   "expect": "valid",
+   "constructs": [
+    "syntax.choice-from"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §2.2.2.2 choice from a group: a value of the group"
+  },
+  {
+   "id": "rfc8610/11/03",
+   "schema": "schemas/rfc8610/11-2-2-2-2-choice-from-a-group.cddl",
+   "root": "r",
+   "hex": "6161",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.choice-from"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §2.2.2.2 choice from a group: the names are not values"
+  },
+  {
+   "id": "rfc8610/12/01",
+   "schema": "schemas/rfc8610/12-3-8-3-integer-range.cddl",
+   "root": "r",
+   "hex": "01",
+   "expect": "valid",
+   "constructs": [
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.8.3 integer range: inclusive lower bound"
+  },
+  {
+   "id": "rfc8610/12/02",
+   "schema": "schemas/rfc8610/12-3-8-3-integer-range.cddl",
+   "root": "r",
+   "hex": "05",
+   "expect": "valid",
+   "constructs": [
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.8.3 integer range: inclusive upper bound"
+  },
+  {
+   "id": "rfc8610/12/03",
+   "schema": "schemas/rfc8610/12-3-8-3-integer-range.cddl",
+   "root": "r",
+   "hex": "00",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.8.3 integer range: below"
+  },
+  {
+   "id": "rfc8610/12/04",
+   "schema": "schemas/rfc8610/12-3-8-3-integer-range.cddl",
+   "root": "r",
+   "hex": "06",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.8.3 integer range: above"
+  },
+  {
+   "id": "rfc8610/12/05",
+   "schema": "schemas/rfc8610/12-3-8-3-integer-range.cddl",
+   "root": "r",
+   "hex": "fb4004000000000000",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.8.3 integer range: a float is not an integer"
+  },
+  {
+   "id": "rfc8610/13/01",
+   "schema": "schemas/rfc8610/13-3-8-3-exclusive-range.cddl",
+   "root": "r",
+   "hex": "04",
+   "expect": "valid",
+   "constructs": [
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.8.3 exclusive range: inside"
+  },
+  {
+   "id": "rfc8610/13/02",
+   "schema": "schemas/rfc8610/13-3-8-3-exclusive-range.cddl",
+   "root": "r",
+   "hex": "05",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.8.3 exclusive range: the upper bound is excluded"
+  },
+  {
+   "id": "rfc8610/14/01",
+   "schema": "schemas/rfc8610/14-3-8-3-float-range.cddl",
+   "root": "r",
+   "hex": "fb3fe0000000000000",
+   "expect": "valid",
+   "constructs": [
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.8.3 float range: inside"
+  },
+  {
+   "id": "rfc8610/14/02",
+   "schema": "schemas/rfc8610/14-3-8-3-float-range.cddl",
+   "root": "r",
+   "hex": "fb3ff8000000000000",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.8.3 float range: above"
+  },
+  {
+   "id": "rfc8610/14/03",
+   "schema": "schemas/rfc8610/14-3-8-3-float-range.cddl",
+   "root": "r",
+   "hex": "01",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.range"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.8.3 float range: an integer is not a float"
+  },
+  {
+   "id": "rfc8610/15/01",
+   "schema": "schemas/rfc8610/15-3-8-1-size-on-a-byte-string.cddl",
+   "root": "r",
+   "hex": "426162",
+   "expect": "valid",
+   "constructs": [
+    "control.size"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.8.1 .size on a byte string: two bytes"
+  },
+  {
+   "id": "rfc8610/15/02",
+   "schema": "schemas/rfc8610/15-3-8-1-size-on-a-byte-string.cddl",
+   "root": "r",
+   "hex": "4161",
+   "expect": "invalid",
+   "constructs": [
+    "control.size"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.8.1 .size on a byte string: one byte"
+  },
+  {
+   "id": "rfc8610/15/03",
+   "schema": "schemas/rfc8610/15-3-8-1-size-on-a-byte-string.cddl",
+   "root": "r",
+   "hex": "456162636465",
+   "expect": "invalid",
+   "constructs": [
+    "control.size"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.8.1 .size on a byte string: five bytes"
+  },
+  {
+   "id": "rfc8610/16/01",
+   "schema": "schemas/rfc8610/16-3-8-4-cbor.cddl",
+   "root": "r",
+   "hex": "43820102",
+   "expect": "valid",
+   "constructs": [
+    "control.cbor"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.8.4 .cbor: a byte string holding the array"
+  },
+  {
+   "id": "rfc8610/16/02",
+   "schema": "schemas/rfc8610/16-3-8-4-cbor.cddl",
+   "root": "r",
+   "hex": "4482016178",
+   "expect": "invalid",
+   "constructs": [
+    "control.cbor"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.8.4 .cbor: the array inside does not match"
+  },
+  {
+   "id": "rfc8610/16/03",
+   "schema": "schemas/rfc8610/16-3-8-4-cbor.cddl",
+   "root": "r",
+   "hex": "41ff",
+   "expect": "invalid",
+   "constructs": [
+    "control.cbor"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.8.4 .cbor: not CBOR at all"
+  },
+  {
+   "id": "rfc8610/17/01",
+   "schema": "schemas/rfc8610/17-3-6-tags.cddl",
+   "root": "r",
+   "hex": "d8207468747470733a2f2f6578616d706c652e6f72672f",
+   "expect": "valid",
+   "constructs": [
+    "syntax.tag"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.6 tags: tag 32 around text"
+  },
+  {
+   "id": "rfc8610/17/02",
+   "schema": "schemas/rfc8610/17-3-6-tags.cddl",
+   "root": "r",
+   "hex": "d82001",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.tag"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.6 tags: tag 32 around an int"
+  },
+  {
+   "id": "rfc8610/17/03",
+   "schema": "schemas/rfc8610/17-3-6-tags.cddl",
+   "root": "r",
+   "hex": "d8216178",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.tag"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.6 tags: another tag"
+  },
+  {
+   "id": "rfc8610/17/04",
+   "schema": "schemas/rfc8610/17-3-6-tags.cddl",
+   "root": "r",
+   "hex": "7468747470733a2f2f6578616d706c652e6f72672f",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.tag"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.6 tags: no tag"
+  },
+  {
+   "id": "rfc8610/18/01",
+   "schema": "schemas/rfc8610/18-3-9-generics.cddl",
+   "root": "r",
+   "hex": "82016161",
+   "expect": "valid",
+   "constructs": [
+    "syntax.generics"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.9 generics: `K` is int and `V` is tstr"
+  },
+  {
+   "id": "rfc8610/18/02",
+   "schema": "schemas/rfc8610/18-3-9-generics.cddl",
+   "root": "r",
+   "hex": "82616101",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.generics"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.9 generics: the other way round"
+  },
+  {
+   "id": "rfc8610/19/01",
+   "schema": "schemas/rfc8610/19-3-9-sockets.cddl",
+   "root": "r",
+   "hex": "01",
+   "expect": "valid",
+   "constructs": [
+    "syntax.sockets"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.9 sockets: an extension"
+  },
+  {
+   "id": "rfc8610/19/02",
+   "schema": "schemas/rfc8610/19-3-9-sockets.cddl",
+   "root": "r",
+   "hex": "6161",
+   "expect": "valid",
+   "constructs": [
+    "syntax.sockets"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.9 sockets: an extension"
+  },
+  {
+   "id": "rfc8610/19/03",
+   "schema": "schemas/rfc8610/19-3-9-sockets.cddl",
+   "root": "r",
+   "hex": "f5",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.sockets"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.9 sockets: none extends it"
+  },
+  {
+   "id": "rfc8610/20/01",
+   "schema": "schemas/rfc8610/20-2-2-2-extending-a-type.cddl",
+   "root": "r",
+   "hex": "01",
+   "expect": "valid",
+   "constructs": [
+    "syntax.type-extend"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §2.2.2 extending a type: the original"
+  },
+  {
+   "id": "rfc8610/20/02",
+   "schema": "schemas/rfc8610/20-2-2-2-extending-a-type.cddl",
+   "root": "r",
+   "hex": "6161",
+   "expect": "valid",
+   "constructs": [
+    "syntax.type-extend"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §2.2.2 extending a type: the extension"
+  },
+  {
+   "id": "rfc8610/20/03",
+   "schema": "schemas/rfc8610/20-2-2-2-extending-a-type.cddl",
+   "root": "r",
+   "hex": "f5",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.type-extend"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §2.2.2 extending a type: neither"
+  },
+  {
+   "id": "rfc8610/21/01",
+   "schema": "schemas/rfc8610/21-2-1-recursion.cddl",
+   "root": "tree",
+   "hex": "80",
+   "expect": "valid",
+   "constructs": [
+    "syntax.recursion"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §2.1 recursion: a leaf"
+  },
+  {
+   "id": "rfc8610/21/02",
+   "schema": "schemas/rfc8610/21-2-1-recursion.cddl",
+   "root": "tree",
+   "hex": "82808180",
+   "expect": "valid",
+   "constructs": [
+    "syntax.recursion"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §2.1 recursion: nested"
+  },
+  {
+   "id": "rfc8610/21/03",
+   "schema": "schemas/rfc8610/21-2-1-recursion.cddl",
+   "root": "tree",
+   "hex": "8101",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.recursion"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §2.1 recursion: an int is not a tree"
+  },
+  {
+   "id": "rfc8610/22/01",
+   "schema": "schemas/rfc8610/22-appendix-d-time-and-tdate.cddl",
+   "root": "r",
+   "hex": "c11a514b67b0",
+   "expect": "valid",
+   "constructs": [
+    "prelude.time"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 Appendix D time and tdate: epoch time as an integer"
+  },
+  {
+   "id": "rfc8610/22/02",
+   "schema": "schemas/rfc8610/22-appendix-d-time-and-tdate.cddl",
+   "root": "r",
+   "hex": "c1fb41d452d9ec200000",
+   "expect": "valid",
+   "constructs": [
+    "prelude.time"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 Appendix D time and tdate: epoch time as a float"
+  },
+  {
+   "id": "rfc8610/22/03",
+   "schema": "schemas/rfc8610/22-appendix-d-time-and-tdate.cddl",
+   "root": "r",
+   "hex": "c074323031332d30332d32315432303a30343a30305a",
+   "expect": "valid",
+   "constructs": [
+    "prelude.time"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 Appendix D time and tdate: a date and time string"
+  },
+  {
+   "id": "rfc8610/22/04",
+   "schema": "schemas/rfc8610/22-appendix-d-time-and-tdate.cddl",
+   "root": "r",
+   "hex": "c16178",
+   "expect": "invalid",
+   "constructs": [
+    "prelude.time"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 Appendix D time and tdate: epoch time is a number"
+  },
+  {
+   "id": "rfc8610/22/05",
+   "schema": "schemas/rfc8610/22-appendix-d-time-and-tdate.cddl",
+   "root": "r",
+   "hex": "1a514b67b0",
+   "expect": "invalid",
+   "constructs": [
+    "prelude.time"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 Appendix D time and tdate: untagged"
+  },
+  {
+   "id": "rfc8610/23/01",
+   "schema": "schemas/rfc8610/23-3-1-literals.cddl",
+   "root": "r",
+   "hex": "6161",
+   "expect": "valid",
+   "constructs": [
+    "syntax.text-literal"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.1 literals: a text literal"
+  },
+  {
+   "id": "rfc8610/23/02",
+   "schema": "schemas/rfc8610/23-3-1-literals.cddl",
+   "root": "r",
+   "hex": "01",
+   "expect": "valid",
+   "constructs": [
+    "syntax.text-literal"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.1 literals: an integer literal"
+  },
+  {
+   "id": "rfc8610/23/03",
+   "schema": "schemas/rfc8610/23-3-1-literals.cddl",
+   "root": "r",
+   "hex": "f5",
+   "expect": "valid",
+   "constructs": [
+    "syntax.text-literal"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.1 literals: true"
+  },
+  {
+   "id": "rfc8610/23/04",
+   "schema": "schemas/rfc8610/23-3-1-literals.cddl",
+   "root": "r",
+   "hex": "f6",
+   "expect": "valid",
+   "constructs": [
+    "syntax.text-literal"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.1 literals: null"
+  },
+  {
+   "id": "rfc8610/23/05",
+   "schema": "schemas/rfc8610/23-3-1-literals.cddl",
+   "root": "r",
+   "hex": "4101",
+   "expect": "valid",
+   "constructs": [
+    "syntax.text-literal"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.1 literals: a byte string literal"
+  },
+  {
+   "id": "rfc8610/23/06",
+   "schema": "schemas/rfc8610/23-3-1-literals.cddl",
+   "root": "r",
+   "hex": "02",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.text-literal"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.1 literals: another int"
+  },
+  {
+   "id": "rfc8610/23/07",
+   "schema": "schemas/rfc8610/23-3-1-literals.cddl",
+   "root": "r",
+   "hex": "f4",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.text-literal"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.1 literals: false"
+  },
+  {
+   "id": "rfc8610/23/08",
+   "schema": "schemas/rfc8610/23-3-1-literals.cddl",
+   "root": "r",
+   "hex": "6162",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.text-literal"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.1 literals: another text"
+  },
+  {
+   "id": "rfc8610/24/01",
+   "schema": "schemas/rfc8610/24-3-8-5-and.cddl",
+   "root": "r",
+   "hex": "07",
+   "expect": "valid",
+   "constructs": [
+    "control.and"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.8.5 .and: both match"
+  },
+  {
+   "id": "rfc8610/24/02",
+   "schema": "schemas/rfc8610/24-3-8-5-and.cddl",
+   "root": "r",
+   "hex": "0b",
+   "expect": "invalid",
+   "constructs": [
+    "control.and"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.8.5 .and: outside the range"
+  },
+  {
+   "id": "rfc8610/24/03",
+   "schema": "schemas/rfc8610/24-3-8-5-and.cddl",
+   "root": "r",
+   "hex": "20",
+   "expect": "invalid",
+   "constructs": [
+    "control.and"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.8.5 .and: not a uint"
+  },
+  {
+   "id": "rfc8610/25/01",
+   "schema": "schemas/rfc8610/25-3-8-1-size-on-an-integer.cddl",
+   "root": "r",
+   "hex": "18ff",
+   "expect": "valid",
+   "constructs": [
+    "control.size"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.8.1 .size on an integer: fits one byte"
+  },
+  {
+   "id": "rfc8610/25/02",
+   "schema": "schemas/rfc8610/25-3-8-1-size-on-an-integer.cddl",
+   "root": "r",
+   "hex": "190100",
+   "expect": "invalid",
+   "constructs": [
+    "control.size"
+   ],
+   "provenance": "constructed",
+   "source": "RFC 8610 §3.8.1 .size on an integer: needs two bytes"
+  }
+ ]
+}

@@ -1,0 +1,2 @@
+; §3.8.4 .cbor
+r = bstr .cbor [int, int]
