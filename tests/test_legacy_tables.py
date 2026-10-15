@@ -44,7 +44,7 @@ class TestMaps(unittest.TestCase):
             1: field('one', 'uint', optional=True),
             's': field('s', 'int'),
             5: field('reg', 'bstr', optional=True, registered=True),
-            7: field('7', 'bool'),
+            7: dict(field('7', 'bool'), cut=False),  # '=>' has no cut (#202)
         }})
         self.assertEqual(p.registered_params, {5: 'reg'})
 

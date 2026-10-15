@@ -465,10 +465,7 @@
     "syntax.map"
    ],
    "provenance": "constructed",
-   "source": "RFC 8610 §3.5.4 no cut: without a cut the wildcard may claim the key",
-   "status": "gap",
-   "issue": 202,
-   "reason": "A literal key written with `=>` claims its key as if it had a cut, so the wildcard cannot take an entry whose value the member rejects (RFC 8610 §3.5.4)."
+   "source": "RFC 8610 §3.5.4 no cut: without a cut the wildcard may claim the key"
   },
   {
    "id": "rfc8610/09/03",

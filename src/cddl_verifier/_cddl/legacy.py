@@ -238,9 +238,49 @@ class LegacyTables:
 
     @staticmethod
     def _partial_def(fields: Dict, computed: List) -> Dict:
+        """The table entry of one alternative of a map (see :meth:`_map`).
+
+        A repeated group choice among its members (#201) is flattened: the members
+        of every alternative are checked as optional ones, and the choice itself
+        (``repeated``) is checked on the data as a whole by the validator. A key the
+        map already has as an ordinary member stays that member's, as a key cannot
+        be written twice.
+        """
         type_def = {'fields': dict(fields), 'type': 'map'}
-        if computed:
-            type_def['computed_keys'] = [dict(c) for c in computed]
+        members = [dict(c) for c in computed if 'choice' not in c]
+        base_keys = set(fields)
+        pending = [c['choice'] for c in computed if 'choice' in c]
+        while pending:
+            repeated = pending.pop(0)
+            spec = {'min': repeated['min'], 'max': repeated['max'], 'alternatives': []}
+            for alt in repeated['alternatives']:
+                # a choice inside an alternative is checked beside it, whether or not
+                # the alternative is present, so it can only be required to be allowed
+                for inner in alt['members']:
+                    if 'choice' in inner:
+                        pending.append(dict(inner['choice'], min=0))
+                own = {key: info for key, info in alt['fields'].items() if key not in base_keys}
+                for key, info in own.items():
+                    shared = type_def['fields'].get(key)
+                    if shared is not None and shared['type'] != info['type']:
+                        info = dict(info, type=_joined(shared['type'], info['type']))
+                    type_def['fields'][key] = dict(info, optional=True)
+                taken = []
+                for member in alt['members']:
+                    if 'choice' in member:
+                        continue
+                    # the member is checked like any other, but how many entries it may take
+                    # is a matter of how many repetitions use this alternative
+                    taken.append({'index': len(members), 'min': member['min'], 'max': member['max']})
+                    members.append(dict(member, min=0, max=None))
+                spec['alternatives'].append({
+                    'types': {key: info['type'] for key, info in own.items()},
+                    'names': {key: info['name'] for key, info in own.items()},
+                    'required': [key for key, info in own.items() if not info.get('optional')],
+                    'members': taken})
+            type_def.setdefault('repeated', []).append(spec)
+        if members:
+            type_def['computed_keys'] = members
         return type_def
 
     def _flat_partial(self, group, owner: str):
@@ -426,6 +466,10 @@ class LegacyTables:
                 'optional': optional}
         if label is not None:
             info['registered'] = True
+        elif key_node.kind == 'type' and not key_node.cut:
+            # '"a" => T' does not cut (RFC 8610 3.5.4): when the value does not
+            # match, a later member may take the entry (#202)
+            info['cut'] = False
         return key, info
 
     def _array(self, group, owner: str) -> Dict:
@@ -1000,6 +1044,18 @@ def _spliced(entry):
     return None
 
 
+def _scaled(member, low, high, is_choice):
+    """*member* (a computed-key member or a repeated choice) used *low* to *high* times."""
+    scaled = dict(member, min=member['min'] * low,
+                  max=None if member['max'] is None or high is None else member['max'] * high)
+    return {'choice': scaled} if is_choice else scaled
+
+
+def _joined(left, right):
+    """The type of a key that two alternatives of a repeated choice give different types."""
+    return Type(tuple(left.alternatives) + tuple(right.alternatives))
+
+
 def _merge_partials(left, right):
     """The members of two partial maps together; a key written twice keeps the first."""
     fields = dict(left[0])
@@ -1017,11 +1073,17 @@ def _occurs(partials, occurrence):
     if occurrence is None:
         return partials
     low, high = occurrence.min, occurrence.max
+    if len(partials) > 1 and (high is None or high > 1):
+        # '{+ g}' with a choice in g: each repetition takes any alternative, so a
+        # map can mix entries of several. One partial stands for all the ways;
+        # the data decides which alternatives are present (#201)
+        return [({}, [{'choice': {
+            'min': low, 'max': high,
+            'alternatives': [{'fields': fields, 'members': computed} for fields, computed in partials]}}])]
     result = []
     for fields, computed in partials:
         if high is None or high > 1 or low > 1:
-            computed = [dict(c, min=c['min'] * low,
-                             max=None if c['max'] is None or high is None else c['max'] * high)
+            computed = [_scaled(c['choice'] if 'choice' in c else c, low, high, 'choice' in c)
                         for c in computed]
         result.append((fields, computed))
     if low == 0:

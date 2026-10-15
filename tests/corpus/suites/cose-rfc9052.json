@@ -202,10 +202,10 @@
    "source": "RFC 9052 CDDL: a COSE_Sign with one COSE_Signature"
   },
   {
-   "id": "constructed/sign1-bad-alg-type",
+   "id": "constructed/sign1-alg-bytes",
    "root": null,
    "hex": "d28443a10140a0426869480000000000000000",
-   "expect": "invalid",
+   "expect": "valid",
    "constructs": [
     "syntax.tag",
     "control.cbor",
@@ -214,7 +214,7 @@
     "syntax.map"
    ],
    "provenance": "constructed",
-   "source": "RFC 9052 CDDL: the alg header (1) is `int / tstr`"
+   "source": "RFC 9052 CDDL: the alg header is written `? 1 => int / tstr` and `=>` does not cut (RFC 8610 §3.5.4), so `* label => values` takes an alg that is not an int or text string: the CDDL cannot forbid it"
   },
   {
    "id": "constructed/sign1-detached",
@@ -1815,9 +1815,7 @@
     "syntax.map"
    ],
    "provenance": "verbatim",
-   "source": "x509-examples/signed-01.json: signed-01: Signed message w/ x5bag containing one certificate",
-   "status": "source-defect",
-   "reason": "The example encodes the `kid` header (4) as a text string (`6e 416c...`), although its own `cbor_diag` shows a byte string and RFC 9052 defines `kid` as `bstr`; signed-02 has the same defect. The library is right to reject it."
+   "source": "x509-examples/signed-01.json: signed-01: Signed message w/ x5bag containing one certificate"
   }
  ]
 }
