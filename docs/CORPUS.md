@@ -10,7 +10,7 @@ Schemas and CBOR from the RFCs and IETF drafts that use CDDL (RFC 8610 and RFC 9
 
 | Suite | What it covers | Cases | Pass | Gap | Divergence | Source defect |
 |---|---|--:|--:|--:|--:|--:|
-| `cddlc-tests` | cddlc test suite: RFC 8610 and RFC 9165 constructs | 270 | 251 | 10 | 9 |  |
+| `cddlc-tests` | cddlc test suite: RFC 8610 and RFC 9165 constructs | 270 | 261 |  | 9 |  |
 | `corim` | CoRIM and CoMID (draft-ietf-rats-corim) | 36 | 36 |  |  |  |
 | `cose-rfc9052` | COSE messages and keys (RFC 9052) | 124 | 124 |  |  |  |
 | `coswid-rfc9393` | Concise Software Identification tags (RFC 9393) | 26 | 26 |  |  |  |
@@ -61,10 +61,6 @@ Every source is pinned to the commit it was taken from. Text published in IETF d
 |---|---|---|---|---|
 | `cddlc-tests` | `divergence` |  | `cddlc/13a-size/01`, `cddlc/13a-size/02`, `cddlc/13a-size/04` and 1 more | RFC 8610 §3.8.1 defines `.size` for byte strings, text strings and unsigned integers; this library does not accept `int` as the target of `.size` (`uint .size N` works), where cddlc applies it to the non-negative integers. |
 | `cddlc-tests` | `divergence` |  | `cddlc/16-feature/05`, `cddlc/16a-feature/05` | RFC 9165 leaves which features are enabled to the tool; this library has no way to name them, so every `.feature` counts as enabled and the base type alone decides. |
-| `cddlc-tests` | `gap` | [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `cddlc/18-abnf/05` | `.abnf` is parsed but not enforced. |
-| `cddlc-tests` | `gap` | [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `cddlc/20-plus-i/03` | `.plus` is parsed but not enforced. |
-| `cddlc-tests` | `gap` | [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `cddlc/21-cat/01`, `cddlc/21-cat/03` | `.cat` is parsed but not enforced. |
-| `cddlc-tests` | `gap` | [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `cddlc/22-det/03`, `cddlc/22a-det/03`, `cddlc/22b-det/05` and 3 more | `.det` is parsed but not enforced. |
 | `cddlc-tests` | `divergence` |  | `cddlc/6-bigint/03`, `cddlc/6-bigint/04`, `cddlc/6-bigint/05` | The RFC 8610 prelude defines `bigint = biguint / bignint` (tags 2 and 3 only) and this library follows it: an integer that fits in 64 bits is an `int` or `integer`, not a `bigint`. The cddlc test also accepts such integers. |
 
 ## Unsupported constructs
@@ -73,25 +69,6 @@ The constructs the [conformance matrix](CONFORMANCE.md) marks unsupported or par
 
 | Construct | Matrix status | Corpus cases | Showing the gap |
 |---|---|--:|--:|
-| `.plus` | unsupported | 10 | 1 |
-| `.cat` | unsupported | 12 | 2 |
-| `.det` | unsupported | 89 | 6 |
-| `.abnf` | unsupported | 7 | 1 |
-| `.abnfb` | unsupported | none |  |
-| `.b64u` | unsupported | none |  |
-| `.b64c` | unsupported | none |  |
-| `.b64u-sloppy` | unsupported | none |  |
-| `.b64c-sloppy` | unsupported | none |  |
-| `.b45` | unsupported | none |  |
-| `.b32` | unsupported | none |  |
-| `.h32` | unsupported | none |  |
-| `.hex` | unsupported | none |  |
-| `.hexlc` | unsupported | none |  |
-| `.hexuc` | unsupported | none |  |
-| `.base10` | unsupported | none |  |
-| `.printf` | unsupported | none |  |
-| `.json` | unsupported | none |  |
-| `.join` | unsupported | none |  |
 | `mime-message` | partial | none |  |
 | Floats (half, single, double) | partial | none |  |
 

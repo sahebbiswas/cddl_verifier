@@ -19,7 +19,7 @@ Layers: the **parser** reads the syntax into the typed **AST**; the **resolver**
 | Area | ✅ supported | 🟡 partial | ❌ unsupported | Total |
 |------|-------------:|-----------:|---------------:|------:|
 | CDDL syntax and semantics | 28 | 0 | 0 | 28 |
-| Control operators | 15 | 0 | 19 | 34 |
+| Control operators | 34 | 0 | 0 | 34 |
 | Prelude types (RFC 8610 Appendix D) | 14 | 1 | 0 | 15 |
 | CBOR data model (RFC 8949) | 10 | 1 | 0 | 11 |
 
@@ -78,26 +78,26 @@ Every operator the resolver knows (RFC 8610, RFC 9165, RFC 9741). An operator th
 | `.eq` | RFC 8610 §3.8 | ✅ | ✅ | ✅ | ✅ | ✅ | – | The data equals the argument, which must be one value: a literal, `true`, `false`, `null`, `undefined` or a rule that is one. Any other argument is a schema error. | `test_set_controls.py` |
 | `.ne` | RFC 8610 §3.8 | ✅ | ✅ | ✅ | ✅ | ✅ | – | The data differs from the argument, which must be one value, as for `.eq`. | `test_set_controls.py` |
 | `.default` | RFC 8610 §3.8 | ✅ | ✅ | ✅ | ✅ | ✅ | – | Advisory: the data must match the base type; the default value itself is not applied. | `test_cbor_control_args.py` |
-| `.plus` | RFC 9165 | ❌ | ✅ | ✅ | ✅ | ❌ | – | Not computed: `4 .plus 1` rejects the correct value 5 (#76). [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `test_resolve.py` |
-| `.cat` | RFC 9165 | ❌ | ✅ | ✅ | ✅ | ❌ | – | Not computed: `"a" .cat "b"` rejects the correct value `"ab"`, and `tstr .cat "b"` accepts anything (#76). [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `test_resolve.py` |
-| `.det` | RFC 9165 | ❌ | ✅ | ✅ | ✅ | ❌ | – | Parsed; the validator treats the target as an ordinary type (#76). [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `test_resolve.py` |
-| `.abnf` | RFC 9165 | ❌ | ✅ | ✅ | ✅ | ❌ | – | Accepted without parsing the grammar (#76). [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `test_resolve.py` |
-| `.abnfb` | RFC 9165 | ❌ | ✅ | ✅ | ✅ | ❌ | – | Accepted without parsing the grammar (#76). [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `test_resolve.py` |
+| `.plus` | RFC 9165 | ✅ | ✅ | ✅ | ✅ | ✅ | – | Both operands must be numbers (literals, rules that are literals, ranges or choices of them); the result is a number of the type of the target (a float target gives a float, an integer target the floor of the sum). A result with several values, or a range, is a type to match; one value is also a fixed map key (`(BASE .plus 1) => int`). Operands that are not literals (`uint .plus 1`) are a schema error. | `test_computed_literals.py` |
+| `.cat` | RFC 9165 | ✅ | ✅ | ✅ | ✅ | ✅ | – | The result has the type of the target: bytes of both operands are joined, and a text result must be valid UTF-8. Operands that are not string literals (`tstr .cat "a"`) are a schema error. | `test_computed_literals.py` |
+| `.det` | RFC 9165 | ✅ | ✅ | ✅ | ✅ | ✅ | – | Like `.cat`, after each operand is dedented: the smallest number of leading spaces on its non-blank lines is removed from every line (RFC 9165 section 2.3). | `test_computed_literals.py` |
+| `.abnf` | RFC 9165 | ✅ | ✅ | ✅ | ✅ | ✅ | – | The string must be in the language of the ABNF text of the argument (RFC 5234 with RFC 7405; one element, then the rules, a single linefeed as newline; all rules must be in the text). Text is read as code points; a byte string as UTF-8. Left recursion and ambiguity are handled; a match that needs more than 2 million steps is rejected. Prose and undefined rules are schema errors. | `test_abnf.py`, `test_text_controls.py` |
+| `.abnfb` | RFC 9165 | ✅ | ✅ | ✅ | ✅ | ✅ | – | Like `.abnf`, with the ABNF read over the bytes of the string (a text string as UTF-8). | `test_abnf.py`, `test_text_controls.py` |
 | `.feature` | RFC 9165 | ✅ | ✅ | ✅ | ✅ | ✅ | – | Advisory (RFC 9165): the data must match the base type; the feature name is not interpreted. | `test_resolve.py` |
-| `.b64u` | RFC 9741 | ❌ | ✅ | ✅ | ✅ | ❌ | – | Accepted without decoding the text (#76). [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `test_resolve.py` |
-| `.b64c` | RFC 9741 | ❌ | ✅ | ✅ | ✅ | ❌ | – | Accepted without decoding the text (#76). [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `test_resolve.py` |
-| `.b64u-sloppy` | RFC 9741 | ❌ | ✅ | ✅ | ✅ | ❌ | – | Accepted without decoding the text (#76). [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `test_resolve.py` |
-| `.b64c-sloppy` | RFC 9741 | ❌ | ✅ | ✅ | ✅ | ❌ | – | Accepted without decoding the text (#76). [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `test_resolve.py` |
-| `.b45` | RFC 9741 | ❌ | ✅ | ✅ | ✅ | ❌ | – | Accepted without decoding the text (#76). [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `test_resolve.py` |
-| `.b32` | RFC 9741 | ❌ | ✅ | ✅ | ✅ | ❌ | – | Accepted without decoding the text (#76). [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `test_resolve.py` |
-| `.h32` | RFC 9741 | ❌ | ✅ | ✅ | ✅ | ❌ | – | Accepted without decoding the text (#76). [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `test_resolve.py` |
-| `.hex` | RFC 9741 | ❌ | ✅ | ✅ | ✅ | ❌ | – | Accepted without decoding the text (#76). [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `test_resolve.py` |
-| `.hexlc` | RFC 9741 | ❌ | ✅ | ✅ | ✅ | ❌ | – | Accepted without decoding the text (#76). [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `test_resolve.py` |
-| `.hexuc` | RFC 9741 | ❌ | ✅ | ✅ | ✅ | ❌ | – | Accepted without decoding the text (#76). [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `test_resolve.py` |
-| `.base10` | RFC 9741 | ❌ | ✅ | ✅ | ✅ | ❌ | – | Accepted without decoding the text (#76). [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `test_resolve.py` |
-| `.printf` | RFC 9741 | ❌ | ✅ | ✅ | ✅ | ❌ | – | Accepted without formatting (#76). [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `test_resolve.py` |
-| `.json` | RFC 9741 | ❌ | ✅ | ✅ | ✅ | ❌ | – | Accepted without parsing the JSON text (#76). [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `test_resolve.py` |
-| `.join` | RFC 9741 | ❌ | ✅ | ✅ | ✅ | ❌ | – | Accepted without joining (#76). [#76](https://github.com/sahebbiswas/cddl_verifier/issues/76) | `test_resolve.py` |
+| `.b64u` | RFC 9741 | ✅ | ✅ | ✅ | ✅ | ✅ | – | The text is base64url without padding (RFC 4648 section 5) and its bytes match the argument; no other alphabet, no padding, no blank space, and no non-zero bits after the last character. | `test_text_controls.py` |
+| `.b64c` | RFC 9741 | ✅ | ✅ | ✅ | ✅ | ✅ | – | The text is classic base64 with padding (RFC 4648 section 4) and its bytes match the argument; no non-zero bits after the last character. | `test_text_controls.py` |
+| `.b64u-sloppy` | RFC 9741 | ✅ | ✅ | ✅ | ✅ | ✅ | – | Like `.b64u`, but bits after the last character may be non-zero. | `test_text_controls.py` |
+| `.b64c-sloppy` | RFC 9741 | ✅ | ✅ | ✅ | ✅ | ✅ | – | Like `.b64c`, but bits after the last character may be non-zero. | `test_text_controls.py` |
+| `.b45` | RFC 9741 | ✅ | ✅ | ✅ | ✅ | ✅ | – | The text is base45 (RFC 9285) and its bytes match the argument. | `test_text_controls.py` |
+| `.b32` | RFC 9741 | ✅ | ✅ | ✅ | ✅ | ✅ | – | The text is base32 without padding (RFC 4648 section 6, upper case) and its bytes match the argument. | `test_text_controls.py` |
+| `.h32` | RFC 9741 | ✅ | ✅ | ✅ | ✅ | ✅ | – | The text is base32 with the extended hex alphabet and no padding (RFC 4648 section 7, upper case) and its bytes match the argument. | `test_text_controls.py` |
+| `.hex` | RFC 9741 | ✅ | ✅ | ✅ | ✅ | ✅ | – | The text is hexadecimal in either case (RFC 4648 section 8) and its bytes match the argument; no blank space. | `test_text_controls.py` |
+| `.hexlc` | RFC 9741 | ✅ | ✅ | ✅ | ✅ | ✅ | – | Like `.hex`, in lower case only. | `test_text_controls.py` |
+| `.hexuc` | RFC 9741 | ✅ | ✅ | ✅ | ✅ | ✅ | – | Like `.hex`, in upper case only. | `test_text_controls.py` |
+| `.base10` | RFC 9741 | ✅ | ✅ | ✅ | ✅ | ✅ | – | The text is a decimal integer without leading zeros (`0\|-?[1-9][0-9]*`) and its value matches the argument. | `test_text_controls.py` |
+| `.printf` | RFC 9741 | ✅ | ✅ | ✅ | ✅ | ✅ | – | The text is what C `printf` writes for the format (the first element of the argument array) and data items that match the other elements, which may be types. Conversions `d i u o x X e E f F g G c s` with flags, width and precision; length modifiers, `*`, `a`, `p` and `n` are schema errors. The text is taken apart by the format and each conversion read back and written again, so only exact output matches. Where a format can be split in several ways (adjacent `%s`), only the first split is tried. | `test_text_controls.py` |
+| `.json` | RFC 9741 | ✅ | ✅ | ✅ | ✅ | ✅ | – | The text is one JSON value (RFC 8259: no `NaN`, no repeated member names) and its conversion to the CBOR data model (RFC 8949 section 6.2) matches the argument. | `test_text_controls.py` |
+| `.join` | RFC 9741 | ✅ | ✅ | ✅ | ✅ | ✅ | – | The string is the concatenation of strings that match the elements of the argument array, written out and each once: literal elements are markers, the others take what is between them and must fit their type (as text or as bytes). The result is the kind of string of the first element. A string that can be split in too many ways (adjacent variable elements) is rejected after 20000 tries. | `test_text_controls.py` |
 
 ## Prelude types (RFC 8610 Appendix D)
 

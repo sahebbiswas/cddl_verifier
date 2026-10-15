@@ -987,10 +987,7 @@
    "constructs": [
     "control.abnf"
    ],
-   "source": "test/18-abnf.cddl: `;;- \"c\"`",
-   "status": "gap",
-   "issue": 76,
-   "reason": "`.abnf` is parsed but not enforced."
+   "source": "test/18-abnf.cddl: `;;- \"c\"`"
   },
   {
    "id": "cddlc/18-abnf/06",
@@ -1397,10 +1394,7 @@
    "constructs": [
     "control.plus"
    ],
-   "source": "test/20-plus-i.cddl: `;;+ 8`",
-   "status": "gap",
-   "issue": 76,
-   "reason": "`.plus` is parsed but not enforced."
+   "source": "test/20-plus-i.cddl: `;;+ 8`"
   },
   {
    "id": "cddlc/20-plus-i/04",
@@ -1488,10 +1482,7 @@
    "constructs": [
     "control.cat"
    ],
-   "source": "test/21-cat.cddl: `;;- \"a\"`",
-   "status": "gap",
-   "issue": 76,
-   "reason": "`.cat` is parsed but not enforced."
+   "source": "test/21-cat.cddl: `;;- \"a\"`"
   },
   {
    "id": "cddlc/21-cat/02",
@@ -1513,10 +1504,7 @@
    "constructs": [
     "control.cat"
    ],
-   "source": "test/21-cat.cddl: `;;+ \"ab\"`",
-   "status": "gap",
-   "issue": 76,
-   "reason": "`.cat` is parsed but not enforced."
+   "source": "test/21-cat.cddl: `;;+ \"ab\"`"
   },
   {
    "id": "cddlc/21-cat/04",
@@ -1648,10 +1636,7 @@
    "constructs": [
     "control.det"
    ],
-   "source": "test/22-det.cddl: `;;+ \"ab\"`",
-   "status": "gap",
-   "issue": 76,
-   "reason": "`.det` is parsed but not enforced."
+   "source": "test/22-det.cddl: `;;+ \"ab\"`"
   },
   {
    "id": "cddlc/22-det/04",
@@ -1783,10 +1768,7 @@
    "constructs": [
     "control.det"
    ],
-   "source": "test/22a-det.cddl: `;;+ \"ab\"`",
-   "status": "gap",
-   "issue": 76,
-   "reason": "`.det` is parsed but not enforced."
+   "source": "test/22a-det.cddl: `;;+ \"ab\"`"
   },
   {
    "id": "cddlc/22a-det/04",
@@ -1940,10 +1922,7 @@
    "constructs": [
     "control.det"
    ],
-   "source": "test/22b-det.cddl: `;;+ 'ab'`",
-   "status": "gap",
-   "issue": 76,
-   "reason": "`.det` is parsed but not enforced."
+   "source": "test/22b-det.cddl: `;;+ 'ab'`"
   },
   {
    "id": "cddlc/22b-det/06",
@@ -2119,10 +2098,7 @@
    "constructs": [
     "control.det"
    ],
-   "source": "test/22c-det.cddl: `;;+ 'abä'`",
-   "status": "gap",
-   "issue": 76,
-   "reason": "`.det` is parsed but not enforced."
+   "source": "test/22c-det.cddl: `;;+ 'abä'`"
   },
   {
    "id": "cddlc/22c-det/07",
@@ -2309,10 +2285,7 @@
    "constructs": [
     "control.det"
    ],
-   "source": "test/22d-det.cddl: `;;+ 'abäfoo'`",
-   "status": "gap",
-   "issue": 76,
-   "reason": "`.det` is parsed but not enforced."
+   "source": "test/22d-det.cddl: `;;+ 'abäfoo'`"
   },
   {
    "id": "cddlc/22d-det/08",
@@ -2499,10 +2472,7 @@
    "constructs": [
     "control.det"
    ],
-   "source": "test/22e-det.cddl: `;;+ 'abäaa'`",
-   "status": "gap",
-   "issue": 76,
-   "reason": "`.det` is parsed but not enforced."
+   "source": "test/22e-det.cddl: `;;+ 'abäaa'`"
   },
   {
    "id": "cddlc/22e-det/08",

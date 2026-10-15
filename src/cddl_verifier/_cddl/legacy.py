@@ -40,6 +40,7 @@ from .._cbor import map_key
 from .ast import (Array, BytesLit, Control, FloatLit, Group, GroupRef, GroupRule, InlineGroup,
                   IntLit, Map, Member, Name, Paren, Tag, TextLit, Type, TypeRule, Unwrap,
                   entry_type, registered_label, walk)
+from . import computed
 from .parser import MAX_DEPTH
 from .printer import format_node
 
@@ -53,7 +54,7 @@ _MAX_MAP_ALTERNATIVES = 1024
 class _TooManyAlternatives(Exception):
     """A map's group choices multiply past ``_MAX_MAP_ALTERNATIVES``."""
 # Controls whose argument is a type that data is checked against (RFC 8610 §3.8)
-_TYPE_ARG_CONTROLS = frozenset({'cbor', 'cborseq'})
+_TYPE_ARG_CONTROLS = frozenset({'cbor', 'cborseq', 'json'})
 
 # Occurrences that make a map member optional.
 _OPTIONAL = ('?', '*')
@@ -458,7 +459,11 @@ class LegacyTables:
             # '1: T', '"x": T', and literal keys written '1 => T' (#104)
             literal = key_node.value if key_node.kind == 'value' else key_node.type
             key = _literal_key(literal, self._rule_names)
-            name = member.comment or (_spelling(literal) if key is not NOT_A_KEY else None)
+            if key is NOT_A_KEY:
+                key = self._computed_key(literal)  # '(BASE .plus 1) => int' (RFC 9165)
+                name = member.comment or (str(key) if key is not NOT_A_KEY else None)
+            else:
+                name = member.comment or _spelling(literal)
         if key is NOT_A_KEY:
             return None
         info = {'name': name,
@@ -471,6 +476,26 @@ class LegacyTables:
             # match, a later member may take the entry (#202)
             info['cut'] = False
         return key, info
+
+    def _computed_key(self, node):
+        """The map key a computed literal stands for (``BASE .plus 1`` with ``BASE = 0`` is 1), else :data:`NOT_A_KEY`.
+
+        Only one value is a key; a computation with several results, or a range, stays a
+        key type that entries are checked against.
+        """
+        if self.resolved is None:
+            return NOT_A_KEY
+        if isinstance(node, Paren) and len(node.type.alternatives) == 1:
+            return self._computed_key(node.type.alternatives[0])
+        if not isinstance(node, Control) or node.op not in computed.OPERATORS:
+            return NOT_A_KEY
+        try:
+            value = computed.single(computed.evaluate(self.resolved.rules, node))
+        except computed.ComputeError:
+            return NOT_A_KEY
+        if value is None:
+            return NOT_A_KEY
+        return map_key(value.value) if value.kind in ('float', 'bytes') else value.value
 
     def _array(self, group, owner: str) -> Dict:
         entries = _entries(group)
