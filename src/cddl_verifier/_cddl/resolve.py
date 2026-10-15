@@ -47,7 +47,7 @@ from .ast import (AnyItem, Array, BytesLit, ChoiceFrom, Control, FloatLit, Group
                   GroupChoice, GroupRef, GroupRule, InlineGroup, IntLit, Major, Map,
                   Member, Name, Occurrence, Paren, Range, Schema, Span, Tag, TextLit,
                   Type, TypeRule, Unwrap, walk)
-from . import xsd_regex
+from . import abnf, computed, conversions, xsd_regex
 from .errors import CDDLSemanticError
 from .prelude import parse_prelude
 
@@ -83,8 +83,20 @@ _CONTROL_KINDS: Dict[str, Tuple[Optional[FrozenSet[str]], Optional[FrozenSet[str
     'le': (_NUMERIC, _NUMERIC),
     'gt': (_NUMERIC, _NUMERIC),
     'ge': (_NUMERIC, _NUMERIC),
-    'abnf': (frozenset({'tstr'}), frozenset({'tstr'})),
-    'abnfb': (frozenset({'bstr'}), frozenset({'tstr'})),
+    # RFC 9165: both ABNF controls apply to either kind of string; the ABNF is text
+    'abnf': (frozenset({'tstr', 'bstr'}), frozenset({'tstr'})),
+    'abnfb': (frozenset({'tstr', 'bstr'}), frozenset({'tstr'})),
+    'plus': (_NUMERIC, _NUMERIC),
+    'cat': (frozenset({'tstr', 'bstr'}), frozenset({'tstr', 'bstr'})),
+    'det': (frozenset({'tstr', 'bstr'}), frozenset({'tstr', 'bstr'})),
+    # RFC 9741: text conversions
+    **{op: (frozenset({'tstr'}), frozenset({'bstr'}))
+       for op in ('b64u', 'b64c', 'b64u-sloppy', 'b64c-sloppy', 'b45', 'b32', 'h32',
+                  'hex', 'hexlc', 'hexuc')},
+    'base10': (frozenset({'tstr'}), frozenset({'uint', 'nint'})),
+    'printf': (frozenset({'tstr'}), frozenset({'array'})),
+    'json': (frozenset({'tstr'}), None),
+    'join': (frozenset({'tstr', 'bstr'}), frozenset({'array'})),
 }
 
 _KIND_NAMES = {
@@ -93,6 +105,11 @@ _KIND_NAMES = {
     'map': 'a map', 'tag': 'a tagged item', 'bool': 'a boolean', 'nil': 'null',
     'undefined': 'undefined', 'simple': 'a simple value',
 }
+
+#: Controls whose argument is checked as the schema is read (and again once a generic
+#: rule's arguments are in).
+_ARGUMENT_CHECKED = frozenset({'bits', 'regexp', 'abnf', 'abnfb', 'plus', 'cat', 'det',
+                               'printf', 'join'})
 
 TYPE, GROUP = 'type', 'group'
 
@@ -749,14 +766,94 @@ class _Resolver:
                                  f"a string, true, false, null or undefined, or a rule that is "
                                  f"one), not a type that matches several; '{node.name}' "
                                  f"passes one that matches several", node.span)
-            if sub.op in ('bits', 'regexp'):
+            if sub.op in _ARGUMENT_CHECKED:
                 problem = self.pattern_problem(sub, scope)
                 if problem:
                     raise self.error(f"{problem}; '{node.name}' passes it", node.span)
 
+    def open_names(self, node, scope) -> bool:
+        """Whether *node* mentions a generic parameter or a name this schema does not define.
+
+        Such a node cannot be computed with yet: a parameter is known where the generic rule
+        is used, and an undefined name is reported on its own.
+        """
+        return any(isinstance(sub, (Name, GroupRef)) and (sub.name in scope or sub.name not in self.rules)
+                   for sub in walk(node))
+
+    def string_literal(self, node, op: str, what: str):
+        """``(text, problem)``: the one text string *node* computes to, else why not."""
+        try:
+            items = computed.evaluate(self.rules, node)
+        except computed.ComputeError as exc:
+            return None, f"{what} of '.{op}' must be written as text (or computed from text): {exc}"
+        one = computed.single(items)
+        if one is None or one.kind != 'text':
+            return None, f"{what} of '.{op}' must be one text string"
+        return one.value, None
+
+    def entries_problem(self, node: Control, scope, op: str) -> Optional[str]:
+        """Why the array that is the argument of ``.printf`` or ``.join`` cannot be followed."""
+        if self.open_names(node.arg, scope):
+            return None
+        try:
+            entries = computed.array_entries(self.rules, node.arg)
+        except computed.ComputeError as exc:
+            return f"the argument of '.{op}' cannot be followed: {exc}"
+        if entries is None:
+            return f"the argument of '.{op}' must be an array that is written out"
+        for _entry, occurrence in entries[(1 if op == 'printf' else 0):]:
+            if occurrence is not None:
+                return (f"the elements of the argument of '.{op}' must be written out, each "
+                        f"once: '{occurrence.text}' cannot be followed")
+        if op == 'printf':
+            if not entries:
+                return "the argument of '.printf' is an array of a format string and its data items"
+            fmt, problem = self.string_literal(entries[0][0], op, 'the format string')
+            if problem:
+                return problem
+            try:
+                parts = conversions.parse_format(fmt)
+            except conversions.PrintfError as exc:
+                return f"the format string of '.printf' is not usable: {exc}"
+            wanted = sum(1 for part in parts if not isinstance(part, str))
+            if wanted != len(entries) - 1:
+                return (f"the format string of '.printf' has {wanted} conversion(s) but the array "
+                        f"gives {len(entries) - 1} data item(s)")
+        else:
+            for entry, _occurrence in entries:
+                kinds = self.kinds(entry, scope)
+                if kinds is not None and not kinds <= {'tstr', 'bstr'}:
+                    return (f"the elements of the argument of '.join' must be strings, not "
+                            f"{_describe_kinds(kinds)}")
+        return None
+
     def pattern_problem(self, node: Control, scope) -> Optional[str]:
-        """Why the argument of ``.regexp`` (an XSD pattern) or ``.bits`` (bit positions) is wrong."""
-        if node.op == 'regexp':
+        """Why the argument of a control that is read at validation time is wrong.
+
+        That is the XSD pattern of ``.regexp``, the bit positions of ``.bits``, the ABNF of
+        ``.abnf``, the operands of ``.plus``, ``.cat`` and ``.det`` and the arrays of
+        ``.printf`` and ``.join``.
+        """
+        if node.op in ('abnf', 'abnfb'):
+            if self.open_names(node.arg, scope):
+                return None
+            text, problem = self.string_literal(node.arg, node.op, 'the argument')
+            if problem:
+                return problem
+            try:
+                abnf.compile_abnf(text)
+            except abnf.AbnfError as exc:
+                return f"the argument of '.{node.op}' is not usable ABNF: {exc}"
+        elif node.op in computed.OPERATORS:
+            if self.open_names(node, scope):
+                return None
+            try:
+                computed.evaluate(self.rules, node)
+            except computed.ComputeError as exc:
+                return f"'.{node.op}' cannot be computed: {exc}"
+        elif node.op in ('printf', 'join'):
+            return self.entries_problem(node, scope, node.op)
+        elif node.op == 'regexp':
             pattern = self.literal(node.arg)
             if isinstance(pattern, TextLit):
                 try:

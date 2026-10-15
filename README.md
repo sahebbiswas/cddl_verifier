@@ -121,10 +121,12 @@ its items. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/blob/m
   So do schemas that parse but do not make sense, such as an undefined name, a
   misused generic or an unknown control operator
   ([#70](https://github.com/sahebbiswas/cddl_verifier/issues/70)).
-  Validation covers a practical subset of what the grammar can express: the
-  control operators `.abnf`, `.abnfb` and the
-  RFC 9741 conversions are parsed but not enforced
-  ([#76](https://github.com/sahebbiswas/cddl_verifier/issues/76)). The
+  Validation covers a practical subset of what the grammar can express; the
+  RFC 9165 and RFC 9741 controls are enforced (`.plus`, `.cat`, `.det`, `.abnf`,
+  `.abnfb`, the base64, base32, base16 and base45 conversions, `.base10`,
+  `.json`, `.printf` and `.join`), with the limits in
+  [CDDL_SUPPORT.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CDDL_SUPPORT.md#computed-literals-and-text-controls).
+  The
   [conformance matrix](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CONFORMANCE.md)
   has the full list.
 - **Canonical encoding**: implements the RFC 8949 §4.2.1 core deterministic

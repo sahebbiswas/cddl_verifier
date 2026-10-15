@@ -2548,26 +2548,51 @@
    "area": "control",
    "construct": "`.plus`",
    "spec": "RFC 9165",
-   "status": "unsupported",
+   "status": "supported",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "unsupported",
+    "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "Not computed: `4 .plus 1` rejects the correct value 5 (#76).",
-   "issues": [
-    76
-   ],
+   "notes": "Both operands must be numbers (literals, rules that are literals, ranges or choices of them); the result is a number of the type of the target (a float target gives a float, an integer target the floor of the sum). A result with several values, or a range, is a type to match; one value is also a fixed map key (`(BASE .plus 1) => int`). Operands that are not literals (`uint .plus 1`) are a schema error.",
+   "issues": [],
    "tests": [
-    "tests/test_resolve.py"
+    "tests/test_computed_literals.py"
    ],
    "probes": [
     {
      "schema": "r = 4 .plus 1",
-     "rejected_but_valid": [
+     "valid": [
       5
+     ],
+     "invalid": [
+      4,
+      6,
+      "5",
+      5.0
+     ]
+    },
+    {
+     "schema": "r = (1..3) .plus 10",
+     "valid": [
+      11,
+      13
+     ],
+     "invalid": [
+      10,
+      14
+     ]
+    },
+    {
+     "schema": "r = 1.5 .plus 1",
+     "valid": [
+      2.5
+     ],
+     "invalid": [
+      2,
+      3
      ]
     }
    ]
@@ -2577,32 +2602,54 @@
    "area": "control",
    "construct": "`.cat`",
    "spec": "RFC 9165",
-   "status": "unsupported",
+   "status": "supported",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "unsupported",
+    "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "Not computed: `\"a\" .cat \"b\"` rejects the correct value `\"ab\"`, and `tstr .cat \"b\"` accepts anything (#76).",
-   "issues": [
-    76
-   ],
+   "notes": "The result has the type of the target: bytes of both operands are joined, and a text result must be valid UTF-8. Operands that are not string literals (`tstr .cat \"a\"`) are a schema error.",
+   "issues": [],
    "tests": [
-    "tests/test_resolve.py"
+    "tests/test_computed_literals.py"
    ],
    "probes": [
     {
      "schema": "r = \"a\" .cat \"b\"",
-     "rejected_but_valid": [
+     "valid": [
       "ab"
+     ],
+     "invalid": [
+      "a",
+      "b",
+      "abc",
+      {
+       "$bytes": "6162"
+      }
      ]
     },
     {
-     "schema": "r = tstr .cat \"b\"",
-     "accepted_but_invalid": [
-      "zz"
+     "schema": "r = \"a\" .cat 'b'",
+     "valid": [
+      "ab"
+     ],
+     "invalid": [
+      {
+       "$bytes": "6162"
+      }
+     ]
+    },
+    {
+     "schema": "r = 'a' .cat \"b\"",
+     "valid": [
+      {
+       "$bytes": "6162"
+      }
+     ],
+     "invalid": [
+      "ab"
      ]
     }
    ]
@@ -2612,29 +2659,38 @@
    "area": "control",
    "construct": "`.det`",
    "spec": "RFC 9165",
-   "status": "unsupported",
+   "status": "supported",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "unsupported",
+    "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "Parsed; the validator treats the target as an ordinary type (#76).",
-   "issues": [
-    76
-   ],
+   "notes": "Like `.cat`, after each operand is dedented: the smallest number of leading spaces on its non-blank lines is removed from every line (RFC 9165 section 2.3).",
+   "issues": [],
    "tests": [
-    "tests/test_resolve.py"
+    "tests/test_computed_literals.py"
    ],
    "probes": [
     {
-     "schema": "r = tstr .det \"x\"",
+     "schema": "r = \"  a\" .det \"      b\"",
      "valid": [
-      "x"
+      "ab"
      ],
-     "accepted_but_invalid": [
-      "y"
+     "invalid": [
+      "  ab",
+      "a",
+      "b"
+     ]
+    },
+    {
+     "schema": "r = \"\\n    x\\n      y\" .det \"\\n  z\"",
+     "valid": [
+      "\nx\n  y\nz"
+     ],
+     "invalid": [
+      "\n    x\n      y\n  z"
      ]
     }
    ]
@@ -2644,29 +2700,43 @@
    "area": "control",
    "construct": "`.abnf`",
    "spec": "RFC 9165",
-   "status": "unsupported",
+   "status": "supported",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "unsupported",
+    "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "Accepted without parsing the grammar (#76).",
-   "issues": [
-    76
-   ],
+   "notes": "The string must be in the language of the ABNF text of the argument (RFC 5234 with RFC 7405; one element, then the rules, a single linefeed as newline; all rules must be in the text). Text is read as code points; a byte string as UTF-8. Left recursion and ambiguity are handled; a match that needs more than 2 million steps is rejected. Prose and undefined rules are schema errors.",
+   "issues": [],
    "tests": [
-    "tests/test_resolve.py"
+    "tests/test_abnf.py",
+    "tests/test_text_controls.py"
    ],
    "probes": [
     {
-     "schema": "r = tstr .abnf \"a = 1*%x61\"",
+     "schema": "r = text .abnf \"a\\na = *\\\"a\\\" *\\\"b\\\"\\n\"",
      "valid": [
-      "a"
+      "",
+      "a",
+      "aabbb"
      ],
-     "accepted_but_invalid": [
-      "b"
+     "invalid": [
+      "c",
+      "ba",
+      4
+     ]
+    },
+    {
+     "schema": "r = text .abnf \"n\\nn = 1*d\\nd = %x30-39\\n\"",
+     "valid": [
+      "0",
+      "2024"
+     ],
+     "invalid": [
+      "",
+      "1a"
      ]
     }
    ]
@@ -2676,33 +2746,44 @@
    "area": "control",
    "construct": "`.abnfb`",
    "spec": "RFC 9165",
-   "status": "unsupported",
+   "status": "supported",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "unsupported",
+    "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "Accepted without parsing the grammar (#76).",
-   "issues": [
-    76
-   ],
+   "notes": "Like `.abnf`, with the ABNF read over the bytes of the string (a text string as UTF-8).",
+   "issues": [],
    "tests": [
-    "tests/test_resolve.py"
+    "tests/test_abnf.py",
+    "tests/test_text_controls.py"
    ],
    "probes": [
     {
-     "schema": "r = bstr .abnfb \"a = 1*%x61\"",
+     "schema": "r = bytes .abnfb \"a\\na = 1*%x61-62\\n\"",
      "valid": [
       {
-       "$bytes": "61"
+       "$bytes": "6162"
       }
      ],
-     "accepted_but_invalid": [
+     "invalid": [
       {
-       "$bytes": "62"
+       "$bytes": "63"
+      },
+      {
+       "$bytes": ""
       }
+     ]
+    },
+    {
+     "schema": "r = text .abnfb \"a\\na = %xc3.a4\\n\"",
+     "valid": [
+      "\u00e4"
+     ],
+     "invalid": [
+      "a"
      ]
     }
    ]
@@ -2742,26 +2823,42 @@
    "area": "control",
    "construct": "`.b64u`",
    "spec": "RFC 9741",
-   "status": "unsupported",
+   "status": "supported",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "unsupported",
+    "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "Accepted without decoding the text (#76).",
-   "issues": [
-    76
-   ],
+   "notes": "The text is base64url without padding (RFC 4648 section 5) and its bytes match the argument; no other alphabet, no padding, no blank space, and no non-zero bits after the last character.",
+   "issues": [],
    "tests": [
-    "tests/test_resolve.py"
+    "tests/test_text_controls.py"
    ],
    "probes": [
     {
      "schema": "r = tstr .b64u bstr",
-     "accepted_but_invalid": [
+     "valid": [
+      "AQID",
+      "AQIDBA",
+      ""
+     ],
+     "invalid": [
+      "AQIDBB",
+      "AQIDBA==",
+      "A",
+      "+/8",
       "\u00ff!"
+     ]
+    },
+    {
+     "schema": "r = tstr .b64u (bstr .size 3)",
+     "valid": [
+      "AQID"
+     ],
+     "invalid": [
+      "AQIDBA"
      ]
     }
    ]
@@ -2771,26 +2868,31 @@
    "area": "control",
    "construct": "`.b64c`",
    "spec": "RFC 9741",
-   "status": "unsupported",
+   "status": "supported",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "unsupported",
+    "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "Accepted without decoding the text (#76).",
-   "issues": [
-    76
-   ],
+   "notes": "The text is classic base64 with padding (RFC 4648 section 4) and its bytes match the argument; no non-zero bits after the last character.",
+   "issues": [],
    "tests": [
-    "tests/test_resolve.py"
+    "tests/test_text_controls.py"
    ],
    "probes": [
     {
      "schema": "r = tstr .b64c bstr",
-     "accepted_but_invalid": [
-      "\u00ff!"
+     "valid": [
+      "AQIDBA==",
+      "+/8=",
+      "AQID"
+     ],
+     "invalid": [
+      "AQIDBA",
+      "-_8=",
+      "AQIDBB=="
      ]
     }
    ]
@@ -2800,26 +2902,29 @@
    "area": "control",
    "construct": "`.b64u-sloppy`",
    "spec": "RFC 9741",
-   "status": "unsupported",
+   "status": "supported",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "unsupported",
+    "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "Accepted without decoding the text (#76).",
-   "issues": [
-    76
-   ],
+   "notes": "Like `.b64u`, but bits after the last character may be non-zero.",
+   "issues": [],
    "tests": [
-    "tests/test_resolve.py"
+    "tests/test_text_controls.py"
    ],
    "probes": [
     {
      "schema": "r = tstr .b64u-sloppy bstr",
-     "accepted_but_invalid": [
-      "\u00ff!"
+     "valid": [
+      "AQIDBA",
+      "AQIDBB"
+     ],
+     "invalid": [
+      "AQIDBA==",
+      "A"
      ]
     }
    ]
@@ -2829,26 +2934,29 @@
    "area": "control",
    "construct": "`.b64c-sloppy`",
    "spec": "RFC 9741",
-   "status": "unsupported",
+   "status": "supported",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "unsupported",
+    "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "Accepted without decoding the text (#76).",
-   "issues": [
-    76
-   ],
+   "notes": "Like `.b64c`, but bits after the last character may be non-zero.",
+   "issues": [],
    "tests": [
-    "tests/test_resolve.py"
+    "tests/test_text_controls.py"
    ],
    "probes": [
     {
      "schema": "r = tstr .b64c-sloppy bstr",
-     "accepted_but_invalid": [
-      "\u00ff!"
+     "valid": [
+      "AQIDBA==",
+      "AQIDBB=="
+     ],
+     "invalid": [
+      "AQIDBA",
+      "-_8="
      ]
     }
    ]
@@ -2858,26 +2966,30 @@
    "area": "control",
    "construct": "`.b45`",
    "spec": "RFC 9741",
-   "status": "unsupported",
+   "status": "supported",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "unsupported",
+    "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "Accepted without decoding the text (#76).",
-   "issues": [
-    76
-   ],
+   "notes": "The text is base45 (RFC 9285) and its bytes match the argument.",
+   "issues": [],
    "tests": [
-    "tests/test_resolve.py"
+    "tests/test_text_controls.py"
    ],
    "probes": [
     {
      "schema": "r = tstr .b45 bstr",
-     "accepted_but_invalid": [
-      "\u00ff!"
+     "valid": [
+      "QED8WEX0",
+      ""
+     ],
+     "invalid": [
+      "QED8WEX",
+      "GGW",
+      "abc"
      ]
     }
    ]
@@ -2887,26 +2999,30 @@
    "area": "control",
    "construct": "`.b32`",
    "spec": "RFC 9741",
-   "status": "unsupported",
+   "status": "supported",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "unsupported",
+    "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "Accepted without decoding the text (#76).",
-   "issues": [
-    76
-   ],
+   "notes": "The text is base32 without padding (RFC 4648 section 6, upper case) and its bytes match the argument.",
+   "issues": [],
    "tests": [
-    "tests/test_resolve.py"
+    "tests/test_text_controls.py"
    ],
    "probes": [
     {
      "schema": "r = tstr .b32 bstr",
-     "accepted_but_invalid": [
-      "\u00ff!"
+     "valid": [
+      "MFRGG",
+      ""
+     ],
+     "invalid": [
+      "MFRGG===",
+      "mfrgg",
+      "M"
      ]
     }
    ]
@@ -2916,26 +3032,30 @@
    "area": "control",
    "construct": "`.h32`",
    "spec": "RFC 9741",
-   "status": "unsupported",
+   "status": "supported",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "unsupported",
+    "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "Accepted without decoding the text (#76).",
-   "issues": [
-    76
-   ],
+   "notes": "The text is base32 with the extended hex alphabet and no padding (RFC 4648 section 7, upper case) and its bytes match the argument.",
+   "issues": [],
    "tests": [
-    "tests/test_resolve.py"
+    "tests/test_text_controls.py"
    ],
    "probes": [
     {
      "schema": "r = tstr .h32 bstr",
-     "accepted_but_invalid": [
-      "\u00ff!"
+     "valid": [
+      "C5H66",
+      ""
+     ],
+     "invalid": [
+      "C5H66===",
+      "c5h66",
+      "WXYZ"
      ]
     }
    ]
@@ -2945,26 +3065,30 @@
    "area": "control",
    "construct": "`.hex`",
    "spec": "RFC 9741",
-   "status": "unsupported",
+   "status": "supported",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "unsupported",
+    "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "Accepted without decoding the text (#76).",
-   "issues": [
-    76
-   ],
+   "notes": "The text is hexadecimal in either case (RFC 4648 section 8) and its bytes match the argument; no blank space.",
+   "issues": [],
    "tests": [
-    "tests/test_resolve.py"
+    "tests/test_text_controls.py"
    ],
    "probes": [
     {
      "schema": "r = tstr .hex bstr",
-     "accepted_but_invalid": [
-      "\u00ff!"
+     "valid": [
+      "0aFf",
+      ""
+     ],
+     "invalid": [
+      "0a f",
+      "abc",
+      "0g"
      ]
     }
    ]
@@ -2974,26 +3098,28 @@
    "area": "control",
    "construct": "`.hexlc`",
    "spec": "RFC 9741",
-   "status": "unsupported",
+   "status": "supported",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "unsupported",
+    "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "Accepted without decoding the text (#76).",
-   "issues": [
-    76
-   ],
+   "notes": "Like `.hex`, in lower case only.",
+   "issues": [],
    "tests": [
-    "tests/test_resolve.py"
+    "tests/test_text_controls.py"
    ],
    "probes": [
     {
      "schema": "r = tstr .hexlc bstr",
-     "accepted_but_invalid": [
-      "\u00ff!"
+     "valid": [
+      "0aff"
+     ],
+     "invalid": [
+      "0AFF",
+      "0aFf"
      ]
     }
    ]
@@ -3003,26 +3129,27 @@
    "area": "control",
    "construct": "`.hexuc`",
    "spec": "RFC 9741",
-   "status": "unsupported",
+   "status": "supported",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "unsupported",
+    "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "Accepted without decoding the text (#76).",
-   "issues": [
-    76
-   ],
+   "notes": "Like `.hex`, in upper case only.",
+   "issues": [],
    "tests": [
-    "tests/test_resolve.py"
+    "tests/test_text_controls.py"
    ],
    "probes": [
     {
      "schema": "r = tstr .hexuc bstr",
-     "accepted_but_invalid": [
-      "\u00ff!"
+     "valid": [
+      "0AFF"
+     ],
+     "invalid": [
+      "0aff"
      ]
     }
    ]
@@ -3032,26 +3159,33 @@
    "area": "control",
    "construct": "`.base10`",
    "spec": "RFC 9741",
-   "status": "unsupported",
+   "status": "supported",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "unsupported",
+    "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "Accepted without decoding the text (#76).",
-   "issues": [
-    76
-   ],
+   "notes": "The text is a decimal integer without leading zeros (`0|-?[1-9][0-9]*`) and its value matches the argument.",
+   "issues": [],
    "tests": [
-    "tests/test_resolve.py"
+    "tests/test_text_controls.py"
    ],
    "probes": [
     {
-     "schema": "r = tstr .base10 bstr",
-     "accepted_but_invalid": [
-      "\u00ff!"
+     "schema": "r = tstr .base10 (0..100)",
+     "valid": [
+      "0",
+      "12",
+      "100"
+     ],
+     "invalid": [
+      "012",
+      "-1",
+      "101",
+      "+1",
+      "1.5"
      ]
     }
    ]
@@ -3061,29 +3195,39 @@
    "area": "control",
    "construct": "`.printf`",
    "spec": "RFC 9741",
-   "status": "unsupported",
+   "status": "supported",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "unsupported",
+    "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "Accepted without formatting (#76).",
-   "issues": [
-    76
-   ],
+   "notes": "The text is what C `printf` writes for the format (the first element of the argument array) and data items that match the other elements, which may be types. Conversions `d i u o x X e E f F g G c s` with flags, width and precision; length modifiers, `*`, `a`, `p` and `n` are schema errors. The text is taken apart by the format and each conversion read back and written again, so only exact output matches. Where a format can be split in several ways (adjacent `%s`), only the first split is tried.",
+   "issues": [],
    "tests": [
-    "tests/test_resolve.py"
+    "tests/test_text_controls.py"
    ],
    "probes": [
     {
-     "schema": "r = tstr .printf [\"%d\", 1]",
+     "schema": "r = tstr .printf [\"%04x\", 19]",
      "valid": [
-      "1"
+      "0013"
      ],
-     "accepted_but_invalid": [
-      "2"
+     "invalid": [
+      "13",
+      "0014"
+     ]
+    },
+    {
+     "schema": "r = tstr .printf [\"0x%04x\", 1..20]",
+     "valid": [
+      "0x0013",
+      "0x0001"
+     ],
+     "invalid": [
+      "0x1234",
+      "0x13"
      ]
     }
    ]
@@ -3093,29 +3237,30 @@
    "area": "control",
    "construct": "`.json`",
    "spec": "RFC 9741",
-   "status": "unsupported",
+   "status": "supported",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "unsupported",
+    "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "Accepted without parsing the JSON text (#76).",
-   "issues": [
-    76
-   ],
+   "notes": "The text is one JSON value (RFC 8259: no `NaN`, no repeated member names) and its conversion to the CBOR data model (RFC 8949 section 6.2) matches the argument.",
+   "issues": [],
    "tests": [
-    "tests/test_resolve.py"
+    "tests/test_text_controls.py"
    ],
    "probes": [
     {
      "schema": "r = tstr .json {a: int}",
      "valid": [
-      "{\"a\":1}"
+      "{\"a\":1}",
+      " {\"a\": 1} "
      ],
-     "accepted_but_invalid": [
-      "{\"a\":\"x\"}"
+     "invalid": [
+      "{\"a\":\"x\"}",
+      "{\"a\":1",
+      "{\"a\":1,\"a\":2}"
      ]
     }
    ]
@@ -3125,29 +3270,39 @@
    "area": "control",
    "construct": "`.join`",
    "spec": "RFC 9741",
-   "status": "unsupported",
+   "status": "supported",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "unsupported",
+    "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "Accepted without joining (#76).",
-   "issues": [
-    76
-   ],
+   "notes": "The string is the concatenation of strings that match the elements of the argument array, written out and each once: literal elements are markers, the others take what is between them and must fit their type (as text or as bytes). The result is the kind of string of the first element. A string that can be split in too many ways (adjacent variable elements) is rejected after 20000 tries.",
+   "issues": [],
    "tests": [
-    "tests/test_resolve.py"
+    "tests/test_text_controls.py"
    ],
    "probes": [
     {
-     "schema": "r = tstr .join [\"a\", \"b\"]",
+     "schema": "r = tstr .join [\"id-\", (tstr .base10 uint)]",
      "valid": [
-      "ab"
+      "id-12"
      ],
-     "accepted_but_invalid": [
-      "zz"
+     "invalid": [
+      "id-x",
+      "id-",
+      "12"
+     ]
+    },
+    {
+     "schema": "r = tstr .join [tstr, \".\", tstr]",
+     "valid": [
+      "a.b",
+      "x.y.z"
+     ],
+     "invalid": [
+      "ab"
      ]
     }
    ]

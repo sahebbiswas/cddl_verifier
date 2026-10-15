@@ -514,6 +514,53 @@ The analyzer is tested against real CoRIM and CoSWID CDDL schemas.  See
 [IANA_ANNOTATIONS_STATUS.md](IANA_ANNOTATIONS_STATUS.md) for annotation behaviour at
 every nesting level.
 
+## Computed literals and text controls
+
+The controls of RFC 9165 and RFC 9741 that build or read literals are enforced (#205).
+
+**`.plus`, `.cat`, `.det`** compute a literal at schema load time. `3 .plus 5` is `8`,
+`"a" .cat "b"` is `"ab"`, and `.det` is `.cat` after both sides are dedented. The
+operands may be literals, names of rules that are literals, parentheses, choices of
+those (`("a" / "b") .cat ("c" / "d")` is four strings), ranges for `.plus`
+(`(1..5) .plus 10` is `11..15`) and other computed literals. The result is usable
+anywhere a type is: as a field, array element, map key (`(BASE .plus 1) => int`,
+including the RFC 9165 `interval<BASE>` example) or the controller of another control.
+A target of bytes with text (or the reverse) gives the type of the target. Operands that
+are not literals (`uint .plus 1`, `tstr .cat "a"`), numbers where strings are needed,
+a text result that is not UTF-8, more than 4096 results and a recursive definition are
+schema errors.
+
+**`.abnf` and `.abnfb`** check a string against an ABNF grammar (RFC 5234, with the
+case-sensitive strings of RFC 7405). The controller is a text string, usually computed
+with `.cat` or `.det` from several lines; its first rule is the start rule, or the text
+starts with a bare rule name or expression. `.abnf` reads bytes as UTF-8 and text as
+code points; `.abnfb` reads both as bytes. Matching is exact for the whole grammar,
+including left recursion and ambiguity. It stops after two million steps and then does
+not accept the string, so hostile input cannot stall validation. Grammars that do not
+parse, use prose values or leave a rule undefined are schema errors.
+
+**Conversions.** `text .b64u`, `.b64c`, `.b64u-sloppy`, `.b64c-sloppy`, `.b45`, `.b32`,
+`.h32`, `.hex`, `.hexlc` and `.hexuc` decode the text and check the bytes against the
+controller (`text .hex (bytes .size 2)`); `.base10` reads an integer without leading
+zeros or a plus sign, and `.json` reads JSON (no `NaN`, `Infinity` or duplicate keys)
+and checks the value against any type, including maps and arrays. Each takes exactly
+the encoding the RFC names, with the stray-bits rule of the non-`sloppy` forms.
+
+**`.printf`** takes an array whose first element is the format and whose other elements
+are the data items, which may be types: `text .printf ["0x%04x", uint .size 1]`. The
+conversions are `d i u o x X e E f F g G c s` with flags, width and precision; length
+modifiers, `*`, `a`, `p` and `n` are schema errors, as is a count of conversions that
+differs from the count of items. The text is taken apart by the format, each conversion
+is read back and written again, and only exact output matches. Where a format can split
+in several ways (adjacent `%s`), only the first split is tried, so a string that only
+the other split would explain is rejected.
+
+**`.join`** checks that a string is the concatenation of strings that fit the elements
+of an array that is written out, each element once (`text .join ["id-", (tstr .base10 uint)]`).
+Literals act as markers and every way to split the string is tried, within a budget of
+20,000 piece checks; a string that exhausts the budget is not accepted. An array with a
+repeated element (`* tstr`) or a group that cannot be followed is a schema error.
+
 ## Validation behaviour
 
 | Condition | Result |

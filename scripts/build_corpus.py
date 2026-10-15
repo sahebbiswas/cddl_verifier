@@ -131,10 +131,6 @@ def explain_cddlc(entry, detail):
                      "`integer`, not a `bigint`. The cddlc test also accepts such integers."),
     }
     notes["16a-feature"] = notes["16-feature"]
-    for control, label in (("18-abnf", ".abnf"), ("20-plus-i", ".plus"), ("21-cat", ".cat")):
-        notes[control] = ("gap", 76, f"`{label}` is parsed but not enforced.")
-    for det in ("22-det", "22a-det", "22b-det", "22c-det", "22d-det", "22e-det"):
-        notes[det] = ("gap", 76, "`.det` is parsed but not enforced.")
     return notes.get(name)
 
 
