@@ -304,7 +304,13 @@ annotation placement and the `bytes<N>(...)` wrapper used for nested CBOR fields
 ```bash
 python -m cddl_verifier.json_codec to-json  input.cbor output.json --pretty --typed
 python -m cddl_verifier.json_codec to-cbor  input.json output.cbor --canonical
+python -m cddl_verifier.json_codec to-cbor  input.json output.cbor --plain
 ```
+
+`to-cbor` reads `{"$cbor": ...}` objects as type annotations and rejects a malformed
+one, naming its place (`$.items[2].data`). `--plain` reads the JSON as plain data, so a
+`"$cbor"` key is an ordinary key; use it for JSON that must not be able to make byte
+strings or tags.
 
 `--typed` keeps byte strings and tags as annotated JSON objects so the conversion
 can be reversed without loss. See [CANONICAL_AND_JSON.md](CANONICAL_AND_JSON.md).

@@ -584,6 +584,11 @@ one CBOR item.
 >
 > `json_to_cbor` raises `ValueError` for a JSON object that gives the same key
 > twice, instead of keeping the last value.
+>
+> `json_to_cbor` reads `{"$cbor": ...}` objects strictly: a malformed annotation raises
+> `ValueError` naming its place in the document, and `annotations=False` reads the JSON
+> as plain data, so a `"$cbor"` key is an ordinary key
+> ([CANONICAL_AND_JSON.md](CANONICAL_AND_JSON.md#strict-reading-of-annotations-79)).
 
 ### Type annotations in JSON
 
@@ -611,6 +616,7 @@ from cddl_verifier.json_codec import cbor_file_to_json_file, json_file_to_cbor_f
 
 cbor_file_to_json_file("data.cbor", "data.json", pretty=True, typed=True)
 json_file_to_cbor_file("data.json", "data.cbor", canonical=True)
+json_file_to_cbor_file("data.json", "data.cbor", annotations=False)   # "$cbor" is plain data
 ```
 
 See [CANONICAL_AND_JSON.md](CANONICAL_AND_JSON.md) for round-trip examples.
