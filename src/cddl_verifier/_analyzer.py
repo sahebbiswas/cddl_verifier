@@ -1838,7 +1838,8 @@ class CBORAnalyzer:
                     
                     if type_mismatch:
                         expected_text, actual_text = mismatch_detail or (field_type, _describe_value(value))
-                        self._report(f"Type mismatch for field '{field_name}' in '{type_name}'",
+                        self._report(f"Type mismatch for field '{field_name}' in '{type_name}': "
+                                     f"expected {expected_text}, got {actual_text}",
                                      _mismatch_category(_base_type, value),
                                      expected=expected_text, actual=actual_text)
                     elif _base_type in self._ROOT_PRIMITIVES and _base_type != 'any':

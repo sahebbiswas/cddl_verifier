@@ -5,6 +5,9 @@ These end-to-end examples use the public API and CLI shipped by
 [CDDL support and limitations](CDDL_SUPPORT.md) before relying on it for a
 protocol's full conformance requirements.
 
+New to the tool? [GETTING_STARTED.md](GETTING_STARTED.md) is a guided first run, with a
+triage flow for each kind of failure.
+
 ## Choose your task
 
 | I want to… | Start here |

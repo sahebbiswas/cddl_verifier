@@ -171,7 +171,6 @@ In text mode the same failures are listed on stderr:
 ```text
 [FAIL] Validation failed:
   - Element [1] of field '1' has wrong type: expected uint, got str
-  - Type mismatch for field 'name' in 'doc'
 ```
 
 **Reading a path.** `path` is the list of steps from the root, as the decoder

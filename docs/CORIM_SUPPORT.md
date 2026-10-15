@@ -63,7 +63,7 @@ comid-map = {
 - Strips comments during parsing
 - Uses comments as field name hints
 
-### ⚠ CBOR Tags
+### ✓ CBOR Tags
 CoRIM uses CBOR tags with `#6.xxx(type)` notation.
 
 **Example:**
@@ -73,13 +73,14 @@ $concise-tag-type-choice /= #6.506(coswid-map)
 tagged-uuid-type = #6.37(uuid-type)
 ```
 
-**Support:** ⚠ PARTIAL
-- Parses CBOR tag syntax
-- Extracts underlying type (e.g., `#6.37(uuid-type)` → `uuid-type`)
-- Does NOT validate CBOR tag numbers during decode
-- Tag information is preserved in type definitions
+**Support:** ✓ FULL
+- The tag number is required and checked: a tagged rule rejects untagged data and
+  other tag numbers, and an untagged rule rejects tagged data
+- The tagged content is checked against the rule inside the tag
+- The content of the registered tags the library knows (dates, URIs, bignums, MIME, ...)
+  is checked too ([CDDL_SUPPORT.md](CDDL_SUPPORT.md#cbor-tags))
 
-### ⚠ Type Choices ($name /= value)
+### ✓ Type Choices ($name /= value)
 CoRIM uses type choice extensions heavily.
 
 **Example:**
@@ -91,13 +92,13 @@ $corim-role-type-choice /= & ( manifest-creator : 1 )
 $corim-role-type-choice /= & ( manifest-signer : 2 )
 ```
 
-**Support:** ⚠ PARTIAL
-- Recognizes `/=` syntax
-- Skips type choice lines (doesn't fully expand choices)
-- References to `$name` types are preserved in field definitions
-- Future enhancement: expand choices to show all possible types
+**Support:** ✓ FULL
+- `$name /= type` adds an alternative; data must match one of them
+- `$$name //= group` sockets add group alternatives in a map or array
+- A socket nothing extends matches nothing (as RFC 8610 says)
+- A choice from a group (`&( name : n )`) is the choice of its values
 
-### ⚠ Generics
+### ✓ Generics
 CoRIM defines generic types like `non-empty<M>`. The validator enforces
 the `.and` operand, so an empty `triples-map` or `environment-map` is rejected.
 
@@ -111,14 +112,13 @@ validity-map = non-empty<{
 }>
 ```
 
-**Support:** ⚠ PARTIAL
-- Parses generic type definitions and instantiates them where they are used
-- Enforces `.and` / `.within` / `.eq` / `.ne` on any target, including a generic
+**Support:** ✓ FULL
+- Generic rules are instantiated where they are used, recursively too
+- `.and` / `.within` / `.eq` / `.ne` are enforced on any target, including a generic
   structure (`non-empty<M>` rejects an empty map)
-- Does NOT enforce other controls (`.size`, ...) around a generic structure
-  ([#76](https://github.com/sahebbiswas/cddl_verifier/issues/76))
+- A control that has no meaning for a structure (`.size`, `.regexp`, ...) is a schema error
 
-### ⚠ CDDL Control Operators
+### ✓ CDDL Control Operators
 CoRIM uses operators like `.size`, `.within`, `.cbor`, etc.
 
 **Example:**
@@ -128,11 +128,13 @@ eui-48 = bstr .size 6
 tagged-unsigned-corim-map = #6.501(unsigned-corim-map)
 ```
 
-**Support:** ⚠ PARTIAL
-- Recognizes control operator syntax
-- Does NOT validate constraints (e.g., `.size 16`)
-- Operators are treated as part of type description
-- Future enhancement: constraint validation
+**Support:** ✓ FULL
+- `.size`, `.cbor`, `.cborseq`, `.regexp`, `.bits`, `.ge`, `.gt`, `.le`, `.lt`, `.eq`, `.ne`,
+  `.and` and `.within` are checked (`.default` only requires the base type)
+- The controls of RFC 9165 and RFC 9741 (`.plus`, `.cat`, `.det`, `.abnf`, the conversions,
+  `.printf`, `.json`, `.join`) are checked too
+- A control that cannot apply to its type is a schema error
+- [CONFORMANCE.md](CONFORMANCE.md) lists every control with its status
 
 ### ✓ Nested Structures
 CoRIM has deeply nested type definitions.
@@ -249,33 +251,17 @@ Note how IANA registered parameter keys (0, 1, 2, etc.) are displayed as their s
 
 ## Known Limitations
 
-1. **No Type Choice Expansion:** Type choices (`$name /= value`) are not fully expanded
-2. **Partial Constraint Validation:** Some control operators, such as `.size` around a generic structure, are not validated
-3. **Generic Controls:** Generics are instantiated, and `.and` / `.within` / `.eq` / `.ne` are enforced around a generic structure
-4. **Basic Validation Only:** Structural validation only, not semantic validation
+1. **Structure, not meaning:** The tool checks that data has the shape the schema describes.
+   Whatever the CoRIM specification says in prose (for example, that a profile's
+   extensions are consistent) is not checked.
+2. **Imported modules:** A CoRIM schema that imports CoSWID needs that file given
+   (`-M` / `--module`); a name from a module that is not loaded matches any value and a
+   warning says so ([CLI.md](CLI.md#imported-modules)).
+3. **`.regexp` limits:** Patterns are read as XSD regular expressions and matched with a
+   backtracking engine; do not use it with schemas or data you do not trust
+   ([#185](https://github.com/sahebbiswas/cddl_verifier/issues/185)).
+4. **Tag 36 content:** The content of tag 36 (`mime-message`) is checked only as text
+   ([#187](https://github.com/sahebbiswas/cddl_verifier/issues/187)).
 
-## Future Enhancements
-
-Priority enhancements for better CoRIM support:
-
-1. **Type Choice Resolver:** Expand `$name /= value` definitions to show all alternatives
-2. **Constraint Validator:** Validate `.size`, `.within`, and other control operators
-3. **CBOR Tag Validator:** Validate CBOR tag numbers match IANA registry
-4. **Generic Expander:** Properly instantiate generic types
-
-## Conclusion
-
-The CBOR-CDDL Analyzer provides strong support for CoRIM CDDL schemas, correctly handling the most important features:
-- IANA registered parameters (core CoRIM feature)
-- Optional fields
-- Map and array structures  
-- Nested definitions
-- Comments
-
-The tool is suitable for:
-- CoRIM schema exploration
-- CoRIM CBOR debugging
-- EDN generation for human review
-- Basic structural validation
-
-For full semantic validation of CoRIM documents, use a complete CoRIM validator alongside this tool.
+For full semantic validation of CoRIM documents, use a complete CoRIM validator alongside
+this tool.

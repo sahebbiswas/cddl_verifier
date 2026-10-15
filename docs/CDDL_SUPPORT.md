@@ -136,9 +136,9 @@ the argument of `.cbor` (`bstr .cbor pair<uint, tstr>`): the embedded item is
 checked against the instance. `.and` and `.within` are enforced on any
 target, including a generic structure: `non-empty<{ ? a: int }>`, with
 `non-empty<M> = (M) .and ({ + any => any })`, is the map `{ ? a: int }` that
-must also match `{ + any => any }`, so `{}` is rejected. Other controls
-around a generic structure (`.size`, ...) are not enforced yet
-([#76](https://github.com/sahebbiswas/cddl_verifier/issues/76)).
+must also match `{ + any => any }`, so `{}` is rejected. A control with no
+meaning for a structure (`.size`, `.regexp`, ...) is a schema error, as
+anywhere else.
 
 A map member with a wildcard key counts the entries it takes and checks the
 occurrence: `{ + tstr => int }` needs at least one, `{ 2*3 tstr => int }` two

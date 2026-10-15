@@ -328,7 +328,7 @@ cbor.append(7)
 ### Example 1: Building a CoRIM Structure
 
 ```python
-from cddl_verifier.cbor import CBOR
+from cddl_verifier.cbor import CBOR, CBORTag
 
 # Create CoRIM structure iteratively
 corim = CBOR({})
@@ -360,7 +360,7 @@ corim["tags"].append(tag1)
 corim["tags"].append(tag2)
 
 # Wrap in tag 501 (unsigned-corim-map)
-tagged_corim = (501, corim.data)
+tagged_corim = CBORTag(501, corim.data)
 
 # Encode
 cbor_bytes = CBOR(tagged_corim).encode(canonical=True)

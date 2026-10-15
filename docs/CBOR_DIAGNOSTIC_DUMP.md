@@ -173,7 +173,7 @@ print("\nFile saved!")
 ### Basic Example
 
 ```python
-from cddl_verifier.cbor import cbor_encode, cbor_diag_dump
+from cddl_verifier.cbor import CBORTag, cbor_encode, cbor_diag_dump
 
 # Encode some data
 data = {0: "test", 1: 42}
@@ -204,7 +204,7 @@ data = {
         0: True,
         1: False
     },
-    3: (32, "http://example.com")  # Tagged value
+    3: CBORTag(32, "http://example.com")  # Tagged value
 }
 
 print(cbor_diag_dump(cbor_encode(data)))
@@ -390,7 +390,7 @@ examples = {
     "bytes": b'\x01\x02',
     "array": [1, 2, 3],
     "map": {0: "a", 1: "b"},
-    "tagged": (32, "uri"),
+    "tagged": CBORTag(32, "uri"),
     "bool": True,
     "null": None
 }
@@ -406,9 +406,9 @@ Analyze CBOR-based protocols like CoRIM, CoSWID, COSE:
 
 ```python
 # CoRIM example
-corim_data = cbor_encode((501, {  # Tag 501
+corim_data = cbor_encode(CBORTag(501, {  # Tag 501
     0: "corim-id",
-    1: [(506, nested_cbor)],  # Tag 506
+    1: [CBORTag(506, {0: "comid-001"})],  # Tag 506
 }))
 
 print(cbor_diag_dump(corim_data))
@@ -432,19 +432,9 @@ def cbor_diag_dump(data: bytes, indent: str = "  ") -> str
 **Raises:**
 - May include error messages in output for malformed CBOR
 
-### Class: `CBORDiagnosticDumper`
+### Method: `CBOR.diag`
 
-```python
-class CBORDiagnosticDumper:
-    def __init__(self, data: bytes, indent: str = "  ")
-    def dump(self) -> str
-```
-
-**Usage:**
-```python
-dumper = CBORDiagnosticDumper(cbor_bytes, indent="    ")
-output = dumper.dump()
-```
+`CBOR(data).diag()` is the same dump for a `CBOR` object (see the builder API in [API.md](API.md#builder-api)).
 
 ## Comparison with Other Tools
 
