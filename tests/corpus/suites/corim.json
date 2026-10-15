@@ -1,0 +1,657 @@
+{
+ "id": "corim",
+ "title": "CoRIM and CoMID (draft-ietf-rats-corim)",
+ "modules": {
+  "rfc9393": "schemas/ietf/rfc9393.cddl",
+  "rfc9164": "schemas/ietf/rfc9164.cddl",
+  "measured-component": "schemas/ietf/measured-component-stub.cddl"
+ },
+ "sources": [
+  {
+   "name": "CoRIM schema fragments and examples",
+   "url": "https://github.com/ietf-rats-wg/draft-ietf-rats-corim",
+   "commit": "59622953f734bbd7bb86108a3689c71c1db7cefc",
+   "date": "2026-10-14",
+   "license": "CDDL and examples published in IETF documents: IETF Trust Legal Provisions (code components under the Revised BSD License)",
+   "path": "cddl/"
+  },
+  {
+   "name": "RFC 9393 and RFC 9164 CDDL, extracted by cddlc",
+   "url": "https://github.com/cabo/cddlc",
+   "commit": "261bea5ccd0082c7d6adab098bd74e8b3fcaaf0a",
+   "date": "2025-02-16",
+   "license": "MIT (the extraction); CDDL and examples published in IETF documents: IETF Trust Legal Provisions (code components under the Revised BSD License)",
+   "path": "data/"
+  }
+ ],
+ "provenance": "verbatim",
+ "cases": [
+  {
+   "id": "corim/comid/comid-1",
+   "schema": "schemas/ietf/corim/comid.cddl",
+   "hex": "a301a100503f06af63a93c11e4979700505690773f0281a3006941434d4520496e632e01d8207468747470733a2f2f61636d652e6578616d706c6502810004a1008182a100a400d8255067b28b6c34cc40a19117ab5b05911e37016941434d4520496e632e026f41434d4520526f616452756e6e6572030181a101a200a20065312e302e300119400002818201582044aa336af4cb14a879432e53dd6571c7fa9bccafb75f488259262d6ea3a4d91b",
+   "expect": "valid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "converted",
+   "note": "the example is EDN upstream, converted to CBOR with cbor-diag",
+   "source": "cddl/examples/comid-1.diag"
+  },
+  {
+   "id": "corim/comid/comid-1-entities-empty",
+   "schema": "schemas/ietf/corim/comid.cddl",
+   "hex": "a301a100503f06af63a93c11e4979700505690773f028004a1008182a100a400d8255067b28b6c34cc40a19117ab5b05911e37016941434d4520496e632e026f41434d4520526f616452756e6e6572030181a101a200a20065312e302e300119400002818201582044aa336af4cb14a879432e53dd6571c7fa9bccafb75f488259262d6ea3a4d91b",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "derived",
+   "source": "cddl/examples/comid-1.diag, then: `entities` is `[+ comid-entity-map]`"
+  },
+  {
+   "id": "corim/comid/comid-1-no-tag-identity",
+   "schema": "schemas/ietf/corim/comid.cddl",
+   "hex": "a100503f06af63a93c11e4979700505690773f",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "derived",
+   "source": "cddl/examples/comid-1.diag, then: concise-mid-tag requires `tag-identity` (1)"
+  },
+  {
+   "id": "corim/comid/comid-1-no-triples",
+   "schema": "schemas/ietf/corim/comid.cddl",
+   "hex": "a1008182a100a400d8255067b28b6c34cc40a19117ab5b05911e37016941434d4520496e632e026f41434d4520526f616452756e6e6572030181a101a200a20065312e302e300119400002818201582044aa336af4cb14a879432e53dd6571c7fa9bccafb75f488259262d6ea3a4d91b",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "derived",
+   "source": "cddl/examples/comid-1.diag, then: concise-mid-tag requires `triples` (4)"
+  },
+  {
+   "id": "corim/comid/comid-1-role-unknown",
+   "schema": "schemas/ietf/corim/comid.cddl",
+   "hex": "a301a100503f06af63a93c11e4979700505690773f0281a3006941434d4520496e632e01d8207468747470733a2f2f61636d652e6578616d706c6502810904a1008182a100a400d8255067b28b6c34cc40a19117ab5b05911e37016941434d4520496e632e026f41434d4520526f616452756e6e6572030181a101a200a20065312e302e300119400002818201582044aa336af4cb14a879432e53dd6571c7fa9bccafb75f488259262d6ea3a4d91b",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "derived",
+   "source": "cddl/examples/comid-1.diag, then: `comid-role-type-choice` has roles 0, 1 and 2"
+  },
+  {
+   "id": "corim/comid/comid-1-tag-id-int",
+   "schema": "schemas/ietf/corim/comid.cddl",
+   "hex": "a301a100050281a3006941434d4520496e632e01d8207468747470733a2f2f61636d652e6578616d706c6502810004a1008182a100a400d8255067b28b6c34cc40a19117ab5b05911e37016941434d4520496e632e026f41434d4520526f616452756e6e6572030181a101a200a20065312e302e300119400002818201582044aa336af4cb14a879432e53dd6571c7fa9bccafb75f488259262d6ea3a4d91b",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "derived",
+   "source": "cddl/examples/comid-1.diag, then: `tag-id` is text or a UUID"
+  },
+  {
+   "id": "corim/comid/comid-1-unknown-key",
+   "schema": "schemas/ietf/corim/comid.cddl",
+   "hex": "a401a100503f06af63a93c11e4979700505690773f0281a3006941434d4520496e632e01d8207468747470733a2f2f61636d652e6578616d706c6502810004a1008182a100a400d8255067b28b6c34cc40a19117ab5b05911e37016941434d4520496e632e026f41434d4520526f616452756e6e6572030181a101a200a20065312e302e300119400002818201582044aa336af4cb14a879432e53dd6571c7fa9bccafb75f488259262d6ea3a4d91b186301",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "derived",
+   "source": "cddl/examples/comid-1.diag, then: the map is closed: `$$concise-mid-tag-extension` has no extensions"
+  },
+  {
+   "id": "corim/comid/comid-1a",
+   "schema": "schemas/ietf/corim/comid.cddl",
+   "hex": "a301a100503f06af63a93c11e4979700505690773f0281a3006941434d4520496e632e01d8207468747470733a2f2f61636d652e6578616d706c6502810004a1008182a100a400d8255067b28b6c34cc40a19117ab5b05911e37016941434d4520496e632e026f41434d4520526f616452756e6e6572030182a101a200a20065312e302e300119400002818201582044aa336af4cb14a879432e53dd6571c7fa9bccafb75f488259262d6ea3a4d91ba101a200a20065322e302e3001194000028182015820ffaa336af4cb14a879432e53dd6571c7fa9bccafb75f488259262d6ea3a4d91b",
+   "expect": "valid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "converted",
+   "note": "the example is EDN upstream, converted to CBOR with cbor-diag",
+   "source": "cddl/examples/comid-1a.diag"
+  },
+  {
+   "id": "corim/comid/comid-2",
+   "schema": "schemas/ietf/corim/comid.cddl",
+   "hex": "a301a100503f06af63a93c11e4979700505690773f0281a3006941434d4520496e632e01d8207468747470733a2f2f61636d652e6578616d706c6502810004a1018182a100a400d8255067b28b6c34cc40a19117ab5b05911e37016941434d4520496e632e027241434d4520526f6f74206f66205472757374030082a101a101d9022801a101a101d9022802",
+   "expect": "valid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "converted",
+   "note": "the example is EDN upstream, converted to CBOR with cbor-diag",
+   "source": "cddl/examples/comid-2.diag"
+  },
+  {
+   "id": "corim/comid/comid-2b",
+   "schema": "schemas/ietf/corim/comid.cddl",
+   "hex": "a301a100503f06af63a93c11e4979700505690773f0281a3006941434d4520496e632e01d8207468747470733a2f2f61636d652e6578616d706c6502810004a2008382a100a400d8255067b28b6c34cc40a19117ab5b05911e37016941434d4520496e632e02781841434d4520526f616452756e6e6572204669726d77617265030181a101a102818201582044aa336af4cb14a879432e53dd6571c7fa9bccafb75f488259262d6ea3a4d91b82a100a500d82550a71b3e388d454a0581f352e58c832c5c016a57594c494520496e632e027757594c494520436f796f74652054727573746564204f530302040081a101a1028182015820bb71198ed60a95dc3c619e555c2c0b8d7564a38031b034a195892591c65365b082a100a500d82550a71b3e388d454a0581f352e58c832c5c016a57594c494520496e632e027757594c494520436f796f74652054727573746564204f530302040181a101a1028182015820bb71198ed60a95dc3c619e555c2c0b8d7564a38031b034a195892591c65365b0018182a100a400d8255067b28b6c34cc40a19117ab5b05911e37016941434d4520496e632e027241434d4520526f6f74206f66205472757374030081a101a101d9022801",
+   "expect": "valid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "converted",
+   "note": "the example is EDN upstream, converted to CBOR with cbor-diag",
+   "source": "cddl/examples/comid-2b.diag"
+  },
+  {
+   "id": "corim/comid/comid-3",
+   "schema": "schemas/ietf/corim/comid.cddl",
+   "hex": "a301a10078206d792d6e733a61636d652d726f616472756e6e65722d737570706c656d656e740281a3006941434d4520496e632e01d8207468747470733a2f2f61636d652e6578616d706c65028301000204a1008182a100a300d86f445502c000016941434d4520496e632e02781841434d4520526f616452756e6e6572204669726d7761726585a2001902bc01a10281820644abcdef00a2006a6d795f656c656d656e7401a1028182064400fedcbaa200d86f445502c00101a1028182064400fedcbaa200d8255067b28b6c34cc40a19117ab5b05911e3801a1028182064400fedcbaa101a1028182064411223344",
+   "expect": "valid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "converted",
+   "note": "the example is EDN upstream, converted to CBOR with cbor-diag",
+   "source": "cddl/examples/comid-3.diag"
+  },
+  {
+   "id": "corim/comid/comid-4",
+   "schema": "schemas/ietf/corim/comid.cddl",
+   "hex": "a201a100503f06af63a93c11e4979700505690773f04a1008182a100a400d8255067b28b6c34cc40a19117ab5b05911e37016941434d4520496e632e026f41434d4520526f616452756e6e6572030181a101a10d83d9022a736261736536345f6b65795f41434d455f4d4158d9022b746261736536345f636572745f41434d455f4d4158d9022c78196261736536345f636572745f706174685f41434d455f4d4158",
+   "expect": "valid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "converted",
+   "note": "the example is EDN upstream, converted to CBOR with cbor-diag",
+   "source": "cddl/examples/comid-4.diag"
+  },
+  {
+   "id": "corim/comid/comid-5",
+   "schema": "schemas/ietf/corim/comid.cddl",
+   "hex": "a201a100503f06af63a93c11e4979700505690773f04a3008182a100a100d8255067b28b6c34cc40a19117ab5b05911e3981a200677468696e67203201a10d82d9022c726261736536345f636572745f706174685f58d9022c726261736536345f636572745f706174685f59028482a100a400d8255067b28b6c34cc40a19117ab5b05911e37016941434d4520496e632e026f41434d4520526f616452756e6e6572030187d9022a6c6261736536345f6b65795f58d9022b6d6261736536345f636572745f59d9022c726261736536345f636572745f706174685f5ad9022d8201582044aa336af4cb14a879432e53dd6571c7fa9bccafb75f488259262d6ea3a4d91bd9022ea101654b65792031d9022f8201582055aa336af4cb14a879432e53dd6571c7fa9bccafb75f488259262d6ea3a4d91bd902318201582066aa336af4cb14a879432e53dd6571c7fa9bccafb75f488259262d6ea3a4d91b83a100a100d8255067b28b6c34cc40a19117ab5b05911e3882d9022c726261736536345f636572745f706174685f58d9022c726261736536345f636572745f706174685f59a100677468696e67203183a100a100d8255067b28b6c34cc40a19117ab5b05911e3982d9022c726261736536345f636572745f706174685f58d9022c726261736536345f636572745f706174685f59a200677468696e6720320182d9022c726261736536345f636572745f706174685f41d9022c726261736536345f636572745f706174685f4283a100a100d8255067b28b6c34cc40a19117ab5b05911e4082d9022c726261736536345f636572745f706174685f58d9022c726261736536345f636572745f706174685f59a10182d9022c726261736536345f636572745f706174685f41d9022c726261736536345f636572745f706174685f42038482a100a400d8255067b28b6c34cc40a19117ab5b05911e37016941434d4520496e632e026f41434d4520526f616452756e6e6572030183d9022a6c6261736536345f6b65795f58d9022b6d6261736536345f636572745f59d9022c726261736536345f636572745f706174685f5a83a100a100d8255067b28b6c34cc40a19117ab5b05911e3082d9022c726261736536345f636572745f706174685f58d9022c726261736536345f636572745f706174685f59a100677468696e67203183a100a100d8255067b28b6c34cc40a19117ab5b05911e3182d9022c726261736536345f636572745f706174685f58d9022c726261736536345f636572745f706174685f59a200677468696e6720320182d9022c726261736536345f636572745f706174685f41d9022c726261736536345f636572745f706174685f4283a100a100d8255067b28b6c34cc40a19117ab5b05911e3282d9022c726261736536345f636572745f706174685f58d9022c726261736536345f636572745f706174685f59a10182d9022c726261736536345f636572745f706174685f41d9022c726261736536345f636572745f706174685f42",
+   "expect": "valid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "converted",
+   "note": "the example is EDN upstream, converted to CBOR with cbor-diag",
+   "source": "cddl/examples/comid-5.diag"
+  },
+  {
+   "id": "corim/comid/comid-6",
+   "schema": "schemas/ietf/corim/comid.cddl",
+   "hex": "a301a100503f06af63a93c11e4979700505690773f0281a3006941434d4520496e632e01d8207468747470733a2f2f61636d652e6578616d706c6502810004a1008182a101d9022a6c6261736536345f6b65795f5881a101a200a20065312e302e300119400002818201582044aa336af4cb14a879432e53dd6571c7fa9bccafb75f488259262d6ea3a4d91b",
+   "expect": "valid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "converted",
+   "note": "the example is EDN upstream, converted to CBOR with cbor-diag",
+   "source": "cddl/examples/comid-6.diag"
+  },
+  {
+   "id": "corim/comid/comid-7",
+   "schema": "schemas/ietf/corim/comid.cddl",
+   "hex": "a301a100503827e03b25dd454cb36a679c923af51f0281a3006941434d4520496e632e01d8207468747470733a2f2f61636d652e6578616d706c6502810004a1008182a101d9022a6c6261736536345f6b65795f5882a101a10fd902348201f6a2000101a10fd90234822001",
+   "expect": "valid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "converted",
+   "note": "the example is EDN upstream, converted to CBOR with cbor-diag",
+   "source": "cddl/examples/comid-7.diag"
+  },
+  {
+   "id": "corim/comid/comid-cend",
+   "schema": "schemas/ietf/corim/comid.cddl",
+   "hex": "a301a10078206d792d6e733a61636d652d726f616472756e6e65722d737570706c656d656e740281a3006941434d4520496e632e01d8207468747470733a2f2f61636d652e6578616d706c65028301000204a10a81828282a100a300d86f445502c000016941434d4520496e632e02781841434d4520526f616452756e6e6572204669726d7761726581a201a100a20065312e302e30011940000281d9022a6c6261736536345f6b65795f5882a100a400d8255067b28b6c34cc40a19117ab5b05911e37016941434d4520496e632e026f41434d4520526f616452756e6e6572030181a101a200a20065312e302e300119400002818201582044aa336af4cb14a879432e53dd6571c7fa9bccafb75f488259262d6ea3a4d91b8182a100a300d86f445502c000016941434d4520496e632e02781841434d4520526f616452756e6e6572204669726d7761726581a101a204d902304800000000000000000548ffffffff00000000",
+   "expect": "valid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "converted",
+   "note": "the example is EDN upstream, converted to CBOR with cbor-diag",
+   "source": "cddl/examples/comid-cend.diag"
+  },
+  {
+   "id": "corim/comid/comid-design-cd",
+   "schema": "schemas/ietf/corim/comid.cddl",
+   "hex": "a401a100501eacd596f4a34fb699bfaeb58e0a4e470281a30071465047412044657369676e732d522d557301d820781e68747470733a2f2f6670676164657369676e737275732e6578616d706c650281000381a2005097f5a7071c6f438f877a4a020780ebe9010004a2008482a100a300d86f4b6086480186f84d010f040101766670676164657369676e737275732e6578616d706c65030281a101a204d902304800000000000000000548ffffffff0000000082a100a300d86f4b6086480186f84d010f040201766670676164657369676e737275732e6578616d706c65030281a101a10281820758303fe18eca4053879e017ef5eb7a3e5157659c5f9bb15b7d09959b8b8647822a4cc21c3aa6721cef87f5bfa53495db083382a100a300d86f4b6086480186f84d010f040301766670676164657369676e737275732e6578616d706c65030281a101a102818207583020ff681a0882e29b481953888936209cb53df9c5aaec606a2c24a0fb138595124b8e3f24a12771bc3854cc68b40361ad82a100a200d86f4c6086480186f84d010f04630101766670676164657369676e737275732e6578616d706c6581a101a204d902305830000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000055830466224343d681802c1506bbed7d7f00b969baddd6346e4f2e7ce146692996f22a45814de81d248f583b65f817b5fceab018182a100a200d86f4c6086480186f84d010f04630201766670676164657369676e737275732e6578616d706c6581a101a204d902304800000000000000000548ffffffff00000000",
+   "expect": "valid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "converted",
+   "note": "the example is EDN upstream, converted to CBOR with cbor-diag",
+   "source": "cddl/examples/comid-design-cd.diag"
+  },
+  {
+   "id": "corim/comid/comid-domain-mem",
+   "schema": "schemas/ietf/corim/comid.cddl",
+   "hex": "a301a100501eacd596f4a34fb699bfaeb58e0a4e470381a2005097f5a7071c6f438f877a4a020780ebe9010004a1058382a100a300d86f480607517b010f6202016b58595a2e6578616d706c65027158595a5f526f6f742d6f662d747275737481a100a200d86f480607517b010f6201016b58595a2e6578616d706c6582a100a300d9023042c0de016b5051522e6578616d706c6502715051525f526f6f742d6f662d747275737482a100a300d86f480607517b010f0801016f4c6f6164496e632e6578616d706c650301a100a300d86f480607517b010f0802016f4c6f6164496e632e6578616d706c65030182a100a400d8255067b28b6c34cc40a19117ab5b05911e37016941434d4520496e632e026f41434d4520526f616452756e6e6572030181a100a300d86f480607517b010f0903016f4c6f6164496e632e6578616d706c650301",
+   "expect": "valid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "converted",
+   "note": "the example is EDN upstream, converted to CBOR with cbor-diag",
+   "source": "cddl/examples/comid-domain-mem.diag"
+  },
+  {
+   "id": "corim/comid/comid-firmware-cd",
+   "schema": "schemas/ietf/corim/comid.cddl",
+   "hex": "a301a10050af1cd895be784adbb7e9add44a65abf30281a300714669726d77617265204d464720496e632e01d820781868747470733a2f2f66776d6667696e632e6578616d706c6502810004a2008282a100a4017066776d6667696e632e6578616d706c6502676677595f6e35780300040081a101a201d902280102818207583015e77d6f133252f1db7044901313884f2977d2109b33c79f33e079bfc78865255c0fb733c240fdda544b8215d7b8f81582a100a4017066776d6667696e632e6578616d706c6502676677585f6e35780301040081a101a201d90228010281820758303d90b6bf003da2d94ea5463f97fb3c53ddc51cfba1e3e38eef7af071a67986595d22729131df9fe80f5451eef154f85e018182a100a200d86f4c6086480186f84d010f046301017066776d6667696e632e6578616d706c6581a101a204d902304800000000000000000548ffffffff00000000",
+   "expect": "valid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "converted",
+   "note": "the example is EDN upstream, converted to CBOR with cbor-diag",
+   "source": "cddl/examples/comid-firmware-cd.diag"
+  },
+  {
+   "id": "corim/comid/comid-flags",
+   "schema": "schemas/ietf/corim/comid.cddl",
+   "hex": "a401a100501eacd596f4a34fb699bfaeb58e0a4e490281a300654f454d2d4101d8207568747470733a2f2f6f656d2d612e6578616d706c650281000382a200501eacd596f4a34fb699bfaeb58e0a4e470100a20050af1cd895be784adbb7e9add44a65abf3010004a1018182a100a200d86f4e060c6086480186f84d010f046301017066776d6667696e632e6578616d706c6581a101a103aa00f501f502f503f404f505f506f507f508f509f5",
+   "expect": "valid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "converted",
+   "note": "the example is EDN upstream, converted to CBOR with cbor-diag",
+   "source": "cddl/examples/comid-flags.diag"
+  },
+  {
+   "id": "corim/comid/comid-integrity-registers",
+   "schema": "schemas/ietf/corim/comid.cddl",
+   "hex": "a301a100503f06af63a93c11e4979700505690773f0281a3006941434d4520496e632e01d8207468747470733a2f2f61636d652e6578616d706c6502810004a1008182a100a400d8255067b28b6c34cc40a19117ab5b05911e37016941434d4520496e632e026f41434d4520526f616452756e6e6572030181a101a10ea200828201582044aa336af4cb14a879432e53dd6571c7fa9bccafb75f488259262d6ea3a4d91b82696d792d616c672d696444deadbeef656d792d6972828201582050aa341af9cb20a879440e58dd6581c14fa14bccafb75f488259262d6ea3a4d982696d792d616c672d696444fefefafa",
+   "expect": "valid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "converted",
+   "note": "the example is EDN upstream, converted to CBOR with cbor-diag",
+   "source": "cddl/examples/comid-integrity-registers.diag"
+  },
+  {
+   "id": "corim/comid/comid-opaque-instance-id",
+   "schema": "schemas/ietf/corim/comid.cddl",
+   "hex": "a301a100503f06af63a93c11e4979700505690773f0281a3006941434d4520496e632e01d8207468747470733a2f2f61636d652e6578616d706c6502810004a1008182a101d9023058409f71ec4d223f4f899d532ed6ff6ecbbb4a62cb386ba24c204c9371ce5e3b9291713fe96b9b413d8842968ebb1fa4cf1920d0c5e9f872776a1e826f2851ecdb4781a101a100a20065312e302e3001194000",
+   "expect": "valid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "converted",
+   "note": "the example is EDN upstream, converted to CBOR with cbor-diag",
+   "source": "cddl/examples/comid-opaque-instance-id.diag"
+  },
+  {
+   "id": "corim/comid/comid-psa-endval",
+   "schema": "schemas/ietf/corim/comid.cddl",
+   "hex": "a301a100781a6365727469666965722e6578616d706c652f67697a6d6f2d76310281a3006e43657274696669657220496e632e01d820781968747470733a2f2f6365727469666965722e6578616d706c6502810004a10a81828182a100a100d90230582061636d652d696d706c656d656e746174696f6e2d69642d30303030303030303181a200767073612e736f6674776172652d636f6d706f6e656e7401a3028182677368612d32353658209a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa0b6450526f540d81d9023058205378796307535df3ec8d8b15a2e2dc5641419c3d3060cfe32238c0fa973f7aa38182a100a100d90230582061636d652d696d706c656d656e746174696f6e2d69642d30303030303030303181a200717073612e63657274696669636174696f6e01a118647531323334353637383930313233202d203132333435",
+   "expect": "valid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "converted",
+   "note": "the example is EDN upstream, converted to CBOR with cbor-diag",
+   "source": "cddl/examples/comid-psa-endval.diag"
+  },
+  {
+   "id": "corim/comid/comid-psa-refval",
+   "schema": "schemas/ietf/corim/comid.cddl",
+   "hex": "a301a1007561636d652e6578616d706c652f67697a6d6f2d76310281a3006941434d4520496e632e01d8207468747470733a2f2f61636d652e6578616d706c6502810004a1008282a100a100d90230582061636d652d696d706c656d656e746174696f6e2d69642d30303030303030303181a200767073612e736f6674776172652d636f6d706f6e656e7401a3028182677368612d32353658209a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa0b6450526f540d81d9023058205378796307535df3ec8d8b15a2e2dc5641419c3d3060cfe32238c0fa973f7aa382a100a100d90230582061636d652d696d706c656d656e746174696f6e2d69642d30303030303030303181a200767073612e736f6674776172652d636f6d706f6e656e7401a3028182677368612d3235365820a3fe9f414586c0d3cacbe3b6920a09d8718e503bca22e23fef882203bf7650650b6450526f540d81d9023058205378796307535df3ec8d8b15a2e2dc5641419c3d3060cfe32238c0fa973f7aa3",
+   "expect": "valid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "converted",
+   "note": "the example is EDN upstream, converted to CBOR with cbor-diag",
+   "source": "cddl/examples/comid-psa-refval.diag"
+  },
+  {
+   "id": "corim/comid/comid-raw-value",
+   "schema": "schemas/ietf/corim/comid.cddl",
+   "hex": "a301a100503f06af63a93c11e4979700505690773f0281a3006941434d4520496e632e01d8207468747470733a2f2f61636d652e6578616d706c6502810004a1008382a100a400d8255067b28b6c34cc40a19117ab5b05911e37016941434d4520496e632e026f41434d4520526f616452756e6e6572030181a101a104d90230441234567882a100a400d8255067b28b6c34cc40a19117ab5b05911e37016941434d4520496e632e026f41434d4520526f616452756e6e6572030181a101a104d9023382441234000044ffff000082a100a400d8255067b28b6c34cc40a19117ab5b05911e37016941434d4520496e632e026f41434d4520526f616452756e6e6572030181a101a204d9023044123400000544ffff0000",
+   "expect": "valid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "converted",
+   "note": "the example is EDN upstream, converted to CBOR with cbor-diag",
+   "source": "cddl/examples/comid-raw-value.diag"
+  },
+  {
+   "id": "corim/comid/comid-series",
+   "schema": "schemas/ietf/corim/comid.cddl",
+   "hex": "a301a10078206d792d6e733a61636d652d726f616472756e6e65722d737570706c656d656e740281a3006941434d4520496e632e01d8207468747470733a2f2f61636d652e6578616d706c65028301000204a108828283a100a300d86f445502c000016941434d4520496e632e02781841434d4520526f616452756e6e6572204669726d7761726581a101a103a100f581d9022a766261736536345f6b65795f41434d455f7369676e6572838281a101a200a10065322e302e3001d902280381a101a10b682d4e4f5f4356452d8281a101a200a10065312e302e3001d902280281a101a10b6b4356455f5741524e494e478281a101a200a10065312e302e3001d902280181a101a10b6e4356455f56554c4e455241424c458283a100a300d86f445502c000016941434d4520496e632e02781841434d4520526f616452756e6e6572204669726d776172658081d9022a766261736536345f6b65795f41434d455f7369676e6572838281a101a200a10065322e302e3001d902280381a101a10b682d4e4f5f4356452d8281a101a200a10065312e302e3001d902280281a101a10b6b4356455f5741524e494e478281a101a200a10065312e302e3001d902280181a101a10b6e4356455f56554c4e455241424c45",
+   "expect": "valid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "converted",
+   "note": "the example is EDN upstream, converted to CBOR with cbor-diag",
+   "source": "cddl/examples/comid-series.diag"
+  },
+  {
+   "id": "corim/comid/comid-trust-dep",
+   "schema": "schemas/ietf/corim/comid.cddl",
+   "hex": "a301a100501eacd596f4a34fb699bfaeb58e0a4e470381a2005097f5a7071c6f438f877a4a020780ebe9010004a1048582a100a300d86f480607517b010f6201016b58595a2e6578616d706c65027158595a5f526f6f742d6f662d747275737481a100a300d86f480607517b010f6202016b58595a2e6578616d706c65027158595a5f526f6f742d6f662d747275737482a100a300d86f480607517b010f6202016b58595a2e6578616d706c65027158595a5f526f6f742d6f662d747275737481a100a300d86f480607517b010f6201016b58595a2e6578616d706c65027158595a5f526f6f742d6f662d747275737482a100a300d86f480607517b010f0801016f4c6f6164496e632e6578616d706c65030181a100a300d9023042c0de016b5051522e6578616d706c6502715051525f526f6f742d6f662d747275737482a100a300d86f480607517b010f0802016f4c6f6164496e632e6578616d706c65030181a100a300d86f480607517b010f0801016f4c6f6164496e632e6578616d706c65030182a100a300d86f480607517b010f0903016f4c6f6164496e632e6578616d706c65030181a100a400d8255067b28b6c34cc40a19117ab5b05911e37016941434d4520496e632e026f41434d4520526f616452756e6e65720301",
+   "expect": "valid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "converted",
+   "note": "the example is EDN upstream, converted to CBOR with cbor-diag",
+   "source": "cddl/examples/comid-trust-dep.diag"
+  },
+  {
+   "id": "corim/corim/corim-1",
+   "schema": "schemas/ietf/corim/corim.cddl",
+   "hex": "d901f5a20050284e6c3e5d9f4f6b851f5a4247f243a70181d901fa58afa301a100503f06af63a93c11e4979700505690773f0281a3006941434d4520496e632e01d8207468747470733a2f2f61636d652e6578616d706c6502810004a1008182a100a400d8255067b28b6c34cc40a19117ab5b05911e37016941434d4520496e632e026f41434d4520526f616452756e6e6572030181a101a200a20065312e302e300119400002818201582044aa336af4cb14a879432e53dd6571c7fa9bccafb75f488259262d6ea3a4d91b",
+   "expect": "valid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "converted",
+   "note": "the example is EDN upstream, converted to CBOR with cbor-diag",
+   "source": "cddl/examples/corim-1.diag"
+  },
+  {
+   "id": "corim/corim/corim-1-other-tag",
+   "schema": "schemas/ietf/corim/corim.cddl",
+   "hex": "d90257a20050284e6c3e5d9f4f6b851f5a4247f243a70181d901fa58afa301a100503f06af63a93c11e4979700505690773f0281a3006941434d4520496e632e01d8207468747470733a2f2f61636d652e6578616d706c6502810004a1008182a100a400d8255067b28b6c34cc40a19117ab5b05911e37016941434d4520496e632e026f41434d4520526f616452756e6e6572030181a101a200a20065312e302e300119400002818201582044aa336af4cb14a879432e53dd6571c7fa9bccafb75f488259262d6ea3a4d91b",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "derived",
+   "source": "cddl/examples/corim-1.diag with its tag number changed to 599"
+  },
+  {
+   "id": "corim/corim/corim-2",
+   "schema": "schemas/ietf/corim/corim.cddl",
+   "hex": "d901f5a20050284e6c3e5d9f4f6b851f5a4247f243a70181d901fa5901d2a301a100503f06af63a93c11e4979700505690773f0281a3006941434d4520496e632e01d8207468747470733a2f2f61636d652e6578616d706c6502810004a2008382a100a400d8255067b28b6c34cc40a19117ab5b05911e37016941434d4520496e632e02781841434d4520526f616452756e6e6572204669726d77617265030181a101a102818201582044aa336af4cb14a879432e53dd6571c7fa9bccafb75f488259262d6ea3a4d91b82a100a500d82550a71b3e388d454a0581f352e58c832c5c016a57594c494520496e632e027757594c494520436f796f74652054727573746564204f530302040081a101a1028182015820bb71198ed60a95dc3c619e555c2c0b8d7564a38031b034a195892591c65365b082a100a500d82550a71b3e388d454a0581f352e58c832c5c016a57594c494520496e632e027757594c494520436f796f74652054727573746564204f530302040181a101a1028182015820bb71198ed60a95dc3c619e555c2c0b8d7564a38031b034a195892591c65365b0018182a100a400d8255067b28b6c34cc40a19117ab5b05911e37016941434d4520496e632e02781d41434d4520526f616452756e6e657220526f6f74206f66205472757374030081a101a101d9022801",
+   "expect": "valid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "converted",
+   "note": "the example is EDN upstream, converted to CBOR with cbor-diag",
+   "source": "cddl/examples/corim-2.diag"
+  },
+  {
+   "id": "corim/corim/corim-design-cd",
+   "schema": "schemas/ietf/corim/corim.cddl",
+   "hex": "d901f5a400500a2d9d8c56f74071b4f38065c37e4acf0181d901fa590264a401a100501eacd596f4a34fb699bfaeb58e0a4e470281a30071465047412044657369676e732d522d557301d820781e68747470733a2f2f6670676164657369676e737275732e6578616d706c650281000381a2005097f5a7071c6f438f877a4a020780ebe9010004a2008482a100a300d86f4b6086480186f84d010f040101766670676164657369676e737275732e6578616d706c65030281a101a204d902304800000000000000000548ffffffff0000000082a100a300d86f4b6086480186f84d010f040201766670676164657369676e737275732e6578616d706c65030281a101a10281820758303fe18eca4053879e017ef5eb7a3e5157659c5f9bb15b7d09959b8b8647822a4cc21c3aa6721cef87f5bfa53495db083382a100a300d86f4b6086480186f84d010f040301766670676164657369676e737275732e6578616d706c65030281a101a102818207583020ff681a0882e29b481953888936209cb53df9c5aaec606a2c24a0fb138595124b8e3f24a12771bc3854cc68b40361ad82a100a200d86f4c6086480186f84d010f04630101766670676164657369676e737275732e6578616d706c6581a101a204d902305830000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000055830466224343d681802c1506bbed7d7f00b969baddd6346e4f2e7ce146692996f22a45814de81d248f583b65f817b5fceab018182a100a200d86f4c6086480186f84d010f04630201766670676164657369676e737275732e6578616d706c6581a101a204d902304800000000000000000548ffffffff000000000281a100d820783e68747470733a2f2f72696d732e6578616d706c652e636f6d2f706174682f746f2f66696c655f61646b666861657269612d64666b615f65666b6a2e72696d03d86f4a6086480186f84d010f06",
+   "expect": "valid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "converted",
+   "note": "the example is EDN upstream, converted to CBOR with cbor-diag",
+   "source": "cddl/examples/corim-design-cd.diag"
+  },
+  {
+   "id": "corim/corim/corim-firmware-cd",
+   "schema": "schemas/ietf/corim/corim.cddl",
+   "hex": "d901f5a3005029b834181a5c4e4ea53e8f8786bc8c5b0181d901fa590156a301a10050af1cd895be784adbb7e9add44a65abf30281a300714669726d77617265204d464720496e632e01d820781868747470733a2f2f66776d6667696e632e6578616d706c6502810004a2008282a100a4017066776d6667696e632e6578616d706c6502676677595f6e35780300040081a101a201d902280102818207583015e77d6f133252f1db7044901313884f2977d2109b33c79f33e079bfc78865255c0fb733c240fdda544b8215d7b8f81582a100a4017066776d6667696e632e6578616d706c6502676677585f6e35780301040081a101a201d90228010281820758303d90b6bf003da2d94ea5463f97fb3c53ddc51cfba1e3e38eef7af071a67986595d22729131df9fe80f5451eef154f85e018182a100a200d86f4c6086480186f84d010f046301017066776d6667696e632e6578616d706c6581a101a204d902304800000000000000000548ffffffff0000000003d86f4a6086480186f84d010f06",
+   "expect": "valid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "converted",
+   "note": "the example is EDN upstream, converted to CBOR with cbor-diag",
+   "source": "cddl/examples/corim-firmware-cd.diag"
+  },
+  {
+   "id": "corim/corim/corim-roles",
+   "schema": "schemas/ietf/corim/corim.cddl",
+   "hex": "d901f5a30050284e6c3e5d9f4f6b851f5a4247f243a70581a300654f454d2d4101d8207568747470733a2f2f6f656d2d612e6578616d706c650281020181d901fa5842a201a100503f06af63a93c11e4979700505690773f04a1008182a100a100d8255067b28b6c34cc40a19117ab5b05911e3781a101a100a20065312e302e3001194000",
+   "expect": "valid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "converted",
+   "note": "the example is EDN upstream, converted to CBOR with cbor-diag",
+   "source": "cddl/examples/corim-roles.diag"
+  },
+  {
+   "id": "corim/cotl/cotl-1",
+   "schema": "schemas/ietf/corim/cotl.cddl",
+   "hex": "a300a200503f06af63a93c11e4979700505690773a01010183a100503f06af63a93c11e4979700505690773ea200503f06af63a93c11e4979700505690773f0105a200503f06af63a93c11e4979700505690774f010202a200c11904d201c11911d7",
+   "expect": "valid",
+   "constructs": [
+    "syntax.modules",
+    "syntax.sockets",
+    "syntax.tag",
+    "syntax.map",
+    "syntax.group-choice",
+    "syntax.type-extend",
+    "syntax.generics"
+   ],
+   "provenance": "converted",
+   "note": "the example is EDN upstream, converted to CBOR with cbor-diag",
+   "source": "cddl/examples/cotl-1.diag"
+  },
+  {
+   "id": "corim/intrep-acs/schema",
+   "schema": "schemas/ietf/corim/intrep-acs.cddl",
+   "expect": "schema-error",
+   "constructs": [
+    "semantic.names"
+   ],
+   "provenance": "verbatim",
+   "note": "an undefined name in the upstream schema at this commit (RFC 8610 §2: every name must be defined)",
+   "source": "cddl/stagingarea.cddl names `dd`, which no fragment defines"
+  },
+  {
+   "id": "corim/intrep-rel/schema",
+   "schema": "schemas/ietf/corim/intrep-rel.cddl",
+   "expect": "schema-error",
+   "constructs": [
+    "semantic.names"
+   ],
+   "provenance": "verbatim",
+   "note": "an undefined name in the upstream schema at this commit (RFC 8610 §2: every name must be defined)",
+   "source": "cddl/stagingarea.cddl names `dd`, which no fragment defines"
+  }
+ ]
+}

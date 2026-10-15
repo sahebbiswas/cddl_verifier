@@ -479,6 +479,12 @@ make `role: $role` accept an unsigned integer or a text string and nothing
 else. A socket with no alternatives in the schema matches nothing (RFC 8610
 §3.9), so an optional field typed with one must be absent.
 
+A socket of an imported module can be named with the module's prefix
+(`coswid.$version-scheme`): it is the same shared socket as `$version-scheme`,
+so extensions made in the importing schema apply to it. A prefixed name for a
+socket the module does not have is still an undefined name. An optional group
+socket (`? $$ext`) with no alternatives takes no entries.
+
 A choice from a group (`&(a: 0, b: 1)`, or `&colors` with
 `colors = (red: 0, green: 1)`) is the choice of the group's entry types,
 keys dropped: here `0 / 1`. Entries that are groups contribute their own

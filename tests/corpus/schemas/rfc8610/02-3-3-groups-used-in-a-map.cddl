@@ -1,0 +1,3 @@
+; §3.3 groups used in a map
+person = { pii }
+pii = (age: int, name: tstr)

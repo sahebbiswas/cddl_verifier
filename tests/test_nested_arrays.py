@@ -113,5 +113,58 @@ class TestSequenceMatcherPaths(unittest.TestCase):
         self.assertEqual(diag.path_expr, "$")
 
 
+class TestLabelledElements(unittest.TestCase):
+    """A label in front of an array element changes nothing about the element (#80).
+
+    COSE writes `signatures : [+ COSE_Signature]` and `recipients : [+ COSE_recipient]`;
+    the label was taken for a field and the array it names went unchecked.
+    """
+
+    def verdict(self, schema, value):
+        return validate(schema, value, "r").valid
+
+    def test_occurrence_of_a_labelled_array(self):
+        schema = "r = [x: bstr, y: [+ uint]]"
+        self.assertTrue(self.verdict(schema, [b"", [1]]))
+        self.assertFalse(self.verdict(schema, [b"", []]))
+
+    def test_elements_of_a_labelled_array(self):
+        self.assertFalse(self.verdict("r = [y: [* uint]]", [["a"]]))
+        self.assertTrue(self.verdict("r = [y: [* uint]]", [[]]))
+        self.assertFalse(self.verdict("r = [a: [* [* uint]]]", [[["x"]]]))
+        self.assertTrue(self.verdict("r = [a: [* [* uint]]]", [[[1], []]]))
+
+    def test_elements_that_are_structures(self):
+        schema = "r = [y: [+ e]]\ne = [bstr]"
+        self.assertTrue(self.verdict(schema, [[[b""]]]))
+        self.assertFalse(self.verdict(schema, [[]]))
+        self.assertFalse(self.verdict(schema, [[[1]]]))
+
+    def test_with_an_occurrence_of_its_own(self):
+        self.assertTrue(self.verdict("r = [* y: [+ uint]]", [[1], [2, 3]]))
+        self.assertFalse(self.verdict("r = [* y: [+ uint]]", [[1], []]))
+        self.assertFalse(self.verdict("r = [* y: [+ uint]]", [[1], ["a"]]))
+        self.assertTrue(self.verdict("r = [? y: [+ uint]]", []))
+        self.assertFalse(self.verdict("r = [? y: [+ uint]]", [[]]))
+
+    def test_beside_other_labelled_entries(self):
+        schema = "r = [a: [+ uint], ? b: [+ tstr], c: uint]"
+        self.assertTrue(self.verdict(schema, [[1], ["x"], 3]))
+        self.assertFalse(self.verdict(schema, [[1], [5], 3]))
+
+    def test_as_a_choice_alternative(self):
+        schema = "r = [y: [+ uint] / nil]"
+        self.assertTrue(self.verdict(schema, [None]))
+        self.assertTrue(self.verdict(schema, [[1]]))
+        self.assertFalse(self.verdict(schema, [[]]))
+
+    def test_cose_recipients(self):
+        schema = ("r = [protected: bstr, payload: bstr / nil, recipients: [+ recipient]]\n"
+                  "recipient = [protected: bstr, ciphertext: bstr / nil]")
+        self.assertTrue(self.verdict(schema, [b"", b"x", [[b"", None]]]))
+        self.assertFalse(self.verdict(schema, [b"", b"x", []]))
+        self.assertFalse(self.verdict(schema, [b"", b"x", [[b""]]]))
+
+
 if __name__ == "__main__":
     unittest.main()

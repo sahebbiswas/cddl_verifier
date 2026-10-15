@@ -127,6 +127,7 @@ class _Linker:
         any_name = False
         done: Set[Tuple[str, Optional[str]]] = set()
         bound: Dict[str, str] = {}  # prefix -> the module it names
+        sockets: Set[Tuple[str, str]] = set()  # (prefix, socket) the imports provide
 
         for _kind, module, prefix in parse_imports(text):
             if (module, prefix) in done:
@@ -148,6 +149,9 @@ class _Linker:
             if prefix:
                 loaded_prefixes[prefix] = module
             names = {r.name for r in result.schema.rules if not r.name.startswith('$')}
+            if prefix:
+                sockets |= {(prefix, r.name) for r in result.schema.rules
+                            if r.name.startswith('$')}
 
             def mapping(n, p=prefix, names=names):
                 return f'{p}.{n}' if p and n in names else n
@@ -170,6 +174,18 @@ class _Linker:
             prefixes |= result.imports.prefixes
             any_name = any_name or result.imports.any_name
             unloaded.extend(item for item in result.unloaded if item not in unloaded)
+
+        if sockets:
+            # Sockets are shared by every module (the extensions of one name
+            # merge), so a reference written with the import's prefix, as the
+            # CoRIM schemas do (`coswid.$version-scheme`), is the socket itself.
+            def socket_name(n, sockets=sockets):
+                prefix, dot, rest = n.partition('.$')
+                if dot and rest and (prefix, '$' + rest) in sockets:
+                    return '$' + rest
+                return n
+
+            rules[:len(schema.rules)] = [rename(r, socket_name) for r in rules[:len(schema.rules)]]
 
         linked = replace(schema, rules=tuple(rules))
         return LinkResult(linked, Imports(frozenset(prefixes), any_name, loaded_prefixes),

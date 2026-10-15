@@ -1,0 +1,415 @@
+; CoRIM intrep-rel schema
+; Concatenation, in this order, of cddl/intrep-rel-start.cddl cddl/intrep-acs.cddl cddl/intrep-ae.cddl cddl/intrep-ar.cddl cddl/intrep-ars.cddl cddl/intrep-ect.cddl cddl/intrep-ect-evidence-addition.cddl cddl/intrep-e-ect.cddl cddl/intrep-m-ect.cddl cddl/intrep-k-ect.cddl cddl/intrep-t-ect.cddl cddl/intrep-ect-common.cddl cddl/intrep-ev.cddl cddl/intrep-evs.cddl cddl/intrep-domain-item.cddl cddl/intrep-domain-mem.cddl cddl/intrep-trust-dep.cddl cddl/intrep-policy.cddl cddl/intrep-rv.cddl cddl/intrep-ect-refval-condition.cddl cddl/intrep-ect-refval-addition.cddl cddl/intrep-ect-endval-condition.cddl cddl/intrep-ect-endval-addition.cddl cddl/intrep-ect-domain-condition.cddl cddl/intrep-ect-domain-addition.cddl cddl/intrep-ect-key-condition.cddl cddl/intrep-ect-key-addition.cddl cddl/intrep-ect-trust-dep-addition.cddl cddl/intrep-ect-trust-dep-condition.cddl cddl/intrep-trust-dep-item.cddl cddl/intrep-claims-map.cddl cddl/intrep-key.cddl cddl/stagingarea.cddl cddl/non-empty.cddl cddl/environment-map.cddl cddl/class-map.cddl cddl/matcher.cddl cddl/measurement-values-map.cddl cddl/version-map.cddl cddl/svn-type-choice.cddl cddl/digest.cddl cddl/flags-map.cddl cddl/raw-value.cddl cddl/tagged-masked-raw-value.cddl cddl/tagged-bytes.cddl cddl/int-range-type-choice.cddl cddl/mac-addr-type-choice.cddl cddl/ip-addr-type-choice.cddl cddl/ueid.cddl cddl/uuid.cddl cddl/integrity-registers.cddl cddl/crypto-key-type-choice.cddl cddl/profile-type-choice.cddl cddl/cose-key.cddl cddl/cose-label-and-value.cddl cddl/class-id-type-choice.cddl cddl/oid.cddl cddl/domain-type.cddl cddl/measured-element-type-choice.cddl cddl/instance-id-type-choice.cddl cddl/psa-sac-ext.cddl
+; from https://github.com/ietf-rats-wg/draft-ietf-rats-corim at commit 59622953f734bbd7bb86108a3689c71c1db7cefc.
+; The text below this header is unchanged.
+
+start = ae-item /
+  rv-item /
+  ev-item /
+  evs-item /
+  key-item /
+  domain-item
+
+ACS = [ + ECT ]
+
+ae = [ + ae-item ]
+
+ae-item = {
+  addition: Evidence-addition-ECT
+}
+
+ar = [
+  acs-condition: [ + ECT ]
+  ars-addition: [ + ECT ]
+]
+
+ARS = [ + ECT ]
+
+ECT = E-ECT /
+      M-ECT /
+      T-ECT /
+      K-ECT
+
+Evidence-addition-ECT = ({
+  environment: environment-map
+  element-list: [ + element-map ]
+  authority: [ + $crypto-key-type-choice ]
+  cmtype: 2
+  ? profile: $profile-type-choice
+}) .within E-ECT
+
+E-ECT = {
+  ECT-common
+  ? element-list: [ + element-map ]
+  ? cmtype: cm-type
+}
+
+element-map = {
+  ? element-id: $measured-element-type-choice
+  element-claims: measurement-values-map
+}
+
+cm-type = &(
+  reference-values: 0
+  endorsements: 1
+  evidence: 2
+)
+
+M-ECT = {
+  ECT-common
+  members: [ + environment-map ]
+}
+
+K-ECT = {
+  ECT-common
+  ? key-id: $measured-element-type-choice
+  ? key-list: [ + $crypto-key-type-choice ]
+  ? key-type: key-type
+}
+
+key-type = &(
+  attest-key: 0
+  identity-key: 1
+)
+
+T-ECT = {
+  ECT-common
+  trustees: [ + environment-map ]
+}
+
+ECT-common = (
+  ? environment: environment-map
+  ? authority: [ + $crypto-key-type-choice ]
+  ? profile: $profile-type-choice
+)
+
+ev = [ + ev-item ]
+
+ev-item = {
+  condition: [ + Endorsement-condition-ECT ]
+  addition: [ + Endorsement-addition-ECT ]
+}
+
+evs = [ + evs-item ]
+
+evs-item = {
+  series: [ + series-item ]
+}
+
+series-item = [
+  condition: [ + Endorsement-condition-ECT ]
+  addition: [ + Endorsement-addition-ECT ]
+]
+
+domain-item = {
+  condition: Domain-condition-ECT
+  addition: Domain-addition-ECT
+}
+
+dm = [ + domain-item ]
+
+td = [ + td-item ]
+
+policy = [
+  condition: [ + ECT ]
+  addition: [ + ECT ]
+]
+
+rv = [ + rv-item ]
+
+rv-item = {
+  condition: Reference-Value-condition-ECT
+  addition: Reference-Value-addition-ECT
+}
+
+Reference-Value-condition-ECT = ({
+  environment: environment-map
+  element-list: [ + element-map ]
+  ? authority: [ + $crypto-key-type-choice ]
+}) .within E-ECT
+
+Reference-Value-addition-ECT = ({
+  environment: environment-map
+  ? element-list: [ + element-map ]
+  authority: [ + $crypto-key-type-choice ]
+  cmtype: 0
+  ? profile: $profile-type-choice
+}) .within E-ECT
+
+Endorsement-condition-ECT = ({
+  environment: environment-map
+  ? element-list: [ + element-map ]
+  ? authority: [ + $crypto-key-type-choice ]
+}) .within E-ECT
+
+Endorsement-addition-ECT = ({
+  environment: environment-map
+  element-list: [ + element-map ]
+  authority: [ + $crypto-key-type-choice ]
+  cmtype: 1
+  ? profile: $profile-type-choice
+}) .within E-ECT
+
+Domain-condition-ECT = ({
+  members: [ + environment-map ]
+  authority: [ + $crypto-key-type-choice ]
+  ? profile: $profile-type-choice
+}) .within M-ECT
+
+Domain-addition-ECT = ({
+  environment: environment-map
+  authority: [ + $crypto-key-type-choice ]
+  ? profile: $profile-type-choice
+  members: [ + environment-map ]
+}) .within M-ECT
+
+Key-condition-ECT = ({
+  environment: environment-map
+  authority: [ + $crypto-key-type-choice ]
+  ? profile: $profile-type-choice
+  ? key-id: $measured-element-type-choice
+  key-list: [ + $crypto-key-type-choice ]
+  key-type: key-type
+}) .within K-ECT
+
+Key-addition-ECT = ({
+  environment: environment-map
+  authority: [ + $crypto-key-type-choice ]
+  ? profile: $profile-type-choice
+  ? key-id: $measured-element-type-choice
+  key-list: [ + $crypto-key-type-choice ]
+  key-type: key-type
+}) .within K-ECT
+
+Trust-Dependency-addition-ECT = ({
+  environment: environment-map
+  authority: [ + $crypto-key-type-choice ]
+  ? profile: $profile-type-choice
+  trustees: [ + environment-map ]
+}) .within T-ECT
+
+Trust-Dependency-condition-ECT = ({
+  environment: environment-map
+  authority: [ + $crypto-key-type-choice ]
+  ? profile: $profile-type-choice
+  trustees: [ + environment-map ]
+}) .within T-ECT
+
+td-item = {
+  condition: Trust-Dependency-condition-ECT
+  addition: Trust-Dependency-addition-ECT
+}
+
+claims-map = {
+  ; TODO
+}
+
+keys = [ + key-item ]
+
+key-item = {
+  ? condition: Key-condition-ECT
+  addition: Key-addition-ECT
+}
+
+StagingArea = [
+  ? rv,
+  ? ev,
+  ? evs,
+  ? keys,
+  ? dm,
+  ? dd,
+]
+
+non-empty<M> = (M) .and ({ + any => any })
+
+environment-map = non-empty<{
+  ? &(class: 0) => class-map
+  ? &(instance: 1) => $instance-id-type-choice
+  ? &(group: 2) => $group-id-type-choice
+}>
+
+class-map = non-empty<{
+  ? &(class-id: 0) => $class-id-type-choice
+  ? &(vendor: 1) => tstr
+  ? &(model: 2) => tstr
+  ? &(layer: 3) => uint
+  ? &(index: 4) => uint
+}>
+
+; Set match: target value must equal one of the listed alternatives (two or more)
+tagged-number-set = #6.566([2* number])
+tagged-text-set = #6.566([2* text])
+tagged-bytes-set = #6.566([2* bytes])
+
+; Range match: target value must lie within the inclusive [min, max] interval
+; null means unbounded.  Defined for numeric types only.
+tagged-number-range = #6.565([number / null, number / null])
+
+; Composed matchers: the bare type means exact match
+bool-matcher = bool
+number-matcher = number / tagged-number-range / tagged-number-set
+text-matcher = text / tagged-text-set
+bytes-matcher = bytes / tagged-bytes-set
+
+measurement-values-map = non-empty<{
+  ? &(version: 0) => version-map
+  ? &(svn: 1) => svn-type-choice
+  ? &(digests: 2) => digests-type
+  ? &(flags: 3) => flags-map
+  ? (
+      &(raw-value: 4) => $raw-value-type-choice,
+      ? &(raw-value-mask-DEPRECATED: 5) => raw-value-mask-type
+    )
+  ? &(mac-addr: 6) => mac-addr-type-choice
+  ? &(ip-addr: 7) => ip-addr-type-choice
+  ? &(serial-number: 8) => text
+  ? &(ueid: 9) => ueid-type
+  ? &(uuid: 10) => uuid-type
+  ? &(name: 11) => text
+  ? &(cryptokeys: 13) => [ + $crypto-key-type-choice ]
+  ? &(integrity-registers: 14) => integrity-registers
+  ? &(int-range: 15) => int-range-type-choice
+  ? &(bool: 16) => bool-matcher
+  ? &(number: 17) => number-matcher
+  ? &(text: 18) => text-matcher
+  ? &(bytes: 19) => bytes-matcher
+  * $$measurement-values-map-extension
+}>
+
+;# import rfc9393 as coswid
+
+version-map = {
+  &(version: 0) => text
+  ? &(version-scheme: 1) => coswid.$version-scheme
+}
+
+svn-type = uint
+svn = svn-type
+min-svn = svn-type
+tagged-svn = #6.552(svn)
+tagged-min-svn = #6.553(min-svn)
+svn-type-choice = svn / tagged-svn / tagged-min-svn
+
+;# import measured-component as eatmc
+
+digests-type = [ + eatmc.digest ]
+
+flags-map = non-empty<{
+  ? &(is-configured: 0) => bool
+  ? &(is-secure: 1) => bool
+  ? &(is-recovery: 2) => bool
+  ? &(is-debug: 3) => bool
+  ? &(is-replay-protected: 4) => bool
+  ? &(is-integrity-protected: 5) => bool
+  ? &(is-runtime-meas: 6) => bool
+  ? &(is-immutable: 7) => bool
+  ? &(is-tcb: 8) => bool
+  ? &(is-confidentiality-protected: 9) => bool
+  ? &(is-runtime-updatable: 10) => bool
+  * $$flags-map-extension
+}>
+
+$raw-value-type-choice /= tagged-bytes
+$raw-value-type-choice /= tagged-masked-raw-value
+
+raw-value-mask-type = bytes
+
+tagged-masked-raw-value = #6.563([
+  value: bytes
+  mask : bytes
+])
+
+tagged-bytes = #6.560(bytes)
+
+int-range-type-choice = int / tagged-int-range
+int-range = [min: int / negative-inf, max: int / positive-inf]
+tagged-int-range = #6.564(int-range)
+positive-inf = null
+negative-inf = null
+
+mac-addr-type-choice = eui48-addr-type / eui64-addr-type
+eui48-addr-type = bytes .size 6
+eui64-addr-type = bytes .size 8
+
+;# import rfc9164 as cbor-ip
+
+ip-addr-type-choice /= cbor-ip.ipv4-address
+ip-addr-type-choice /= cbor-ip.ipv6-address
+
+ueid-type = bytes .size (7..33)
+tagged-ueid-type = #6.550(ueid-type)
+
+uuid-type = bytes .size 16
+tagged-uuid-type = #6.37(uuid-type)
+
+integrity-register-id-type-choice = uint / text
+
+integrity-registers = {
+  + integrity-register-id-type-choice => digests-type
+}
+
+;# import measured-component as eatmc
+
+$crypto-key-type-choice /= tagged-pkix-base64-key-type
+$crypto-key-type-choice /= tagged-pkix-base64-cert-type
+$crypto-key-type-choice /= tagged-pkix-base64-cert-path-type
+$crypto-key-type-choice /= tagged-cose-key-type
+$crypto-key-type-choice /= tagged-pkix-asn1der-cert-type
+$crypto-key-type-choice /= tagged-key-thumbprint-type
+$crypto-key-type-choice /= tagged-cert-thumbprint-type
+$crypto-key-type-choice /= tagged-cert-path-thumbprint-type
+$crypto-key-type-choice /= tagged-bytes
+tagged-pkix-base64-key-type = #6.554(tstr)
+tagged-pkix-base64-cert-type = #6.555(tstr)
+tagged-pkix-base64-cert-path-type = #6.556(tstr)
+tagged-key-thumbprint-type = #6.557(eatmc.digest)
+tagged-cose-key-type = #6.558(COSE_Key)
+tagged-cert-thumbprint-type = #6.559(eatmc.digest)
+tagged-cert-path-thumbprint-type = #6.561(eatmc.digest)
+tagged-pkix-asn1der-cert-type = #6.562(bstr)
+
+$profile-type-choice /= uri 
+$profile-type-choice /= tagged-oid-type
+
+COSE_Key = {
+    1 => tstr / int
+    ? 2 => bstr 
+    ? 3 => tstr / int 
+    ? 4 => [+ (tstr / int) ]
+    ? 5 => bstr
+    * cose-label => cose-value
+}
+
+cose-label = int / tstr
+cose-value = any
+
+$class-id-type-choice /= tagged-oid-type
+$class-id-type-choice /= tagged-uuid-type
+$class-id-type-choice /= tagged-bytes
+
+oid-type = bytes
+tagged-oid-type = #6.111(oid-type)
+
+domain-type = environment-map
+
+$measured-element-type-choice /= tagged-oid-type
+$measured-element-type-choice /= tagged-uuid-type
+$measured-element-type-choice /= uint
+$measured-element-type-choice /= tstr
+
+$instance-id-type-choice /= tagged-ueid-type
+$instance-id-type-choice /= tagged-uuid-type
+$instance-id-type-choice /= tagged-bytes
+$instance-id-type-choice /= tagged-pkix-base64-key-type
+$instance-id-type-choice /= tagged-pkix-base64-cert-type
+$instance-id-type-choice /= tagged-cose-key-type
+$instance-id-type-choice /= tagged-key-thumbprint-type
+$instance-id-type-choice /= tagged-cert-thumbprint-type
+$instance-id-type-choice /= tagged-pkix-asn1der-cert-type
+
+$$measurement-values-map-extension //= (
+  &(psa-cert-num: 100) => psa-cert-num-type
+)
+
+psa-cert-num-type = text .regexp "[0-9]{13} - [0-9]{5}"
+

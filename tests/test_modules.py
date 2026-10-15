@@ -130,6 +130,33 @@ class Linking(unittest.TestCase):
         self.assertTrue(v.validate({"a": 1}).valid)
         self.assertTrue(v.validate({"b": "x"}).valid)
 
+    def test_socket_named_with_the_import_prefix(self):
+        # The CoRIM schemas write `coswid.$version-scheme`; the module only
+        # extends the socket (`$version-scheme /= ...`), it never defines it.
+        module = "$scheme /= 1\n$scheme /= tstr\nthing = [scheme: $scheme]"
+        v = Validator(";# import m as m\nr = [m.$scheme, m.thing]", modules={"m": module})
+        self.assertTrue(v.validate([1, [1]]).valid)
+        self.assertTrue(v.validate(["x", ["y"]]).valid)
+        self.assertFalse(v.validate([2, [1]]).valid)
+        self.assertFalse(v.validate([1, [2]]).valid)
+
+    def test_socket_named_with_the_prefix_takes_the_schemas_extensions(self):
+        v = Validator(";# import m as m\nr = m.$s\n$s /= bool", modules={"m": "$s /= uint"})
+        for good in (1, True):
+            self.assertTrue(v.validate(good).valid)
+        self.assertFalse(v.validate("x").valid)
+
+    def test_socket_the_module_does_not_have_is_an_error(self):
+        with self.assertRaises(SchemaError) as cm:
+            Validator(";# import m as m\nr = m.$nothing", modules={"m": "$s /= uint"})
+        self.assertIn("undefined name 'm.$nothing'", str(cm.exception))
+
+    def test_socket_through_a_module_of_a_module(self):
+        modules = {"a": ";# import b as b\nt = b.$s", "b": "$s /= uint"}
+        v = Validator(";# import a as a\nr = a.t", modules=modules)
+        self.assertTrue(v.validate(3).valid)
+        self.assertFalse(v.validate("x").valid)
+
     def test_rule_location_is_in_the_module_file(self):
         with tempfile.TemporaryDirectory() as d:
             (Path(d) / "lib.cddl").write_text("\n\nt = uint\n", encoding="utf-8")

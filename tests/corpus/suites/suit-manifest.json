@@ -1,0 +1,292 @@
+{
+ "id": "suit-manifest",
+ "title": "SUIT manifest envelopes (draft-ietf-suit-manifest)",
+ "schema": [
+  "schemas/ietf/suit-manifest.cddl",
+  "schemas/ietf/rfc9052.cddl"
+ ],
+ "sources": [
+  {
+   "name": "SUIT manifest schema and examples",
+   "url": "https://github.com/suit-wg/manifest-spec",
+   "commit": "3c9b790b8023ce045d5c6e7575219a026b4217e9",
+   "date": "2026-06-18",
+   "license": "CDDL and examples published in IETF documents: IETF Trust Legal Provisions (code components under the Revised BSD License)"
+  },
+  {
+   "name": "RFC 9052 CDDL, extracted by cddlc (the COSE part of the manifest's schema)",
+   "url": "https://github.com/cabo/cddlc",
+   "commit": "261bea5ccd0082c7d6adab098bd74e8b3fcaaf0a",
+   "date": "2025-02-16",
+   "license": "MIT (the extraction); CDDL and examples published in IETF documents: IETF Trust Legal Provisions (code components under the Revised BSD License)",
+   "path": "data/rfc9052.cddl"
+  }
+ ],
+ "provenance": "verbatim",
+ "cases": [
+  {
+   "id": "suit/example0/1",
+   "hex": "d86ba2025827815824822f58206658ea560262696dd1f13b782239a064da7c6c5cbaf52fded428a6fc83c7e5af035871a50101020003585fa202818141000458568614a40150fa6b4a53d5ad5fdfbe9de663e4d41ffe02501492af1425695e48bf429b2d51f2ab45035824822f582000112233445566778899aabbccddeeff0123456789abcdeffedcba98765432100e1987d0010f020f074382030f0943821702",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group-choice",
+    "syntax.occurrence",
+    "syntax.sockets",
+    "control.cbor",
+    "control.bits",
+    "syntax.tag"
+   ],
+   "provenance": "verbatim",
+   "source": "examples/example0.txt: Envelope",
+   "status": "gap",
+   "issue": 201,
+   "reason": "The envelope's parameters are `{+ $$SUIT_Parameters}`, a repeated group choice in a map, which is checked as if every entry had to take the same alternative."
+  },
+  {
+   "id": "suit/example0/2",
+   "hex": "d86ba2025873825824822f58206658ea560262696dd1f13b782239a064da7c6c5cbaf52fded428a6fc83c7e5af584ad28443a10126a0f65840408d0816f9b510749bf6a51b066951e08a4438f849eb092a1ac768eed9de696c1b1dd35d82ef149e6a73a61976ad2cfe78444b8064293350a122f332cb49f0da035871a50101020003585fa202818141000458568614a40150fa6b4a53d5ad5fdfbe9de663e4d41ffe02501492af1425695e48bf429b2d51f2ab45035824822f582000112233445566778899aabbccddeeff0123456789abcdeffedcba98765432100e1987d0010f020f074382030f0943821702",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group-choice",
+    "syntax.occurrence",
+    "syntax.sockets",
+    "control.cbor",
+    "control.bits",
+    "syntax.tag"
+   ],
+   "provenance": "verbatim",
+   "source": "examples/example0.txt: Envelope with COSE authentication object",
+   "status": "gap",
+   "issue": 201,
+   "reason": "The envelope's parameters are `{+ $$SUIT_Parameters}`, a repeated group choice in a map, which is checked as if every entry had to take the same alternative."
+  },
+  {
+   "id": "suit/example1/1",
+   "hex": "d86ba2025827815824822f58201f2e7acca0dc2786f2fe4eb947f50873a6a3cfaa98866c5b02e621f42074daf2035894a50101020103585fa202818141000458568614a40150fa6b4a53d5ad5fdfbe9de663e4d41ffe02501492af1425695e48bf429b2d51f2ab45035824822f582000112233445566778899aabbccddeeff0123456789abcdeffedcba98765432100e1987d0010f020f074382030f1458258614a115781b687474703a2f2f6578616d706c652e636f6d2f66696c652e62696e1502030f",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group-choice",
+    "syntax.occurrence",
+    "syntax.sockets",
+    "control.cbor",
+    "control.bits",
+    "syntax.tag"
+   ],
+   "provenance": "verbatim",
+   "source": "examples/example1.txt: Envelope",
+   "status": "gap",
+   "issue": 201,
+   "reason": "The envelope's parameters are `{+ $$SUIT_Parameters}`, a repeated group choice in a map, which is checked as if every entry had to take the same alternative."
+  },
+  {
+   "id": "suit/example1/2",
+   "hex": "d86ba2025873825824822f58201f2e7acca0dc2786f2fe4eb947f50873a6a3cfaa98866c5b02e621f42074daf2584ad28443a10126a0f6584027a3d7986eddcc1bee04e1436746408c308ed3c15ac590a1ca0cf96f85671ccac216cb9a1497fc59e21c15f33c95cf75203e25c287b31a57d6cd2ef950b27a7a035894a50101020103585fa202818141000458568614a40150fa6b4a53d5ad5fdfbe9de663e4d41ffe02501492af1425695e48bf429b2d51f2ab45035824822f582000112233445566778899aabbccddeeff0123456789abcdeffedcba98765432100e1987d0010f020f074382030f1458258614a115781b687474703a2f2f6578616d706c652e636f6d2f66696c652e62696e1502030f",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group-choice",
+    "syntax.occurrence",
+    "syntax.sockets",
+    "control.cbor",
+    "control.bits",
+    "syntax.tag"
+   ],
+   "provenance": "verbatim",
+   "source": "examples/example1.txt: Envelope with COSE authentication object",
+   "status": "gap",
+   "issue": 201,
+   "reason": "The envelope's parameters are `{+ $$SUIT_Parameters}`, a repeated group choice in a map, which is checked as if every entry had to take the same alternative."
+  },
+  {
+   "id": "suit/example2/1",
+   "hex": "d86ba2025827815824822f58206a5197ed8f9dccf733d1c89a359441708e070b4c6dcb9a1c2c82c6165f609b900358d1a80101020203585fa202818141000458568614a40150fa6b4a53d5ad5fdfbe9de663e4d41ffe02501492af1425695e48bf429b2d51f2ab45035824822f582000112233445566778899aabbccddeeff0123456789abcdeffedcba98765432100e1987d0010f020f047468747470733a2f2f6769742e696f2f4a4a596f6a074382030f094382170214822f5820cfa90c5c58595e7f5119a72f803fd0370b3e6abbec6315cd38f63135281bc49817822f5820302196d452bce5e8bfeaf71e395645ede6d365e63507a081379721eeecf00007",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group-choice",
+    "syntax.occurrence",
+    "syntax.sockets",
+    "control.cbor",
+    "control.bits",
+    "syntax.tag"
+   ],
+   "provenance": "verbatim",
+   "source": "examples/example2.txt: Envelope",
+   "status": "gap",
+   "issue": 201,
+   "reason": "The envelope's parameters are `{+ $$SUIT_Parameters}`, a repeated group choice in a map, which is checked as if every entry had to take the same alternative."
+  },
+  {
+   "id": "suit/example2/2",
+   "hex": "d86ba2025873825824822f58206a5197ed8f9dccf733d1c89a359441708e070b4c6dcb9a1c2c82c6165f609b90584ad28443a10126a0f65840073d8d80ca67d61cdf04d813c748b2de98fe786fc67b764431307c8dbcbe91dc6f762c2c4d7bb998ff9ead4798e03c8ee26b89ef7a9ad4569f6e187ce89e16c50358d1a80101020203585fa202818141000458568614a40150fa6b4a53d5ad5fdfbe9de663e4d41ffe02501492af1425695e48bf429b2d51f2ab45035824822f582000112233445566778899aabbccddeeff0123456789abcdeffedcba98765432100e1987d0010f020f047468747470733a2f2f6769742e696f2f4a4a596f6a074382030f094382170214822f5820cfa90c5c58595e7f5119a72f803fd0370b3e6abbec6315cd38f63135281bc49817822f5820302196d452bce5e8bfeaf71e395645ede6d365e63507a081379721eeecf00007",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group-choice",
+    "syntax.occurrence",
+    "syntax.sockets",
+    "control.cbor",
+    "control.bits",
+    "syntax.tag"
+   ],
+   "provenance": "verbatim",
+   "source": "examples/example2.txt: Envelope",
+   "status": "gap",
+   "issue": 201,
+   "reason": "The envelope's parameters are `{+ $$SUIT_Parameters}`, a repeated group choice in a map, which is checked as if every entry had to take the same alternative."
+  },
+  {
+   "id": "suit/example2/3",
+   "hex": "d86ba4025873825824822f58206a5197ed8f9dccf733d1c89a359441708e070b4c6dcb9a1c2c82c6165f609b90584ad28443a10126a0f65840073d8d80ca67d61cdf04d813c748b2de98fe786fc67b764431307c8dbcbe91dc6f762c2c4d7bb998ff9ead4798e03c8ee26b89ef7a9ad4569f6e187ce89e16c50358d1a80101020203585fa202818141000458568614a40150fa6b4a53d5ad5fdfbe9de663e4d41ffe02501492af1425695e48bf429b2d51f2ab45035824822f582000112233445566778899aabbccddeeff0123456789abcdeffedcba98765432100e1987d0010f020f047468747470733a2f2f6769742e696f2f4a4a596f6a074382030f094382170214822f5820cfa90c5c58595e7f5119a72f803fd0370b3e6abbec6315cd38f63135281bc49817822f5820302196d452bce5e8bfeaf71e395645ede6d365e63507a081379721eeecf0000714583c8614a1157832687474703a2f2f6578616d706c652e636f6d2f766572792f6c6f6e672f706174682f746f2f66696c652f66696c652e62696e1502030f1759020ba165656e2d5553a20179019d2323204578616d706c6520323a2053696d756c74616e656f757320446f776e6c6f61642c20496e7374616c6c6174696f6e2c2053656375726520426f6f742c2053657665726564204669656c64730a0a2020202054686973206578616d706c6520636f766572732074686520666f6c6c6f77696e672074656d706c617465733a0a202020200a202020202a20436f6d7061746962696c69747920436865636b20287b7b74656d706c6174652d636f6d7061746962696c6974792d636865636b7d7d290a202020202a2053656375726520426f6f7420287b7b74656d706c6174652d7365637572652d626f6f747d7d290a202020202a204669726d7761726520446f776e6c6f616420287b7b6669726d776172652d646f776e6c6f61642d74656d706c6174657d7d290a202020200a2020202054686973206578616d706c6520616c736f2064656d6f6e7374726174657320736576657261626c6520656c656d656e747320287b7b6f76722d736576657261626c657d7d292c20616e64207465787420287b7b6d616e69666573742d6469676573742d746578747d7d292e814100a2036761726d2e636f6d0578525468697320636f6d706f6e656e7420697320612064656d6f6e7374726174696f6e2e205468652064696765737420697320612073616d706c65207061747465726e2c206e6f742061207265616c206f6e652e",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group-choice",
+    "syntax.occurrence",
+    "syntax.sockets",
+    "control.cbor",
+    "control.bits",
+    "syntax.tag"
+   ],
+   "provenance": "verbatim",
+   "source": "examples/example2.txt: Envelope with COSE authentication object",
+   "status": "gap",
+   "issue": 201,
+   "reason": "The envelope's parameters are `{+ $$SUIT_Parameters}`, a repeated group choice in a map, which is checked as if every entry had to take the same alternative."
+  },
+  {
+   "id": "suit/example3/1",
+   "hex": "d86ba2025827815824822f5820f6d44a62ec906b392500c242e78e908e9cc5057f3f04104a06a8566200da2ee00359010fa5010102030358a4a2028181410004589b8814a20150fa6b4a53d5ad5fdfbe9de663e4d41ffe02501492af1425695e48bf429b2d51f2ab450f8258348614a10500050514a2035824822f582000112233445566778899aabbccddeeff0123456789abcdeffedcba98765432100e1987d058368614a10501050514a2035824822f58200123456789abcdeffedcba987654321000112233445566778899aabbccddeeff0e1a00012c22010f020f074382030f14585b860f8258288614a10500050514a115781c687474703a2f2f6578616d706c652e636f6d2f66696c65312e62696e58288614a10501050514a115781c687474703a2f2f6578616d706c652e636f6d2f66696c65322e62696e1502030f",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group-choice",
+    "syntax.occurrence",
+    "syntax.sockets",
+    "control.cbor",
+    "control.bits",
+    "syntax.tag"
+   ],
+   "provenance": "verbatim",
+   "source": "examples/example3.txt: Envelope",
+   "status": "gap",
+   "issue": 201,
+   "reason": "The envelope's parameters are `{+ $$SUIT_Parameters}`, a repeated group choice in a map, which is checked as if every entry had to take the same alternative."
+  },
+  {
+   "id": "suit/example3/2",
+   "hex": "d86ba2025873825824822f5820f6d44a62ec906b392500c242e78e908e9cc5057f3f04104a06a8566200da2ee0584ad28443a10126a0f658400bbf7058c1a79dff23c7755d36aae5c6cc1aacb818f456e2e03f2664c369b9c6700931a52f1f8d808aa4a8e5220d479c9661d2bce0a44974004325001e3b1abb0359010fa5010102030358a4a2028181410004589b8814a20150fa6b4a53d5ad5fdfbe9de663e4d41ffe02501492af1425695e48bf429b2d51f2ab450f8258348614a10500050514a2035824822f582000112233445566778899aabbccddeeff0123456789abcdeffedcba98765432100e1987d058368614a10501050514a2035824822f58200123456789abcdeffedcba987654321000112233445566778899aabbccddeeff0e1a00012c22010f020f074382030f14585b860f8258288614a10500050514a115781c687474703a2f2f6578616d706c652e636f6d2f66696c65312e62696e58288614a10501050514a115781c687474703a2f2f6578616d706c652e636f6d2f66696c65322e62696e1502030f",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group-choice",
+    "syntax.occurrence",
+    "syntax.sockets",
+    "control.cbor",
+    "control.bits",
+    "syntax.tag"
+   ],
+   "provenance": "verbatim",
+   "source": "examples/example3.txt: Envelope with COSE authentication object",
+   "status": "gap",
+   "issue": 201,
+   "reason": "The envelope's parameters are `{+ $$SUIT_Parameters}`, a repeated group choice in a map, which is checked as if every entry had to take the same alternative."
+  },
+  {
+   "id": "suit/example4/1",
+   "hex": "d86ba2025827815824822f58205b5f6586b1e6cdf19ee479a5adabf206581000bd584b0832a9bdaf4f72cdbdd603590116a801010204035867a20283814100814102814101045858880c0014a40150fa6b4a53d5ad5fdfbe9de663e4d41ffe02501492af1425695e48bf429b2d51f2ab45035824822f582000112233445566778899aabbccddeeff0123456789abcdeffedcba98765432100e1987d0010f020f0745840c00030f085838880c0214a3035824822f58200123456789abcdeffedcba987654321000112233445566778899aabbccddeeff0e1a00012c2216001602030f0945840c02170210584e880c0114a2035824822f582000112233445566778899aabbccddeeff0123456789abcdeffedcba987654321015781b687474703a2f2f6578616d706c652e636f6d2f66696c652e62696e1502030f144b880c0014a116011602030f",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group-choice",
+    "syntax.occurrence",
+    "syntax.sockets",
+    "control.cbor",
+    "control.bits",
+    "syntax.tag"
+   ],
+   "provenance": "verbatim",
+   "source": "examples/example4.txt: Envelope",
+   "status": "gap",
+   "issue": 201,
+   "reason": "The envelope's parameters are `{+ $$SUIT_Parameters}`, a repeated group choice in a map, which is checked as if every entry had to take the same alternative."
+  },
+  {
+   "id": "suit/example4/2",
+   "hex": "d86ba2025873825824822f58205b5f6586b1e6cdf19ee479a5adabf206581000bd584b0832a9bdaf4f72cdbdd6584ad28443a10126a0f65840c53c2826b042384e95c646cbcd4308b181f1ed2bfbeb4e70b93cac9fbdc82e382d877e2c2bcfaf975ffcd36941f2f4db89f68d3c77d6a3506e9b1509a49dec4603590116a801010204035867a20283814100814102814101045858880c0014a40150fa6b4a53d5ad5fdfbe9de663e4d41ffe02501492af1425695e48bf429b2d51f2ab45035824822f582000112233445566778899aabbccddeeff0123456789abcdeffedcba98765432100e1987d0010f020f0745840c00030f085838880c0214a3035824822f58200123456789abcdeffedcba987654321000112233445566778899aabbccddeeff0e1a00012c2216001602030f0945840c02170210584e880c0114a2035824822f582000112233445566778899aabbccddeeff0123456789abcdeffedcba987654321015781b687474703a2f2f6578616d706c652e636f6d2f66696c652e62696e1502030f144b880c0014a116011602030f",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group-choice",
+    "syntax.occurrence",
+    "syntax.sockets",
+    "control.cbor",
+    "control.bits",
+    "syntax.tag"
+   ],
+   "provenance": "verbatim",
+   "source": "examples/example4.txt: Envelope with COSE authentication object",
+   "status": "gap",
+   "issue": 201,
+   "reason": "The envelope's parameters are `{+ $$SUIT_Parameters}`, a repeated group choice in a map, which is checked as if every entry had to take the same alternative."
+  },
+  {
+   "id": "suit/example5/1",
+   "hex": "d86ba2025827815824822f582015ce60f77657e4531dc329155f8b0ed78f94bdc6d165b2665473693dcc34f47003590101a601010205035895a202828141008141010458898c0c0014a40150fa6b4a53d5ad5fdfbe9de663e4d41ffe02501492af1425695e48bf429b2d51f2ab45035824822f582000112233445566778899aabbccddeeff0123456789abcdeffedcba98765432100e1987d0010f020f0c0114a2035824822f58200123456789abcdeffedcba987654321000112233445566778899aabbccddeeff0e1a00012c220749880c00030f0c01030f0945840c00170214584f900c0014a115781c687474703a2f2f6578616d706c652e636f6d2f66696c65312e62696e1502030f0c0114a115781c687474703a2f2f6578616d706c652e636f6d2f66696c65322e62696e1502030f",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group-choice",
+    "syntax.occurrence",
+    "syntax.sockets",
+    "control.cbor",
+    "control.bits",
+    "syntax.tag"
+   ],
+   "provenance": "verbatim",
+   "source": "examples/example5.txt: Envelope",
+   "status": "gap",
+   "issue": 201,
+   "reason": "The envelope's parameters are `{+ $$SUIT_Parameters}`, a repeated group choice in a map, which is checked as if every entry had to take the same alternative."
+  },
+  {
+   "id": "suit/example5/2",
+   "hex": "d86ba2025873825824822f582015ce60f77657e4531dc329155f8b0ed78f94bdc6d165b2665473693dcc34f470584ad28443a10126a0f6584053505bf2b1aba7f3c3e142d6c02350daf95331a8942e77d7378c6670285638e0fe460fe7cebcbe242b14e7ac1a4482cf500136a2568a92a803f614d5f87ef7a703590101a601010205035895a202828141008141010458898c0c0014a40150fa6b4a53d5ad5fdfbe9de663e4d41ffe02501492af1425695e48bf429b2d51f2ab45035824822f582000112233445566778899aabbccddeeff0123456789abcdeffedcba98765432100e1987d0010f020f0c0114a2035824822f58200123456789abcdeffedcba987654321000112233445566778899aabbccddeeff0e1a00012c220749880c00030f0c01030f0945840c00170214584f900c0014a115781c687474703a2f2f6578616d706c652e636f6d2f66696c65312e62696e1502030f0c0114a115781c687474703a2f2f6578616d706c652e636f6d2f66696c65322e62696e1502030f",
+   "expect": "valid",
+   "constructs": [
+    "syntax.group-choice",
+    "syntax.occurrence",
+    "syntax.sockets",
+    "control.cbor",
+    "control.bits",
+    "syntax.tag"
+   ],
+   "provenance": "verbatim",
+   "source": "examples/example5.txt: Envelope with COSE authentication object",
+   "status": "gap",
+   "issue": 201,
+   "reason": "The envelope's parameters are `{+ $$SUIT_Parameters}`, a repeated group choice in a map, which is checked as if every entry had to take the same alternative."
+  },
+  {
+   "id": "suit/other-tag",
+   "hex": "d86ca2025827815824822f58206658ea560262696dd1f13b782239a064da7c6c5cbaf52fded428a6fc83c7e5af035871a50101020003585fa202818141000458568614a40150fa6b4a53d5ad5fdfbe9de663e4d41ffe02501492af1425695e48bf429b2d51f2ab45035824822f582000112233445566778899aabbccddeeff0123456789abcdeffedcba98765432100e1987d0010f020f074382030f0943821702",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.group-choice",
+    "syntax.occurrence",
+    "syntax.sockets",
+    "control.cbor",
+    "control.bits",
+    "syntax.tag"
+   ],
+   "provenance": "derived",
+   "source": "examples/example0.txt, with the envelope tag 107 changed to 108"
+  },
+  {
+   "id": "suit/truncated",
+   "hex": "d86ba2025827815824822f58206658ea560262696dd1f13b782239a064da7c6c5cbaf52fded428a6fc83c7e5af035871a50101020003585fa202818141000458568614a40150fa6b4a53d5ad5fdfbe9de663e4d41ffe02501492af1425695e48bf429b2d51f2ab45035824822f582000112233445566778899aabbccddeeff0123456789abcdeffedcba98765432100e1987d0010f020f074382030f0943",
+   "expect": "invalid",
+   "constructs": [
+    "syntax.group-choice",
+    "syntax.occurrence",
+    "syntax.sockets",
+    "control.cbor",
+    "control.bits",
+    "syntax.tag"
+   ],
+   "provenance": "derived",
+   "source": "examples/example0.txt, cut short"
+  }
+ ]
+}

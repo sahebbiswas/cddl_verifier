@@ -1,0 +1,2 @@
+; §3.8.1 .size on an integer
+r = uint .size 1

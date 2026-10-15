@@ -1,0 +1,3031 @@
+{
+ "id": "cddlc-tests",
+ "title": "cddlc test suite: RFC 8610 and RFC 9165 constructs",
+ "sources": [
+  {
+   "name": "cddlc test suite",
+   "url": "https://github.com/cabo/cddlc",
+   "commit": "261bea5ccd0082c7d6adab098bd74e8b3fcaaf0a",
+   "date": "2025-02-16",
+   "license": "MIT",
+   "path": "test/"
+  }
+ ],
+ "provenance": "converted",
+ "cases": [
+  {
+   "id": "cddlc/0-any/01",
+   "schema": "schemas/cddlc/0-any.cddl",
+   "hex": "01",
+   "expect": "valid",
+   "edn": "1",
+   "constructs": [
+    "prelude.any"
+   ],
+   "source": "test/0-any.cddl: `;;+ 1`"
+  },
+  {
+   "id": "cddlc/0-any/02",
+   "schema": "schemas/cddlc/0-any.cddl",
+   "hex": "f93c00",
+   "expect": "valid",
+   "edn": "1.0",
+   "constructs": [
+    "prelude.any"
+   ],
+   "source": "test/0-any.cddl: `;;+ 1.0`"
+  },
+  {
+   "id": "cddlc/0-any/03",
+   "schema": "schemas/cddlc/0-any.cddl",
+   "hex": "03",
+   "expect": "valid",
+   "edn": "3",
+   "constructs": [
+    "prelude.any"
+   ],
+   "source": "test/0-any.cddl: `;;+ 3`"
+  },
+  {
+   "id": "cddlc/0-any/04",
+   "schema": "schemas/cddlc/0-any.cddl",
+   "hex": "24",
+   "expect": "valid",
+   "edn": "-5",
+   "constructs": [
+    "prelude.any"
+   ],
+   "source": "test/0-any.cddl: `;;+ -5`"
+  },
+  {
+   "id": "cddlc/0-any/05",
+   "schema": "schemas/cddlc/0-any.cddl",
+   "hex": "8163666f6f",
+   "expect": "valid",
+   "edn": "[\"foo\"]",
+   "constructs": [
+    "prelude.any"
+   ],
+   "source": "test/0-any.cddl: `;;+ [\"foo\"]`"
+  },
+  {
+   "id": "cddlc/0-any/06",
+   "schema": "schemas/cddlc/0-any.cddl",
+   "hex": "c6a201020304",
+   "expect": "valid",
+   "edn": "6({1: 2, 3: 4})",
+   "constructs": [
+    "prelude.any"
+   ],
+   "source": "test/0-any.cddl: `;;+ 6({1: 2, 3: 4})`"
+  },
+  {
+   "id": "cddlc/1/01",
+   "schema": "schemas/cddlc/1.cddl",
+   "hex": "01",
+   "expect": "valid",
+   "edn": "1",
+   "constructs": [
+    "syntax.int-literal"
+   ],
+   "source": "test/1.cddl: `;;+ 1`"
+  },
+  {
+   "id": "cddlc/1/02",
+   "schema": "schemas/cddlc/1.cddl",
+   "hex": "f93c00",
+   "expect": "invalid",
+   "edn": "1.0",
+   "constructs": [
+    "syntax.int-literal"
+   ],
+   "source": "test/1.cddl: `;;- 1.0`"
+  },
+  {
+   "id": "cddlc/1/03",
+   "schema": "schemas/cddlc/1.cddl",
+   "hex": "03",
+   "expect": "invalid",
+   "edn": "3",
+   "constructs": [
+    "syntax.int-literal"
+   ],
+   "source": "test/1.cddl: `;;- 3`"
+  },
+  {
+   "id": "cddlc/10-rangetrue/01",
+   "schema": "schemas/cddlc/10-rangetrue.cddl",
+   "hex": "182f",
+   "expect": "invalid",
+   "edn": "47",
+   "constructs": [
+    "syntax.range"
+   ],
+   "source": "test/10-rangetrue.cddl: `;;- 47`"
+  },
+  {
+   "id": "cddlc/10-rangetrue/02",
+   "schema": "schemas/cddlc/10-rangetrue.cddl",
+   "hex": "00",
+   "expect": "invalid",
+   "edn": "0",
+   "constructs": [
+    "syntax.range"
+   ],
+   "source": "test/10-rangetrue.cddl: `;;- 0`"
+  },
+  {
+   "id": "cddlc/10-rangetrue/03",
+   "schema": "schemas/cddlc/10-rangetrue.cddl",
+   "hex": "01",
+   "expect": "valid",
+   "edn": "1",
+   "constructs": [
+    "syntax.range"
+   ],
+   "source": "test/10-rangetrue.cddl: `;;+ 1`"
+  },
+  {
+   "id": "cddlc/10-rangetrue/04",
+   "schema": "schemas/cddlc/10-rangetrue.cddl",
+   "hex": "03",
+   "expect": "valid",
+   "edn": "3",
+   "constructs": [
+    "syntax.range"
+   ],
+   "source": "test/10-rangetrue.cddl: `;;+ 3`"
+  },
+  {
+   "id": "cddlc/10-rangetrue/05",
+   "schema": "schemas/cddlc/10-rangetrue.cddl",
+   "hex": "0a",
+   "expect": "valid",
+   "edn": "10",
+   "constructs": [
+    "syntax.range"
+   ],
+   "source": "test/10-rangetrue.cddl: `;;+ 10`"
+  },
+  {
+   "id": "cddlc/10-rangetrue/06",
+   "schema": "schemas/cddlc/10-rangetrue.cddl",
+   "hex": "0b",
+   "expect": "invalid",
+   "edn": "11",
+   "constructs": [
+    "syntax.range"
+   ],
+   "source": "test/10-rangetrue.cddl: `;;- 11`"
+  },
+  {
+   "id": "cddlc/10-rangetrue/07",
+   "schema": "schemas/cddlc/10-rangetrue.cddl",
+   "hex": "40",
+   "expect": "invalid",
+   "edn": "h''",
+   "constructs": [
+    "syntax.range"
+   ],
+   "source": "test/10-rangetrue.cddl: `;;- h''`"
+  },
+  {
+   "id": "cddlc/10-rangetrue/08",
+   "schema": "schemas/cddlc/10-rangetrue.cddl",
+   "hex": "40",
+   "expect": "invalid",
+   "edn": "b64''",
+   "constructs": [
+    "syntax.range"
+   ],
+   "source": "test/10-rangetrue.cddl: `;;- b64''`"
+  },
+  {
+   "id": "cddlc/10-rangetrue/09",
+   "schema": "schemas/cddlc/10-rangetrue.cddl",
+   "hex": "83010203",
+   "expect": "invalid",
+   "edn": "[1, 2, 3]",
+   "constructs": [
+    "syntax.range"
+   ],
+   "source": "test/10-rangetrue.cddl: `;;- [1, 2, 3]`"
+  },
+  {
+   "id": "cddlc/10-rangetrue/10",
+   "schema": "schemas/cddlc/10-rangetrue.cddl",
+   "hex": "a201020304",
+   "expect": "invalid",
+   "edn": "{1: 2, 3: 4}",
+   "constructs": [
+    "syntax.range"
+   ],
+   "source": "test/10-rangetrue.cddl: `;;- {1: 2, 3: 4}`"
+  },
+  {
+   "id": "cddlc/10-rangetrue/11",
+   "schema": "schemas/cddlc/10-rangetrue.cddl",
+   "hex": "c603",
+   "expect": "invalid",
+   "edn": "6(3)",
+   "constructs": [
+    "syntax.range"
+   ],
+   "source": "test/10-rangetrue.cddl: `;;- 6(3)`"
+  },
+  {
+   "id": "cddlc/10-rangetrue/12",
+   "schema": "schemas/cddlc/10-rangetrue.cddl",
+   "hex": "f94200",
+   "expect": "invalid",
+   "edn": "3.0",
+   "constructs": [
+    "syntax.range"
+   ],
+   "source": "test/10-rangetrue.cddl: `;;- 3.0`"
+  },
+  {
+   "id": "cddlc/10-rangetrue/13",
+   "schema": "schemas/cddlc/10-rangetrue.cddl",
+   "hex": "80",
+   "expect": "invalid",
+   "edn": "[]",
+   "constructs": [
+    "syntax.range"
+   ],
+   "source": "test/10-rangetrue.cddl: `;;- []`"
+  },
+  {
+   "id": "cddlc/10a-rangefalse/01",
+   "schema": "schemas/cddlc/10a-rangefalse.cddl",
+   "hex": "182f",
+   "expect": "invalid",
+   "edn": "47",
+   "constructs": [
+    "syntax.range"
+   ],
+   "source": "test/10a-rangefalse.cddl: `;;- 47`"
+  },
+  {
+   "id": "cddlc/10a-rangefalse/02",
+   "schema": "schemas/cddlc/10a-rangefalse.cddl",
+   "hex": "00",
+   "expect": "invalid",
+   "edn": "0",
+   "constructs": [
+    "syntax.range"
+   ],
+   "source": "test/10a-rangefalse.cddl: `;;- 0`"
+  },
+  {
+   "id": "cddlc/10a-rangefalse/03",
+   "schema": "schemas/cddlc/10a-rangefalse.cddl",
+   "hex": "01",
+   "expect": "valid",
+   "edn": "1",
+   "constructs": [
+    "syntax.range"
+   ],
+   "source": "test/10a-rangefalse.cddl: `;;+ 1`"
+  },
+  {
+   "id": "cddlc/10a-rangefalse/04",
+   "schema": "schemas/cddlc/10a-rangefalse.cddl",
+   "hex": "03",
+   "expect": "valid",
+   "edn": "3",
+   "constructs": [
+    "syntax.range"
+   ],
+   "source": "test/10a-rangefalse.cddl: `;;+ 3`"
+  },
+  {
+   "id": "cddlc/10a-rangefalse/05",
+   "schema": "schemas/cddlc/10a-rangefalse.cddl",
+   "hex": "09",
+   "expect": "valid",
+   "edn": "9",
+   "constructs": [
+    "syntax.range"
+   ],
+   "source": "test/10a-rangefalse.cddl: `;;+ 9`"
+  },
+  {
+   "id": "cddlc/10a-rangefalse/06",
+   "schema": "schemas/cddlc/10a-rangefalse.cddl",
+   "hex": "0a",
+   "expect": "invalid",
+   "edn": "10",
+   "constructs": [
+    "syntax.range"
+   ],
+   "source": "test/10a-rangefalse.cddl: `;;- 10`"
+  },
+  {
+   "id": "cddlc/10a-rangefalse/07",
+   "schema": "schemas/cddlc/10a-rangefalse.cddl",
+   "hex": "0b",
+   "expect": "invalid",
+   "edn": "11",
+   "constructs": [
+    "syntax.range"
+   ],
+   "source": "test/10a-rangefalse.cddl: `;;- 11`"
+  },
+  {
+   "id": "cddlc/10a-rangefalse/08",
+   "schema": "schemas/cddlc/10a-rangefalse.cddl",
+   "hex": "40",
+   "expect": "invalid",
+   "edn": "h''",
+   "constructs": [
+    "syntax.range"
+   ],
+   "source": "test/10a-rangefalse.cddl: `;;- h''`"
+  },
+  {
+   "id": "cddlc/10a-rangefalse/09",
+   "schema": "schemas/cddlc/10a-rangefalse.cddl",
+   "hex": "40",
+   "expect": "invalid",
+   "edn": "b64''",
+   "constructs": [
+    "syntax.range"
+   ],
+   "source": "test/10a-rangefalse.cddl: `;;- b64''`"
+  },
+  {
+   "id": "cddlc/10a-rangefalse/10",
+   "schema": "schemas/cddlc/10a-rangefalse.cddl",
+   "hex": "83010203",
+   "expect": "invalid",
+   "edn": "[1, 2, 3]",
+   "constructs": [
+    "syntax.range"
+   ],
+   "source": "test/10a-rangefalse.cddl: `;;- [1, 2, 3]`"
+  },
+  {
+   "id": "cddlc/10a-rangefalse/11",
+   "schema": "schemas/cddlc/10a-rangefalse.cddl",
+   "hex": "a201020304",
+   "expect": "invalid",
+   "edn": "{1: 2, 3: 4}",
+   "constructs": [
+    "syntax.range"
+   ],
+   "source": "test/10a-rangefalse.cddl: `;;- {1: 2, 3: 4}`"
+  },
+  {
+   "id": "cddlc/10a-rangefalse/12",
+   "schema": "schemas/cddlc/10a-rangefalse.cddl",
+   "hex": "c603",
+   "expect": "invalid",
+   "edn": "6(3)",
+   "constructs": [
+    "syntax.range"
+   ],
+   "source": "test/10a-rangefalse.cddl: `;;- 6(3)`"
+  },
+  {
+   "id": "cddlc/10a-rangefalse/13",
+   "schema": "schemas/cddlc/10a-rangefalse.cddl",
+   "hex": "f94200",
+   "expect": "invalid",
+   "edn": "3.0",
+   "constructs": [
+    "syntax.range"
+   ],
+   "source": "test/10a-rangefalse.cddl: `;;- 3.0`"
+  },
+  {
+   "id": "cddlc/10a-rangefalse/14",
+   "schema": "schemas/cddlc/10a-rangefalse.cddl",
+   "hex": "80",
+   "expect": "invalid",
+   "edn": "[]",
+   "constructs": [
+    "syntax.range"
+   ],
+   "source": "test/10a-rangefalse.cddl: `;;- []`"
+  },
+  {
+   "id": "cddlc/11-badrange",
+   "schema": "schemas/cddlc/11-badrange.cddl",
+   "expect": "schema-error",
+   "constructs": [
+    "syntax.range"
+   ],
+   "source": "test/11-badrange.cddl: a schema cddlc rejects"
+  },
+  {
+   "id": "cddlc/12-unspecrange",
+   "schema": "schemas/cddlc/12-unspecrange.cddl",
+   "expect": "schema-error",
+   "constructs": [
+    "syntax.range"
+   ],
+   "source": "test/12-unspecrange.cddl: a schema cddlc rejects"
+  },
+  {
+   "id": "cddlc/13-size/01",
+   "schema": "schemas/cddlc/13-size.cddl",
+   "hex": "63616263",
+   "expect": "valid",
+   "edn": "\"abc\"",
+   "constructs": [
+    "control.size"
+   ],
+   "source": "test/13-size.cddl: `;;+ \"abc\"`"
+  },
+  {
+   "id": "cddlc/13-size/02",
+   "schema": "schemas/cddlc/13-size.cddl",
+   "hex": "656162636465",
+   "expect": "valid",
+   "edn": "\"abcde\"",
+   "constructs": [
+    "control.size"
+   ],
+   "source": "test/13-size.cddl: `;;+ \"abcde\"`"
+  },
+  {
+   "id": "cddlc/13-size/03",
+   "schema": "schemas/cddlc/13-size.cddl",
+   "hex": "626162",
+   "expect": "invalid",
+   "edn": "\"ab\"",
+   "constructs": [
+    "control.size"
+   ],
+   "source": "test/13-size.cddl: `;;- \"ab\"`"
+  },
+  {
+   "id": "cddlc/13-size/04",
+   "schema": "schemas/cddlc/13-size.cddl",
+   "hex": "66616263646566",
+   "expect": "invalid",
+   "edn": "\"abcdef\"",
+   "constructs": [
+    "control.size"
+   ],
+   "source": "test/13-size.cddl: `;;- \"abcdef\"`"
+  },
+  {
+   "id": "cddlc/13-size/05",
+   "schema": "schemas/cddlc/13-size.cddl",
+   "hex": "00",
+   "expect": "invalid",
+   "edn": "0",
+   "constructs": [
+    "control.size"
+   ],
+   "source": "test/13-size.cddl: `;;- 0`"
+  },
+  {
+   "id": "cddlc/13-size/06",
+   "schema": "schemas/cddlc/13-size.cddl",
+   "hex": "40",
+   "expect": "invalid",
+   "edn": "h''",
+   "constructs": [
+    "control.size"
+   ],
+   "source": "test/13-size.cddl: `;;- h''`"
+  },
+  {
+   "id": "cddlc/13a-size/01",
+   "schema": "schemas/cddlc/13a-size.cddl",
+   "hex": "1a00010000",
+   "expect": "valid",
+   "edn": "65536",
+   "constructs": [
+    "control.size"
+   ],
+   "source": "test/13a-size.cddl: `;;+ 65536`",
+   "status": "divergence",
+   "reason": "RFC 8610 §3.8.1 defines `.size` for byte strings, text strings and unsigned integers; this library does not accept `int` as the target of `.size` (`uint .size N` works), where cddlc applies it to the non-negative integers."
+  },
+  {
+   "id": "cddlc/13a-size/02",
+   "schema": "schemas/cddlc/13a-size.cddl",
+   "hex": "1b000000ffffffffff",
+   "expect": "valid",
+   "edn": "0xFFFFFFFFFF",
+   "constructs": [
+    "control.size"
+   ],
+   "source": "test/13a-size.cddl: `;;+ 0xFFFFFFFFFF`",
+   "status": "divergence",
+   "reason": "RFC 8610 §3.8.1 defines `.size` for byte strings, text strings and unsigned integers; this library does not accept `int` as the target of `.size` (`uint .size N` works), where cddlc applies it to the non-negative integers."
+  },
+  {
+   "id": "cddlc/13a-size/03",
+   "schema": "schemas/cddlc/13a-size.cddl",
+   "hex": "1b0000010000000000",
+   "expect": "invalid",
+   "edn": "0x10000000000",
+   "constructs": [
+    "control.size"
+   ],
+   "source": "test/13a-size.cddl: `;;- 0x10000000000`"
+  },
+  {
+   "id": "cddlc/13a-size/04",
+   "schema": "schemas/cddlc/13a-size.cddl",
+   "hex": "19ffff",
+   "expect": "valid",
+   "edn": "0xFFFF",
+   "constructs": [
+    "control.size"
+   ],
+   "source": "test/13a-size.cddl: `;;+ 0xFFFF`",
+   "status": "divergence",
+   "reason": "RFC 8610 §3.8.1 defines `.size` for byte strings, text strings and unsigned integers; this library does not accept `int` as the target of `.size` (`uint .size N` works), where cddlc applies it to the non-negative integers."
+  },
+  {
+   "id": "cddlc/13a-size/05",
+   "schema": "schemas/cddlc/13a-size.cddl",
+   "hex": "00",
+   "expect": "valid",
+   "edn": "0",
+   "constructs": [
+    "control.size"
+   ],
+   "source": "test/13a-size.cddl: `;;+ 0`",
+   "status": "divergence",
+   "reason": "RFC 8610 §3.8.1 defines `.size` for byte strings, text strings and unsigned integers; this library does not accept `int` as the target of `.size` (`uint .size N` works), where cddlc applies it to the non-negative integers."
+  },
+  {
+   "id": "cddlc/13a-size/06",
+   "schema": "schemas/cddlc/13a-size.cddl",
+   "hex": "40",
+   "expect": "invalid",
+   "edn": "h''",
+   "constructs": [
+    "control.size"
+   ],
+   "source": "test/13a-size.cddl: `;;- h''`"
+  },
+  {
+   "id": "cddlc/14a-bits-bstr/01",
+   "schema": "schemas/cddlc/14a-bits-bstr.cddl",
+   "hex": "4108",
+   "expect": "valid",
+   "edn": "h'08' /3/",
+   "constructs": [
+    "control.bits"
+   ],
+   "source": "test/14a-bits-bstr.cddl: `;;+ h'08' /3/`"
+  },
+  {
+   "id": "cddlc/14a-bits-bstr/02",
+   "schema": "schemas/cddlc/14a-bits-bstr.cddl",
+   "hex": "4101",
+   "expect": "invalid",
+   "edn": "h'01' /0/",
+   "constructs": [
+    "control.bits"
+   ],
+   "source": "test/14a-bits-bstr.cddl: `;;- h'01' /0/`"
+  },
+  {
+   "id": "cddlc/14a-bits-bstr/03",
+   "schema": "schemas/cddlc/14a-bits-bstr.cddl",
+   "hex": "4110",
+   "expect": "invalid",
+   "edn": "h'10' /4/",
+   "constructs": [
+    "control.bits"
+   ],
+   "source": "test/14a-bits-bstr.cddl: `;;- h'10' /4/`"
+  },
+  {
+   "id": "cddlc/14a-bits-bstr/04",
+   "schema": "schemas/cddlc/14a-bits-bstr.cddl",
+   "hex": "4140",
+   "expect": "invalid",
+   "edn": "h'40' /6/",
+   "constructs": [
+    "control.bits"
+   ],
+   "source": "test/14a-bits-bstr.cddl: `;;- h'40' /6/`"
+  },
+  {
+   "id": "cddlc/14b-bits-uint/01",
+   "schema": "schemas/cddlc/14b-bits-uint.cddl",
+   "hex": "08",
+   "expect": "valid",
+   "edn": "8",
+   "constructs": [
+    "control.bits"
+   ],
+   "source": "test/14b-bits-uint.cddl: `;;+ 8`"
+  },
+  {
+   "id": "cddlc/14b-bits-uint/02",
+   "schema": "schemas/cddlc/14b-bits-uint.cddl",
+   "hex": "01",
+   "expect": "invalid",
+   "edn": "1",
+   "constructs": [
+    "control.bits"
+   ],
+   "source": "test/14b-bits-uint.cddl: `;;- 1`"
+  },
+  {
+   "id": "cddlc/14b-bits-uint/03",
+   "schema": "schemas/cddlc/14b-bits-uint.cddl",
+   "hex": "10",
+   "expect": "invalid",
+   "edn": "16",
+   "constructs": [
+    "control.bits"
+   ],
+   "source": "test/14b-bits-uint.cddl: `;;- 16`"
+  },
+  {
+   "id": "cddlc/14b-bits-uint/04",
+   "schema": "schemas/cddlc/14b-bits-uint.cddl",
+   "hex": "1820",
+   "expect": "valid",
+   "edn": "32",
+   "constructs": [
+    "control.bits"
+   ],
+   "source": "test/14b-bits-uint.cddl: `;;+ 32`"
+  },
+  {
+   "id": "cddlc/14b-bits-uint/05",
+   "schema": "schemas/cddlc/14b-bits-uint.cddl",
+   "hex": "1840",
+   "expect": "invalid",
+   "edn": "64",
+   "constructs": [
+    "control.bits"
+   ],
+   "source": "test/14b-bits-uint.cddl: `;;- 64`"
+  },
+  {
+   "id": "cddlc/14b-bits-uint/06",
+   "schema": "schemas/cddlc/14b-bits-uint.cddl",
+   "hex": "23",
+   "expect": "invalid",
+   "edn": "-4",
+   "constructs": [
+    "control.bits"
+   ],
+   "source": "test/14b-bits-uint.cddl: `;;- -4`"
+  },
+  {
+   "id": "cddlc/14b-bits-uint/07",
+   "schema": "schemas/cddlc/14b-bits-uint.cddl",
+   "hex": "f94400",
+   "expect": "invalid",
+   "edn": "4.0",
+   "constructs": [
+    "control.bits"
+   ],
+   "source": "test/14b-bits-uint.cddl: `;;- 4.0`"
+  },
+  {
+   "id": "cddlc/15-default/01",
+   "schema": "schemas/cddlc/15-default.cddl",
+   "hex": "08",
+   "expect": "valid",
+   "edn": "8",
+   "constructs": [
+    "control.default"
+   ],
+   "source": "test/15-default.cddl: `;;+ 8`"
+  },
+  {
+   "id": "cddlc/15-default/02",
+   "schema": "schemas/cddlc/15-default.cddl",
+   "hex": "03",
+   "expect": "valid",
+   "edn": "3 / Hmm /",
+   "constructs": [
+    "control.default"
+   ],
+   "source": "test/15-default.cddl: `;;+ 3 / Hmm /`"
+  },
+  {
+   "id": "cddlc/15-default/03",
+   "schema": "schemas/cddlc/15-default.cddl",
+   "hex": "10",
+   "expect": "valid",
+   "edn": "16",
+   "constructs": [
+    "control.default"
+   ],
+   "source": "test/15-default.cddl: `;;+ 16`"
+  },
+  {
+   "id": "cddlc/15-default/04",
+   "schema": "schemas/cddlc/15-default.cddl",
+   "hex": "23",
+   "expect": "invalid",
+   "edn": "-4",
+   "constructs": [
+    "control.default"
+   ],
+   "source": "test/15-default.cddl: `;;- -4`"
+  },
+  {
+   "id": "cddlc/15-default/05",
+   "schema": "schemas/cddlc/15-default.cddl",
+   "hex": "f94400",
+   "expect": "invalid",
+   "edn": "4.0",
+   "constructs": [
+    "control.default"
+   ],
+   "source": "test/15-default.cddl: `;;- 4.0`"
+  },
+  {
+   "id": "cddlc/16-feature/01",
+   "schema": "schemas/cddlc/16-feature.cddl",
+   "hex": "08",
+   "expect": "valid",
+   "edn": "8",
+   "constructs": [
+    "control.feature"
+   ],
+   "source": "test/16-feature.cddl: `;;+ 8`"
+  },
+  {
+   "id": "cddlc/16-feature/02",
+   "schema": "schemas/cddlc/16-feature.cddl",
+   "hex": "03",
+   "expect": "valid",
+   "edn": "3 / Hmm /",
+   "constructs": [
+    "control.feature"
+   ],
+   "source": "test/16-feature.cddl: `;;+ 3 / Hmm /`"
+  },
+  {
+   "id": "cddlc/16-feature/03",
+   "schema": "schemas/cddlc/16-feature.cddl",
+   "hex": "10",
+   "expect": "valid",
+   "edn": "16",
+   "constructs": [
+    "control.feature"
+   ],
+   "source": "test/16-feature.cddl: `;;+ 16`"
+  },
+  {
+   "id": "cddlc/16-feature/04",
+   "schema": "schemas/cddlc/16-feature.cddl",
+   "hex": "23",
+   "expect": "invalid",
+   "edn": "-4",
+   "constructs": [
+    "control.feature"
+   ],
+   "source": "test/16-feature.cddl: `;;- -4`"
+  },
+  {
+   "id": "cddlc/16-feature/05",
+   "schema": "schemas/cddlc/16-feature.cddl",
+   "hex": "f94400",
+   "expect": "invalid",
+   "edn": "4.0",
+   "constructs": [
+    "control.feature"
+   ],
+   "source": "test/16-feature.cddl: `;;- 4.0`",
+   "status": "divergence",
+   "reason": "RFC 9165 leaves which features are enabled to the tool; this library has no way to name them, so every `.feature` counts as enabled and the base type alone decides."
+  },
+  {
+   "id": "cddlc/16a-feature/01",
+   "schema": "schemas/cddlc/16a-feature.cddl",
+   "hex": "08",
+   "expect": "valid",
+   "edn": "8",
+   "constructs": [
+    "control.feature"
+   ],
+   "source": "test/16a-feature.cddl: `;;+ 8`"
+  },
+  {
+   "id": "cddlc/16a-feature/02",
+   "schema": "schemas/cddlc/16a-feature.cddl",
+   "hex": "03",
+   "expect": "valid",
+   "edn": "3 / Hmm /",
+   "constructs": [
+    "control.feature"
+   ],
+   "source": "test/16a-feature.cddl: `;;+ 3 / Hmm /`"
+  },
+  {
+   "id": "cddlc/16a-feature/03",
+   "schema": "schemas/cddlc/16a-feature.cddl",
+   "hex": "10",
+   "expect": "valid",
+   "edn": "16",
+   "constructs": [
+    "control.feature"
+   ],
+   "source": "test/16a-feature.cddl: `;;+ 16`"
+  },
+  {
+   "id": "cddlc/16a-feature/04",
+   "schema": "schemas/cddlc/16a-feature.cddl",
+   "hex": "23",
+   "expect": "invalid",
+   "edn": "-4",
+   "constructs": [
+    "control.feature"
+   ],
+   "source": "test/16a-feature.cddl: `;;- -4`"
+  },
+  {
+   "id": "cddlc/16a-feature/05",
+   "schema": "schemas/cddlc/16a-feature.cddl",
+   "hex": "f94400",
+   "expect": "invalid",
+   "edn": "4.0",
+   "constructs": [
+    "control.feature"
+   ],
+   "source": "test/16a-feature.cddl: `;;- 4.0`",
+   "status": "divergence",
+   "reason": "RFC 9165 leaves which features are enabled to the tool; this library has no way to name them, so every `.feature` counts as enabled and the base type alone decides."
+  },
+  {
+   "id": "cddlc/17-regexp/01",
+   "schema": "schemas/cddlc/17-regexp.cddl",
+   "hex": "60",
+   "expect": "valid",
+   "edn": "\"\"",
+   "constructs": [
+    "control.regexp"
+   ],
+   "source": "test/17-regexp.cddl: `;;+ \"\"`"
+  },
+  {
+   "id": "cddlc/17-regexp/02",
+   "schema": "schemas/cddlc/17-regexp.cddl",
+   "hex": "6161",
+   "expect": "valid",
+   "edn": "\"a\"",
+   "constructs": [
+    "control.regexp"
+   ],
+   "source": "test/17-regexp.cddl: `;;+ \"a\"`"
+  },
+  {
+   "id": "cddlc/17-regexp/03",
+   "schema": "schemas/cddlc/17-regexp.cddl",
+   "hex": "6162",
+   "expect": "valid",
+   "edn": "\"b\"",
+   "constructs": [
+    "control.regexp"
+   ],
+   "source": "test/17-regexp.cddl: `;;+ \"b\"`"
+  },
+  {
+   "id": "cddlc/17-regexp/04",
+   "schema": "schemas/cddlc/17-regexp.cddl",
+   "hex": "656161626262",
+   "expect": "valid",
+   "edn": "\"aabbb\"",
+   "constructs": [
+    "control.regexp"
+   ],
+   "source": "test/17-regexp.cddl: `;;+ \"aabbb\"`"
+  },
+  {
+   "id": "cddlc/17-regexp/05",
+   "schema": "schemas/cddlc/17-regexp.cddl",
+   "hex": "6163",
+   "expect": "invalid",
+   "edn": "\"c\"",
+   "constructs": [
+    "control.regexp"
+   ],
+   "source": "test/17-regexp.cddl: `;;- \"c\"`"
+  },
+  {
+   "id": "cddlc/17-regexp/06",
+   "schema": "schemas/cddlc/17-regexp.cddl",
+   "hex": "23",
+   "expect": "invalid",
+   "edn": "-4",
+   "constructs": [
+    "control.regexp"
+   ],
+   "source": "test/17-regexp.cddl: `;;- -4`"
+  },
+  {
+   "id": "cddlc/17-regexp/07",
+   "schema": "schemas/cddlc/17-regexp.cddl",
+   "hex": "f94400",
+   "expect": "invalid",
+   "edn": "4.0",
+   "constructs": [
+    "control.regexp"
+   ],
+   "source": "test/17-regexp.cddl: `;;- 4.0`"
+  },
+  {
+   "id": "cddlc/18-abnf/01",
+   "schema": "schemas/cddlc/18-abnf.cddl",
+   "hex": "60",
+   "expect": "valid",
+   "edn": "\"\"",
+   "constructs": [
+    "control.abnf"
+   ],
+   "source": "test/18-abnf.cddl: `;;+ \"\"`"
+  },
+  {
+   "id": "cddlc/18-abnf/02",
+   "schema": "schemas/cddlc/18-abnf.cddl",
+   "hex": "6161",
+   "expect": "valid",
+   "edn": "\"a\"",
+   "constructs": [
+    "control.abnf"
+   ],
+   "source": "test/18-abnf.cddl: `;;+ \"a\"`"
+  },
+  {
+   "id": "cddlc/18-abnf/03",
+   "schema": "schemas/cddlc/18-abnf.cddl",
+   "hex": "6162",
+   "expect": "valid",
+   "edn": "\"b\"",
+   "constructs": [
+    "control.abnf"
+   ],
+   "source": "test/18-abnf.cddl: `;;+ \"b\"`"
+  },
+  {
+   "id": "cddlc/18-abnf/04",
+   "schema": "schemas/cddlc/18-abnf.cddl",
+   "hex": "656161626262",
+   "expect": "valid",
+   "edn": "\"aabbb\"",
+   "constructs": [
+    "control.abnf"
+   ],
+   "source": "test/18-abnf.cddl: `;;+ \"aabbb\"`"
+  },
+  {
+   "id": "cddlc/18-abnf/05",
+   "schema": "schemas/cddlc/18-abnf.cddl",
+   "hex": "6163",
+   "expect": "invalid",
+   "edn": "\"c\"",
+   "constructs": [
+    "control.abnf"
+   ],
+   "source": "test/18-abnf.cddl: `;;- \"c\"`",
+   "status": "gap",
+   "issue": 76,
+   "reason": "`.abnf` is parsed but not enforced."
+  },
+  {
+   "id": "cddlc/18-abnf/06",
+   "schema": "schemas/cddlc/18-abnf.cddl",
+   "hex": "23",
+   "expect": "invalid",
+   "edn": "-4",
+   "constructs": [
+    "control.abnf"
+   ],
+   "source": "test/18-abnf.cddl: `;;- -4`"
+  },
+  {
+   "id": "cddlc/18-abnf/07",
+   "schema": "schemas/cddlc/18-abnf.cddl",
+   "hex": "f94400",
+   "expect": "invalid",
+   "edn": "4.0",
+   "constructs": [
+    "control.abnf"
+   ],
+   "source": "test/18-abnf.cddl: `;;- 4.0`"
+  },
+  {
+   "id": "cddlc/2-int/01",
+   "schema": "schemas/cddlc/2-int.cddl",
+   "hex": "01",
+   "expect": "valid",
+   "edn": "1",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-int.cddl: `;;+ 1`"
+  },
+  {
+   "id": "cddlc/2-int/02",
+   "schema": "schemas/cddlc/2-int.cddl",
+   "hex": "f93c00",
+   "expect": "invalid",
+   "edn": "1.0",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-int.cddl: `;;- 1.0`"
+  },
+  {
+   "id": "cddlc/2-int/03",
+   "schema": "schemas/cddlc/2-int.cddl",
+   "hex": "03",
+   "expect": "valid",
+   "edn": "3",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-int.cddl: `;;+ 3`"
+  },
+  {
+   "id": "cddlc/2-int/04",
+   "schema": "schemas/cddlc/2-int.cddl",
+   "hex": "24",
+   "expect": "valid",
+   "edn": "-5",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-int.cddl: `;;+ -5`"
+  },
+  {
+   "id": "cddlc/2-int/05",
+   "schema": "schemas/cddlc/2-int.cddl",
+   "hex": "1a00010000",
+   "expect": "valid",
+   "edn": "65536",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-int.cddl: `;;+ 65536`"
+  },
+  {
+   "id": "cddlc/2-int/06",
+   "schema": "schemas/cddlc/2-int.cddl",
+   "hex": "c34e009bc796107d8e8e928f290c0576",
+   "expect": "invalid",
+   "edn": "-12342134123412341234123412342134",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-int.cddl: `;;- -12342134123412341234123412342134`"
+  },
+  {
+   "id": "cddlc/2-int/07",
+   "schema": "schemas/cddlc/2-int.cddl",
+   "hex": "c24e009bc796107d8e8e928f290c0576",
+   "expect": "invalid",
+   "edn": "12342134123412341234123412342134",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-int.cddl: `;;- 12342134123412341234123412342134`"
+  },
+  {
+   "id": "cddlc/2-int/08",
+   "schema": "schemas/cddlc/2-int.cddl",
+   "hex": "60",
+   "expect": "invalid",
+   "edn": "\"\"",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-int.cddl: `;;- \"\"`"
+  },
+  {
+   "id": "cddlc/2-int/09",
+   "schema": "schemas/cddlc/2-int.cddl",
+   "hex": "40",
+   "expect": "invalid",
+   "edn": "''",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-int.cddl: `;;- ''`"
+  },
+  {
+   "id": "cddlc/2-int/10",
+   "schema": "schemas/cddlc/2-int.cddl",
+   "hex": "83010203",
+   "expect": "invalid",
+   "edn": "[1, 2, 3]",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-int.cddl: `;;- [1, 2, 3]`"
+  },
+  {
+   "id": "cddlc/2-int/11",
+   "schema": "schemas/cddlc/2-int.cddl",
+   "hex": "a201020304",
+   "expect": "invalid",
+   "edn": "{1: 2, 3: 4}",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-int.cddl: `;;- {1: 2, 3: 4}`"
+  },
+  {
+   "id": "cddlc/2-int/12",
+   "schema": "schemas/cddlc/2-int.cddl",
+   "hex": "c603",
+   "expect": "invalid",
+   "edn": "6(3)",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-int.cddl: `;;- 6(3)`"
+  },
+  {
+   "id": "cddlc/2-nint/01",
+   "schema": "schemas/cddlc/2-nint.cddl",
+   "hex": "01",
+   "expect": "invalid",
+   "edn": "1",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-nint.cddl: `;;- 1`"
+  },
+  {
+   "id": "cddlc/2-nint/02",
+   "schema": "schemas/cddlc/2-nint.cddl",
+   "hex": "f93c00",
+   "expect": "invalid",
+   "edn": "1.0",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-nint.cddl: `;;- 1.0`"
+  },
+  {
+   "id": "cddlc/2-nint/03",
+   "schema": "schemas/cddlc/2-nint.cddl",
+   "hex": "03",
+   "expect": "invalid",
+   "edn": "3",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-nint.cddl: `;;- 3`"
+  },
+  {
+   "id": "cddlc/2-nint/04",
+   "schema": "schemas/cddlc/2-nint.cddl",
+   "hex": "24",
+   "expect": "valid",
+   "edn": "-5",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-nint.cddl: `;;+ -5`"
+  },
+  {
+   "id": "cddlc/2-nint/05",
+   "schema": "schemas/cddlc/2-nint.cddl",
+   "hex": "c34e009bc796107d8e8e928f290c0576",
+   "expect": "invalid",
+   "edn": "-12342134123412341234123412342134",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-nint.cddl: `;;- -12342134123412341234123412342134`"
+  },
+  {
+   "id": "cddlc/2-nint/06",
+   "schema": "schemas/cddlc/2-nint.cddl",
+   "hex": "60",
+   "expect": "invalid",
+   "edn": "\"\"",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-nint.cddl: `;;- \"\"`"
+  },
+  {
+   "id": "cddlc/2-nint/07",
+   "schema": "schemas/cddlc/2-nint.cddl",
+   "hex": "40",
+   "expect": "invalid",
+   "edn": "''",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-nint.cddl: `;;- ''`"
+  },
+  {
+   "id": "cddlc/2-nint/08",
+   "schema": "schemas/cddlc/2-nint.cddl",
+   "hex": "83010203",
+   "expect": "invalid",
+   "edn": "[1, 2, 3]",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-nint.cddl: `;;- [1, 2, 3]`"
+  },
+  {
+   "id": "cddlc/2-nint/09",
+   "schema": "schemas/cddlc/2-nint.cddl",
+   "hex": "a201020304",
+   "expect": "invalid",
+   "edn": "{1: 2, 3: 4}",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-nint.cddl: `;;- {1: 2, 3: 4}`"
+  },
+  {
+   "id": "cddlc/2-nint/10",
+   "schema": "schemas/cddlc/2-nint.cddl",
+   "hex": "c603",
+   "expect": "invalid",
+   "edn": "6(3)",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-nint.cddl: `;;- 6(3)`"
+  },
+  {
+   "id": "cddlc/2-uint/01",
+   "schema": "schemas/cddlc/2-uint.cddl",
+   "hex": "01",
+   "expect": "valid",
+   "edn": "1",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-uint.cddl: `;;+ 1`"
+  },
+  {
+   "id": "cddlc/2-uint/02",
+   "schema": "schemas/cddlc/2-uint.cddl",
+   "hex": "f93c00",
+   "expect": "invalid",
+   "edn": "1.0",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-uint.cddl: `;;- 1.0`"
+  },
+  {
+   "id": "cddlc/2-uint/03",
+   "schema": "schemas/cddlc/2-uint.cddl",
+   "hex": "03",
+   "expect": "valid",
+   "edn": "3",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-uint.cddl: `;;+ 3`"
+  },
+  {
+   "id": "cddlc/2-uint/04",
+   "schema": "schemas/cddlc/2-uint.cddl",
+   "hex": "24",
+   "expect": "invalid",
+   "edn": "-5",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-uint.cddl: `;;- -5`"
+  },
+  {
+   "id": "cddlc/2-uint/05",
+   "schema": "schemas/cddlc/2-uint.cddl",
+   "hex": "c24e009bc796107d8e8e928f290c0576",
+   "expect": "invalid",
+   "edn": "12342134123412341234123412342134",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-uint.cddl: `;;- 12342134123412341234123412342134`"
+  },
+  {
+   "id": "cddlc/2-uint/06",
+   "schema": "schemas/cddlc/2-uint.cddl",
+   "hex": "60",
+   "expect": "invalid",
+   "edn": "\"\"",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-uint.cddl: `;;- \"\"`"
+  },
+  {
+   "id": "cddlc/2-uint/07",
+   "schema": "schemas/cddlc/2-uint.cddl",
+   "hex": "40",
+   "expect": "invalid",
+   "edn": "''",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-uint.cddl: `;;- ''`"
+  },
+  {
+   "id": "cddlc/2-uint/08",
+   "schema": "schemas/cddlc/2-uint.cddl",
+   "hex": "83010203",
+   "expect": "invalid",
+   "edn": "[1, 2, 3]",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-uint.cddl: `;;- [1, 2, 3]`"
+  },
+  {
+   "id": "cddlc/2-uint/09",
+   "schema": "schemas/cddlc/2-uint.cddl",
+   "hex": "a201020304",
+   "expect": "invalid",
+   "edn": "{1: 2, 3: 4}",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-uint.cddl: `;;- {1: 2, 3: 4}`"
+  },
+  {
+   "id": "cddlc/2-uint/10",
+   "schema": "schemas/cddlc/2-uint.cddl",
+   "hex": "c603",
+   "expect": "invalid",
+   "edn": "6(3)",
+   "constructs": [
+    "prelude.integers"
+   ],
+   "source": "test/2-uint.cddl: `;;- 6(3)`"
+  },
+  {
+   "id": "cddlc/20-plus-i/01",
+   "schema": "schemas/cddlc/20-plus-i.cddl",
+   "hex": "6161",
+   "expect": "invalid",
+   "edn": "\"a\"",
+   "constructs": [
+    "control.plus"
+   ],
+   "source": "test/20-plus-i.cddl: `;;- \"a\"`"
+  },
+  {
+   "id": "cddlc/20-plus-i/02",
+   "schema": "schemas/cddlc/20-plus-i.cddl",
+   "hex": "f94800",
+   "expect": "invalid",
+   "edn": "8.0",
+   "constructs": [
+    "control.plus"
+   ],
+   "source": "test/20-plus-i.cddl: `;;- 8.0`"
+  },
+  {
+   "id": "cddlc/20-plus-i/03",
+   "schema": "schemas/cddlc/20-plus-i.cddl",
+   "hex": "08",
+   "expect": "valid",
+   "edn": "8",
+   "constructs": [
+    "control.plus"
+   ],
+   "source": "test/20-plus-i.cddl: `;;+ 8`",
+   "status": "gap",
+   "issue": 76,
+   "reason": "`.plus` is parsed but not enforced."
+  },
+  {
+   "id": "cddlc/20-plus-i/04",
+   "schema": "schemas/cddlc/20-plus-i.cddl",
+   "hex": "c34e009bc796107d8e8e928f290c0576",
+   "expect": "invalid",
+   "edn": "-12342134123412341234123412342134",
+   "constructs": [
+    "control.plus"
+   ],
+   "source": "test/20-plus-i.cddl: `;;- -12342134123412341234123412342134`"
+  },
+  {
+   "id": "cddlc/20-plus-i/05",
+   "schema": "schemas/cddlc/20-plus-i.cddl",
+   "hex": "c24e009bc796107d8e8e928f290c0576",
+   "expect": "invalid",
+   "edn": "12342134123412341234123412342134",
+   "constructs": [
+    "control.plus"
+   ],
+   "source": "test/20-plus-i.cddl: `;;- 12342134123412341234123412342134`"
+  },
+  {
+   "id": "cddlc/20-plus-i/06",
+   "schema": "schemas/cddlc/20-plus-i.cddl",
+   "hex": "60",
+   "expect": "invalid",
+   "edn": "\"\"",
+   "constructs": [
+    "control.plus"
+   ],
+   "source": "test/20-plus-i.cddl: `;;- \"\"`"
+  },
+  {
+   "id": "cddlc/20-plus-i/07",
+   "schema": "schemas/cddlc/20-plus-i.cddl",
+   "hex": "40",
+   "expect": "invalid",
+   "edn": "''",
+   "constructs": [
+    "control.plus"
+   ],
+   "source": "test/20-plus-i.cddl: `;;- ''`"
+  },
+  {
+   "id": "cddlc/20-plus-i/08",
+   "schema": "schemas/cddlc/20-plus-i.cddl",
+   "hex": "83010203",
+   "expect": "invalid",
+   "edn": "[1, 2, 3]",
+   "constructs": [
+    "control.plus"
+   ],
+   "source": "test/20-plus-i.cddl: `;;- [1, 2, 3]`"
+  },
+  {
+   "id": "cddlc/20-plus-i/09",
+   "schema": "schemas/cddlc/20-plus-i.cddl",
+   "hex": "a201020304",
+   "expect": "invalid",
+   "edn": "{1: 2, 3: 4}",
+   "constructs": [
+    "control.plus"
+   ],
+   "source": "test/20-plus-i.cddl: `;;- {1: 2, 3: 4}`"
+  },
+  {
+   "id": "cddlc/20-plus-i/10",
+   "schema": "schemas/cddlc/20-plus-i.cddl",
+   "hex": "c603",
+   "expect": "invalid",
+   "edn": "6(3)",
+   "constructs": [
+    "control.plus"
+   ],
+   "source": "test/20-plus-i.cddl: `;;- 6(3)`"
+  },
+  {
+   "id": "cddlc/21-cat/01",
+   "schema": "schemas/cddlc/21-cat.cddl",
+   "hex": "6161",
+   "expect": "invalid",
+   "edn": "\"a\"",
+   "constructs": [
+    "control.cat"
+   ],
+   "source": "test/21-cat.cddl: `;;- \"a\"`",
+   "status": "gap",
+   "issue": 76,
+   "reason": "`.cat` is parsed but not enforced."
+  },
+  {
+   "id": "cddlc/21-cat/02",
+   "schema": "schemas/cddlc/21-cat.cddl",
+   "hex": "6162",
+   "expect": "invalid",
+   "edn": "\"b\"",
+   "constructs": [
+    "control.cat"
+   ],
+   "source": "test/21-cat.cddl: `;;- \"b\"`"
+  },
+  {
+   "id": "cddlc/21-cat/03",
+   "schema": "schemas/cddlc/21-cat.cddl",
+   "hex": "626162",
+   "expect": "valid",
+   "edn": "\"ab\"",
+   "constructs": [
+    "control.cat"
+   ],
+   "source": "test/21-cat.cddl: `;;+ \"ab\"`",
+   "status": "gap",
+   "issue": 76,
+   "reason": "`.cat` is parsed but not enforced."
+  },
+  {
+   "id": "cddlc/21-cat/04",
+   "schema": "schemas/cddlc/21-cat.cddl",
+   "hex": "f94800",
+   "expect": "invalid",
+   "edn": "8.0",
+   "constructs": [
+    "control.cat"
+   ],
+   "source": "test/21-cat.cddl: `;;- 8.0`"
+  },
+  {
+   "id": "cddlc/21-cat/05",
+   "schema": "schemas/cddlc/21-cat.cddl",
+   "hex": "08",
+   "expect": "invalid",
+   "edn": "8",
+   "constructs": [
+    "control.cat"
+   ],
+   "source": "test/21-cat.cddl: `;;- 8`"
+  },
+  {
+   "id": "cddlc/21-cat/06",
+   "schema": "schemas/cddlc/21-cat.cddl",
+   "hex": "c34e009bc796107d8e8e928f290c0576",
+   "expect": "invalid",
+   "edn": "-12342134123412341234123412342134",
+   "constructs": [
+    "control.cat"
+   ],
+   "source": "test/21-cat.cddl: `;;- -12342134123412341234123412342134`"
+  },
+  {
+   "id": "cddlc/21-cat/07",
+   "schema": "schemas/cddlc/21-cat.cddl",
+   "hex": "c24e009bc796107d8e8e928f290c0576",
+   "expect": "invalid",
+   "edn": "12342134123412341234123412342134",
+   "constructs": [
+    "control.cat"
+   ],
+   "source": "test/21-cat.cddl: `;;- 12342134123412341234123412342134`"
+  },
+  {
+   "id": "cddlc/21-cat/08",
+   "schema": "schemas/cddlc/21-cat.cddl",
+   "hex": "60",
+   "expect": "invalid",
+   "edn": "\"\"",
+   "constructs": [
+    "control.cat"
+   ],
+   "source": "test/21-cat.cddl: `;;- \"\"`"
+  },
+  {
+   "id": "cddlc/21-cat/09",
+   "schema": "schemas/cddlc/21-cat.cddl",
+   "hex": "40",
+   "expect": "invalid",
+   "edn": "''",
+   "constructs": [
+    "control.cat"
+   ],
+   "source": "test/21-cat.cddl: `;;- ''`"
+  },
+  {
+   "id": "cddlc/21-cat/10",
+   "schema": "schemas/cddlc/21-cat.cddl",
+   "hex": "83010203",
+   "expect": "invalid",
+   "edn": "[1, 2, 3]",
+   "constructs": [
+    "control.cat"
+   ],
+   "source": "test/21-cat.cddl: `;;- [1, 2, 3]`"
+  },
+  {
+   "id": "cddlc/21-cat/11",
+   "schema": "schemas/cddlc/21-cat.cddl",
+   "hex": "a201020304",
+   "expect": "invalid",
+   "edn": "{1: 2, 3: 4}",
+   "constructs": [
+    "control.cat"
+   ],
+   "source": "test/21-cat.cddl: `;;- {1: 2, 3: 4}`"
+  },
+  {
+   "id": "cddlc/21-cat/12",
+   "schema": "schemas/cddlc/21-cat.cddl",
+   "hex": "c603",
+   "expect": "invalid",
+   "edn": "6(3)",
+   "constructs": [
+    "control.cat"
+   ],
+   "source": "test/21-cat.cddl: `;;- 6(3)`"
+  },
+  {
+   "id": "cddlc/22-det/01",
+   "schema": "schemas/cddlc/22-det.cddl",
+   "hex": "6161",
+   "expect": "invalid",
+   "edn": "\"a\"",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22-det.cddl: `;;- \"a\"`"
+  },
+  {
+   "id": "cddlc/22-det/02",
+   "schema": "schemas/cddlc/22-det.cddl",
+   "hex": "6162",
+   "expect": "invalid",
+   "edn": "\"b\"",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22-det.cddl: `;;- \"b\"`"
+  },
+  {
+   "id": "cddlc/22-det/03",
+   "schema": "schemas/cddlc/22-det.cddl",
+   "hex": "626162",
+   "expect": "valid",
+   "edn": "\"ab\"",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22-det.cddl: `;;+ \"ab\"`",
+   "status": "gap",
+   "issue": 76,
+   "reason": "`.det` is parsed but not enforced."
+  },
+  {
+   "id": "cddlc/22-det/04",
+   "schema": "schemas/cddlc/22-det.cddl",
+   "hex": "f94800",
+   "expect": "invalid",
+   "edn": "8.0",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22-det.cddl: `;;- 8.0`"
+  },
+  {
+   "id": "cddlc/22-det/05",
+   "schema": "schemas/cddlc/22-det.cddl",
+   "hex": "08",
+   "expect": "invalid",
+   "edn": "8",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22-det.cddl: `;;- 8`"
+  },
+  {
+   "id": "cddlc/22-det/06",
+   "schema": "schemas/cddlc/22-det.cddl",
+   "hex": "c34e009bc796107d8e8e928f290c0576",
+   "expect": "invalid",
+   "edn": "-12342134123412341234123412342134",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22-det.cddl: `;;- -12342134123412341234123412342134`"
+  },
+  {
+   "id": "cddlc/22-det/07",
+   "schema": "schemas/cddlc/22-det.cddl",
+   "hex": "c24e009bc796107d8e8e928f290c0576",
+   "expect": "invalid",
+   "edn": "12342134123412341234123412342134",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22-det.cddl: `;;- 12342134123412341234123412342134`"
+  },
+  {
+   "id": "cddlc/22-det/08",
+   "schema": "schemas/cddlc/22-det.cddl",
+   "hex": "60",
+   "expect": "invalid",
+   "edn": "\"\"",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22-det.cddl: `;;- \"\"`"
+  },
+  {
+   "id": "cddlc/22-det/09",
+   "schema": "schemas/cddlc/22-det.cddl",
+   "hex": "40",
+   "expect": "invalid",
+   "edn": "''",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22-det.cddl: `;;- ''`"
+  },
+  {
+   "id": "cddlc/22-det/10",
+   "schema": "schemas/cddlc/22-det.cddl",
+   "hex": "83010203",
+   "expect": "invalid",
+   "edn": "[1, 2, 3]",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22-det.cddl: `;;- [1, 2, 3]`"
+  },
+  {
+   "id": "cddlc/22-det/11",
+   "schema": "schemas/cddlc/22-det.cddl",
+   "hex": "a201020304",
+   "expect": "invalid",
+   "edn": "{1: 2, 3: 4}",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22-det.cddl: `;;- {1: 2, 3: 4}`"
+  },
+  {
+   "id": "cddlc/22-det/12",
+   "schema": "schemas/cddlc/22-det.cddl",
+   "hex": "c603",
+   "expect": "invalid",
+   "edn": "6(3)",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22-det.cddl: `;;- 6(3)`"
+  },
+  {
+   "id": "cddlc/22a-det/01",
+   "schema": "schemas/cddlc/22a-det.cddl",
+   "hex": "6161",
+   "expect": "invalid",
+   "edn": "\"a\"",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22a-det.cddl: `;;- \"a\"`"
+  },
+  {
+   "id": "cddlc/22a-det/02",
+   "schema": "schemas/cddlc/22a-det.cddl",
+   "hex": "6162",
+   "expect": "invalid",
+   "edn": "\"b\"",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22a-det.cddl: `;;- \"b\"`"
+  },
+  {
+   "id": "cddlc/22a-det/03",
+   "schema": "schemas/cddlc/22a-det.cddl",
+   "hex": "626162",
+   "expect": "valid",
+   "edn": "\"ab\"",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22a-det.cddl: `;;+ \"ab\"`",
+   "status": "gap",
+   "issue": 76,
+   "reason": "`.det` is parsed but not enforced."
+  },
+  {
+   "id": "cddlc/22a-det/04",
+   "schema": "schemas/cddlc/22a-det.cddl",
+   "hex": "f94800",
+   "expect": "invalid",
+   "edn": "8.0",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22a-det.cddl: `;;- 8.0`"
+  },
+  {
+   "id": "cddlc/22a-det/05",
+   "schema": "schemas/cddlc/22a-det.cddl",
+   "hex": "08",
+   "expect": "invalid",
+   "edn": "8",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22a-det.cddl: `;;- 8`"
+  },
+  {
+   "id": "cddlc/22a-det/06",
+   "schema": "schemas/cddlc/22a-det.cddl",
+   "hex": "c34e009bc796107d8e8e928f290c0576",
+   "expect": "invalid",
+   "edn": "-12342134123412341234123412342134",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22a-det.cddl: `;;- -12342134123412341234123412342134`"
+  },
+  {
+   "id": "cddlc/22a-det/07",
+   "schema": "schemas/cddlc/22a-det.cddl",
+   "hex": "c24e009bc796107d8e8e928f290c0576",
+   "expect": "invalid",
+   "edn": "12342134123412341234123412342134",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22a-det.cddl: `;;- 12342134123412341234123412342134`"
+  },
+  {
+   "id": "cddlc/22a-det/08",
+   "schema": "schemas/cddlc/22a-det.cddl",
+   "hex": "60",
+   "expect": "invalid",
+   "edn": "\"\"",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22a-det.cddl: `;;- \"\"`"
+  },
+  {
+   "id": "cddlc/22a-det/09",
+   "schema": "schemas/cddlc/22a-det.cddl",
+   "hex": "40",
+   "expect": "invalid",
+   "edn": "''",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22a-det.cddl: `;;- ''`"
+  },
+  {
+   "id": "cddlc/22a-det/10",
+   "schema": "schemas/cddlc/22a-det.cddl",
+   "hex": "83010203",
+   "expect": "invalid",
+   "edn": "[1, 2, 3]",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22a-det.cddl: `;;- [1, 2, 3]`"
+  },
+  {
+   "id": "cddlc/22a-det/11",
+   "schema": "schemas/cddlc/22a-det.cddl",
+   "hex": "a201020304",
+   "expect": "invalid",
+   "edn": "{1: 2, 3: 4}",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22a-det.cddl: `;;- {1: 2, 3: 4}`"
+  },
+  {
+   "id": "cddlc/22a-det/12",
+   "schema": "schemas/cddlc/22a-det.cddl",
+   "hex": "c603",
+   "expect": "invalid",
+   "edn": "6(3)",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22a-det.cddl: `;;- 6(3)`"
+  },
+  {
+   "id": "cddlc/22b-det/01",
+   "schema": "schemas/cddlc/22b-det.cddl",
+   "hex": "6161",
+   "expect": "invalid",
+   "edn": "\"a\"",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22b-det.cddl: `;;- \"a\"`"
+  },
+  {
+   "id": "cddlc/22b-det/02",
+   "schema": "schemas/cddlc/22b-det.cddl",
+   "hex": "6162",
+   "expect": "invalid",
+   "edn": "\"b\"",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22b-det.cddl: `;;- \"b\"`"
+  },
+  {
+   "id": "cddlc/22b-det/03",
+   "schema": "schemas/cddlc/22b-det.cddl",
+   "hex": "4161",
+   "expect": "invalid",
+   "edn": "'a'",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22b-det.cddl: `;;- 'a'`"
+  },
+  {
+   "id": "cddlc/22b-det/04",
+   "schema": "schemas/cddlc/22b-det.cddl",
+   "hex": "4162",
+   "expect": "invalid",
+   "edn": "'b'",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22b-det.cddl: `;;- 'b'`"
+  },
+  {
+   "id": "cddlc/22b-det/05",
+   "schema": "schemas/cddlc/22b-det.cddl",
+   "hex": "426162",
+   "expect": "valid",
+   "edn": "'ab'",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22b-det.cddl: `;;+ 'ab'`",
+   "status": "gap",
+   "issue": 76,
+   "reason": "`.det` is parsed but not enforced."
+  },
+  {
+   "id": "cddlc/22b-det/06",
+   "schema": "schemas/cddlc/22b-det.cddl",
+   "hex": "626162",
+   "expect": "invalid",
+   "edn": "\"ab\"",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22b-det.cddl: `;;- \"ab\"`"
+  },
+  {
+   "id": "cddlc/22b-det/07",
+   "schema": "schemas/cddlc/22b-det.cddl",
+   "hex": "f94800",
+   "expect": "invalid",
+   "edn": "8.0",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22b-det.cddl: `;;- 8.0`"
+  },
+  {
+   "id": "cddlc/22b-det/08",
+   "schema": "schemas/cddlc/22b-det.cddl",
+   "hex": "08",
+   "expect": "invalid",
+   "edn": "8",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22b-det.cddl: `;;- 8`"
+  },
+  {
+   "id": "cddlc/22b-det/09",
+   "schema": "schemas/cddlc/22b-det.cddl",
+   "hex": "c34e009bc796107d8e8e928f290c0576",
+   "expect": "invalid",
+   "edn": "-12342134123412341234123412342134",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22b-det.cddl: `;;- -12342134123412341234123412342134`"
+  },
+  {
+   "id": "cddlc/22b-det/10",
+   "schema": "schemas/cddlc/22b-det.cddl",
+   "hex": "c24e009bc796107d8e8e928f290c0576",
+   "expect": "invalid",
+   "edn": "12342134123412341234123412342134",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22b-det.cddl: `;;- 12342134123412341234123412342134`"
+  },
+  {
+   "id": "cddlc/22b-det/11",
+   "schema": "schemas/cddlc/22b-det.cddl",
+   "hex": "60",
+   "expect": "invalid",
+   "edn": "\"\"",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22b-det.cddl: `;;- \"\"`"
+  },
+  {
+   "id": "cddlc/22b-det/12",
+   "schema": "schemas/cddlc/22b-det.cddl",
+   "hex": "40",
+   "expect": "invalid",
+   "edn": "''",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22b-det.cddl: `;;- ''`"
+  },
+  {
+   "id": "cddlc/22b-det/13",
+   "schema": "schemas/cddlc/22b-det.cddl",
+   "hex": "83010203",
+   "expect": "invalid",
+   "edn": "[1, 2, 3]",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22b-det.cddl: `;;- [1, 2, 3]`"
+  },
+  {
+   "id": "cddlc/22b-det/14",
+   "schema": "schemas/cddlc/22b-det.cddl",
+   "hex": "a201020304",
+   "expect": "invalid",
+   "edn": "{1: 2, 3: 4}",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22b-det.cddl: `;;- {1: 2, 3: 4}`"
+  },
+  {
+   "id": "cddlc/22b-det/15",
+   "schema": "schemas/cddlc/22b-det.cddl",
+   "hex": "c603",
+   "expect": "invalid",
+   "edn": "6(3)",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22b-det.cddl: `;;- 6(3)`"
+  },
+  {
+   "id": "cddlc/22c-det/01",
+   "schema": "schemas/cddlc/22c-det.cddl",
+   "hex": "6161",
+   "expect": "invalid",
+   "edn": "\"a\"",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22c-det.cddl: `;;- \"a\"`"
+  },
+  {
+   "id": "cddlc/22c-det/02",
+   "schema": "schemas/cddlc/22c-det.cddl",
+   "hex": "6362c3a4",
+   "expect": "invalid",
+   "edn": "\"bä\"",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22c-det.cddl: `;;- \"bä\"`"
+  },
+  {
+   "id": "cddlc/22c-det/03",
+   "schema": "schemas/cddlc/22c-det.cddl",
+   "hex": "4362c3a4",
+   "expect": "invalid",
+   "edn": "'bä'",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22c-det.cddl: `;;- 'bä'`"
+  },
+  {
+   "id": "cddlc/22c-det/04",
+   "schema": "schemas/cddlc/22c-det.cddl",
+   "hex": "4161",
+   "expect": "invalid",
+   "edn": "'a'",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22c-det.cddl: `;;- 'a'`"
+  },
+  {
+   "id": "cddlc/22c-det/05",
+   "schema": "schemas/cddlc/22c-det.cddl",
+   "hex": "4162",
+   "expect": "invalid",
+   "edn": "'b'",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22c-det.cddl: `;;- 'b'`"
+  },
+  {
+   "id": "cddlc/22c-det/06",
+   "schema": "schemas/cddlc/22c-det.cddl",
+   "hex": "446162c3a4",
+   "expect": "valid",
+   "edn": "'abä'",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22c-det.cddl: `;;+ 'abä'`",
+   "status": "gap",
+   "issue": 76,
+   "reason": "`.det` is parsed but not enforced."
+  },
+  {
+   "id": "cddlc/22c-det/07",
+   "schema": "schemas/cddlc/22c-det.cddl",
+   "hex": "646162c3a4",
+   "expect": "invalid",
+   "edn": "\"abä\"",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22c-det.cddl: `;;- \"abä\"`"
+  },
+  {
+   "id": "cddlc/22c-det/08",
+   "schema": "schemas/cddlc/22c-det.cddl",
+   "hex": "f94800",
+   "expect": "invalid",
+   "edn": "8.0",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22c-det.cddl: `;;- 8.0`"
+  },
+  {
+   "id": "cddlc/22c-det/09",
+   "schema": "schemas/cddlc/22c-det.cddl",
+   "hex": "08",
+   "expect": "invalid",
+   "edn": "8",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22c-det.cddl: `;;- 8`"
+  },
+  {
+   "id": "cddlc/22c-det/10",
+   "schema": "schemas/cddlc/22c-det.cddl",
+   "hex": "c34e009bc796107d8e8e928f290c0576",
+   "expect": "invalid",
+   "edn": "-12342134123412341234123412342134",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22c-det.cddl: `;;- -12342134123412341234123412342134`"
+  },
+  {
+   "id": "cddlc/22c-det/11",
+   "schema": "schemas/cddlc/22c-det.cddl",
+   "hex": "c24e009bc796107d8e8e928f290c0576",
+   "expect": "invalid",
+   "edn": "12342134123412341234123412342134",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22c-det.cddl: `;;- 12342134123412341234123412342134`"
+  },
+  {
+   "id": "cddlc/22c-det/12",
+   "schema": "schemas/cddlc/22c-det.cddl",
+   "hex": "60",
+   "expect": "invalid",
+   "edn": "\"\"",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22c-det.cddl: `;;- \"\"`"
+  },
+  {
+   "id": "cddlc/22c-det/13",
+   "schema": "schemas/cddlc/22c-det.cddl",
+   "hex": "40",
+   "expect": "invalid",
+   "edn": "''",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22c-det.cddl: `;;- ''`"
+  },
+  {
+   "id": "cddlc/22c-det/14",
+   "schema": "schemas/cddlc/22c-det.cddl",
+   "hex": "83010203",
+   "expect": "invalid",
+   "edn": "[1, 2, 3]",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22c-det.cddl: `;;- [1, 2, 3]`"
+  },
+  {
+   "id": "cddlc/22c-det/15",
+   "schema": "schemas/cddlc/22c-det.cddl",
+   "hex": "a201020304",
+   "expect": "invalid",
+   "edn": "{1: 2, 3: 4}",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22c-det.cddl: `;;- {1: 2, 3: 4}`"
+  },
+  {
+   "id": "cddlc/22c-det/16",
+   "schema": "schemas/cddlc/22c-det.cddl",
+   "hex": "c603",
+   "expect": "invalid",
+   "edn": "6(3)",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22c-det.cddl: `;;- 6(3)`"
+  },
+  {
+   "id": "cddlc/22d-det/01",
+   "schema": "schemas/cddlc/22d-det.cddl",
+   "hex": "6161",
+   "expect": "invalid",
+   "edn": "\"a\"",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22d-det.cddl: `;;- \"a\"`"
+  },
+  {
+   "id": "cddlc/22d-det/02",
+   "schema": "schemas/cddlc/22d-det.cddl",
+   "hex": "6362c3a4",
+   "expect": "invalid",
+   "edn": "\"bä\"",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22d-det.cddl: `;;- \"bä\"`"
+  },
+  {
+   "id": "cddlc/22d-det/03",
+   "schema": "schemas/cddlc/22d-det.cddl",
+   "hex": "4362c3a4",
+   "expect": "invalid",
+   "edn": "'bä'",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22d-det.cddl: `;;- 'bä'`"
+  },
+  {
+   "id": "cddlc/22d-det/04",
+   "schema": "schemas/cddlc/22d-det.cddl",
+   "hex": "43666f6f",
+   "expect": "invalid",
+   "edn": "'foo'",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22d-det.cddl: `;;- 'foo'`"
+  },
+  {
+   "id": "cddlc/22d-det/05",
+   "schema": "schemas/cddlc/22d-det.cddl",
+   "hex": "4161",
+   "expect": "invalid",
+   "edn": "'a'",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22d-det.cddl: `;;- 'a'`"
+  },
+  {
+   "id": "cddlc/22d-det/06",
+   "schema": "schemas/cddlc/22d-det.cddl",
+   "hex": "4162",
+   "expect": "invalid",
+   "edn": "'b'",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22d-det.cddl: `;;- 'b'`"
+  },
+  {
+   "id": "cddlc/22d-det/07",
+   "schema": "schemas/cddlc/22d-det.cddl",
+   "hex": "476162c3a4666f6f",
+   "expect": "valid",
+   "edn": "'abäfoo'",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22d-det.cddl: `;;+ 'abäfoo'`",
+   "status": "gap",
+   "issue": 76,
+   "reason": "`.det` is parsed but not enforced."
+  },
+  {
+   "id": "cddlc/22d-det/08",
+   "schema": "schemas/cddlc/22d-det.cddl",
+   "hex": "676162c3a4666f6f",
+   "expect": "invalid",
+   "edn": "\"abäfoo\"",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22d-det.cddl: `;;- \"abäfoo\"`"
+  },
+  {
+   "id": "cddlc/22d-det/09",
+   "schema": "schemas/cddlc/22d-det.cddl",
+   "hex": "f94800",
+   "expect": "invalid",
+   "edn": "8.0",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22d-det.cddl: `;;- 8.0`"
+  },
+  {
+   "id": "cddlc/22d-det/10",
+   "schema": "schemas/cddlc/22d-det.cddl",
+   "hex": "08",
+   "expect": "invalid",
+   "edn": "8",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22d-det.cddl: `;;- 8`"
+  },
+  {
+   "id": "cddlc/22d-det/11",
+   "schema": "schemas/cddlc/22d-det.cddl",
+   "hex": "c34e009bc796107d8e8e928f290c0576",
+   "expect": "invalid",
+   "edn": "-12342134123412341234123412342134",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22d-det.cddl: `;;- -12342134123412341234123412342134`"
+  },
+  {
+   "id": "cddlc/22d-det/12",
+   "schema": "schemas/cddlc/22d-det.cddl",
+   "hex": "c24e009bc796107d8e8e928f290c0576",
+   "expect": "invalid",
+   "edn": "12342134123412341234123412342134",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22d-det.cddl: `;;- 12342134123412341234123412342134`"
+  },
+  {
+   "id": "cddlc/22d-det/13",
+   "schema": "schemas/cddlc/22d-det.cddl",
+   "hex": "60",
+   "expect": "invalid",
+   "edn": "\"\"",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22d-det.cddl: `;;- \"\"`"
+  },
+  {
+   "id": "cddlc/22d-det/14",
+   "schema": "schemas/cddlc/22d-det.cddl",
+   "hex": "40",
+   "expect": "invalid",
+   "edn": "''",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22d-det.cddl: `;;- ''`"
+  },
+  {
+   "id": "cddlc/22d-det/15",
+   "schema": "schemas/cddlc/22d-det.cddl",
+   "hex": "83010203",
+   "expect": "invalid",
+   "edn": "[1, 2, 3]",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22d-det.cddl: `;;- [1, 2, 3]`"
+  },
+  {
+   "id": "cddlc/22d-det/16",
+   "schema": "schemas/cddlc/22d-det.cddl",
+   "hex": "a201020304",
+   "expect": "invalid",
+   "edn": "{1: 2, 3: 4}",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22d-det.cddl: `;;- {1: 2, 3: 4}`"
+  },
+  {
+   "id": "cddlc/22d-det/17",
+   "schema": "schemas/cddlc/22d-det.cddl",
+   "hex": "c603",
+   "expect": "invalid",
+   "edn": "6(3)",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22d-det.cddl: `;;- 6(3)`"
+  },
+  {
+   "id": "cddlc/22e-det/01",
+   "schema": "schemas/cddlc/22e-det.cddl",
+   "hex": "6161",
+   "expect": "invalid",
+   "edn": "\"a\"",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22e-det.cddl: `;;- \"a\"`"
+  },
+  {
+   "id": "cddlc/22e-det/02",
+   "schema": "schemas/cddlc/22e-det.cddl",
+   "hex": "6362c3a4",
+   "expect": "invalid",
+   "edn": "\"bä\"",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22e-det.cddl: `;;- \"bä\"`"
+  },
+  {
+   "id": "cddlc/22e-det/03",
+   "schema": "schemas/cddlc/22e-det.cddl",
+   "hex": "4362c3a4",
+   "expect": "invalid",
+   "edn": "'bä'",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22e-det.cddl: `;;- 'bä'`"
+  },
+  {
+   "id": "cddlc/22e-det/04",
+   "schema": "schemas/cddlc/22e-det.cddl",
+   "hex": "43666f6f",
+   "expect": "invalid",
+   "edn": "'foo'",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22e-det.cddl: `;;- 'foo'`"
+  },
+  {
+   "id": "cddlc/22e-det/05",
+   "schema": "schemas/cddlc/22e-det.cddl",
+   "hex": "4161",
+   "expect": "invalid",
+   "edn": "'a'",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22e-det.cddl: `;;- 'a'`"
+  },
+  {
+   "id": "cddlc/22e-det/06",
+   "schema": "schemas/cddlc/22e-det.cddl",
+   "hex": "4162",
+   "expect": "invalid",
+   "edn": "'b'",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22e-det.cddl: `;;- 'b'`"
+  },
+  {
+   "id": "cddlc/22e-det/07",
+   "schema": "schemas/cddlc/22e-det.cddl",
+   "hex": "466162c3a46161",
+   "expect": "valid",
+   "edn": "'abäaa'",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22e-det.cddl: `;;+ 'abäaa'`",
+   "status": "gap",
+   "issue": 76,
+   "reason": "`.det` is parsed but not enforced."
+  },
+  {
+   "id": "cddlc/22e-det/08",
+   "schema": "schemas/cddlc/22e-det.cddl",
+   "hex": "666162c3a46161",
+   "expect": "invalid",
+   "edn": "\"abäaa\"",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22e-det.cddl: `;;- \"abäaa\"`"
+  },
+  {
+   "id": "cddlc/22e-det/09",
+   "schema": "schemas/cddlc/22e-det.cddl",
+   "hex": "f94800",
+   "expect": "invalid",
+   "edn": "8.0",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22e-det.cddl: `;;- 8.0`"
+  },
+  {
+   "id": "cddlc/22e-det/10",
+   "schema": "schemas/cddlc/22e-det.cddl",
+   "hex": "08",
+   "expect": "invalid",
+   "edn": "8",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22e-det.cddl: `;;- 8`"
+  },
+  {
+   "id": "cddlc/22e-det/11",
+   "schema": "schemas/cddlc/22e-det.cddl",
+   "hex": "c34e009bc796107d8e8e928f290c0576",
+   "expect": "invalid",
+   "edn": "-12342134123412341234123412342134",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22e-det.cddl: `;;- -12342134123412341234123412342134`"
+  },
+  {
+   "id": "cddlc/22e-det/12",
+   "schema": "schemas/cddlc/22e-det.cddl",
+   "hex": "c24e009bc796107d8e8e928f290c0576",
+   "expect": "invalid",
+   "edn": "12342134123412341234123412342134",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22e-det.cddl: `;;- 12342134123412341234123412342134`"
+  },
+  {
+   "id": "cddlc/22e-det/13",
+   "schema": "schemas/cddlc/22e-det.cddl",
+   "hex": "60",
+   "expect": "invalid",
+   "edn": "\"\"",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22e-det.cddl: `;;- \"\"`"
+  },
+  {
+   "id": "cddlc/22e-det/14",
+   "schema": "schemas/cddlc/22e-det.cddl",
+   "hex": "40",
+   "expect": "invalid",
+   "edn": "''",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22e-det.cddl: `;;- ''`"
+  },
+  {
+   "id": "cddlc/22e-det/15",
+   "schema": "schemas/cddlc/22e-det.cddl",
+   "hex": "83010203",
+   "expect": "invalid",
+   "edn": "[1, 2, 3]",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22e-det.cddl: `;;- [1, 2, 3]`"
+  },
+  {
+   "id": "cddlc/22e-det/16",
+   "schema": "schemas/cddlc/22e-det.cddl",
+   "hex": "a201020304",
+   "expect": "invalid",
+   "edn": "{1: 2, 3: 4}",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22e-det.cddl: `;;- {1: 2, 3: 4}`"
+  },
+  {
+   "id": "cddlc/22e-det/17",
+   "schema": "schemas/cddlc/22e-det.cddl",
+   "hex": "c603",
+   "expect": "invalid",
+   "edn": "6(3)",
+   "constructs": [
+    "control.det"
+   ],
+   "source": "test/22e-det.cddl: `;;- 6(3)`"
+  },
+  {
+   "id": "cddlc/3-bstr/01",
+   "schema": "schemas/cddlc/3-bstr.cddl",
+   "hex": "60",
+   "expect": "invalid",
+   "edn": "\"\"",
+   "constructs": [
+    "prelude.bytes"
+   ],
+   "source": "test/3-bstr.cddl: `;;- \"\"`"
+  },
+  {
+   "id": "cddlc/3-bstr/02",
+   "schema": "schemas/cddlc/3-bstr.cddl",
+   "hex": "40",
+   "expect": "valid",
+   "edn": "''",
+   "constructs": [
+    "prelude.bytes"
+   ],
+   "source": "test/3-bstr.cddl: `;;+ ''`"
+  },
+  {
+   "id": "cddlc/3-bstr/03",
+   "schema": "schemas/cddlc/3-bstr.cddl",
+   "hex": "40",
+   "expect": "valid",
+   "edn": "h''",
+   "constructs": [
+    "prelude.bytes"
+   ],
+   "source": "test/3-bstr.cddl: `;;+ h''`"
+  },
+  {
+   "id": "cddlc/3-bstr/04",
+   "schema": "schemas/cddlc/3-bstr.cddl",
+   "hex": "40",
+   "expect": "valid",
+   "edn": "b64''",
+   "constructs": [
+    "prelude.bytes"
+   ],
+   "source": "test/3-bstr.cddl: `;;+ b64''`"
+  },
+  {
+   "id": "cddlc/3-bstr/05",
+   "schema": "schemas/cddlc/3-bstr.cddl",
+   "hex": "83010203",
+   "expect": "invalid",
+   "edn": "[1, 2, 3]",
+   "constructs": [
+    "prelude.bytes"
+   ],
+   "source": "test/3-bstr.cddl: `;;- [1, 2, 3]`"
+  },
+  {
+   "id": "cddlc/3-bstr/06",
+   "schema": "schemas/cddlc/3-bstr.cddl",
+   "hex": "a201020304",
+   "expect": "invalid",
+   "edn": "{1: 2, 3: 4}",
+   "constructs": [
+    "prelude.bytes"
+   ],
+   "source": "test/3-bstr.cddl: `;;- {1: 2, 3: 4}`"
+  },
+  {
+   "id": "cddlc/3-bstr/07",
+   "schema": "schemas/cddlc/3-bstr.cddl",
+   "hex": "c603",
+   "expect": "invalid",
+   "edn": "6(3)",
+   "constructs": [
+    "prelude.bytes"
+   ],
+   "source": "test/3-bstr.cddl: `;;- 6(3)`"
+  },
+  {
+   "id": "cddlc/3-bstr/08",
+   "schema": "schemas/cddlc/3-bstr.cddl",
+   "hex": "03",
+   "expect": "invalid",
+   "edn": "3",
+   "constructs": [
+    "prelude.bytes"
+   ],
+   "source": "test/3-bstr.cddl: `;;- 3`"
+  },
+  {
+   "id": "cddlc/3-bstr/09",
+   "schema": "schemas/cddlc/3-bstr.cddl",
+   "hex": "f94200",
+   "expect": "invalid",
+   "edn": "3.0",
+   "constructs": [
+    "prelude.bytes"
+   ],
+   "source": "test/3-bstr.cddl: `;;- 3.0`"
+  },
+  {
+   "id": "cddlc/4-tstr/01",
+   "schema": "schemas/cddlc/4-tstr.cddl",
+   "hex": "60",
+   "expect": "valid",
+   "edn": "\"\"",
+   "constructs": [
+    "prelude.text"
+   ],
+   "source": "test/4-tstr.cddl: `;;+ \"\"`"
+  },
+  {
+   "id": "cddlc/4-tstr/02",
+   "schema": "schemas/cddlc/4-tstr.cddl",
+   "hex": "40",
+   "expect": "invalid",
+   "edn": "''",
+   "constructs": [
+    "prelude.text"
+   ],
+   "source": "test/4-tstr.cddl: `;;- ''`"
+  },
+  {
+   "id": "cddlc/4-tstr/03",
+   "schema": "schemas/cddlc/4-tstr.cddl",
+   "hex": "40",
+   "expect": "invalid",
+   "edn": "h''",
+   "constructs": [
+    "prelude.text"
+   ],
+   "source": "test/4-tstr.cddl: `;;- h''`"
+  },
+  {
+   "id": "cddlc/4-tstr/04",
+   "schema": "schemas/cddlc/4-tstr.cddl",
+   "hex": "40",
+   "expect": "invalid",
+   "edn": "b64''",
+   "constructs": [
+    "prelude.text"
+   ],
+   "source": "test/4-tstr.cddl: `;;- b64''`"
+  },
+  {
+   "id": "cddlc/4-tstr/05",
+   "schema": "schemas/cddlc/4-tstr.cddl",
+   "hex": "03",
+   "expect": "invalid",
+   "edn": "3",
+   "constructs": [
+    "prelude.text"
+   ],
+   "source": "test/4-tstr.cddl: `;;- 3`"
+  },
+  {
+   "id": "cddlc/4-tstr/06",
+   "schema": "schemas/cddlc/4-tstr.cddl",
+   "hex": "f94200",
+   "expect": "invalid",
+   "edn": "3.0",
+   "constructs": [
+    "prelude.text"
+   ],
+   "source": "test/4-tstr.cddl: `;;- 3.0`"
+  },
+  {
+   "id": "cddlc/4-tstr/07",
+   "schema": "schemas/cddlc/4-tstr.cddl",
+   "hex": "83010203",
+   "expect": "invalid",
+   "edn": "[1, 2, 3]",
+   "constructs": [
+    "prelude.text"
+   ],
+   "source": "test/4-tstr.cddl: `;;- [1, 2, 3]`"
+  },
+  {
+   "id": "cddlc/4-tstr/08",
+   "schema": "schemas/cddlc/4-tstr.cddl",
+   "hex": "a201020304",
+   "expect": "invalid",
+   "edn": "{1: 2, 3: 4}",
+   "constructs": [
+    "prelude.text"
+   ],
+   "source": "test/4-tstr.cddl: `;;- {1: 2, 3: 4}`"
+  },
+  {
+   "id": "cddlc/4-tstr/09",
+   "schema": "schemas/cddlc/4-tstr.cddl",
+   "hex": "c603",
+   "expect": "invalid",
+   "edn": "6(3)",
+   "constructs": [
+    "prelude.text"
+   ],
+   "source": "test/4-tstr.cddl: `;;- 6(3)`"
+  },
+  {
+   "id": "cddlc/6-bigint/01",
+   "schema": "schemas/cddlc/6-bigint.cddl",
+   "hex": "c259024e0080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+   "expect": "valid",
+   "edn": "142006941233646187870594320724394975041022747500394945990647585607910209752385081054706581533120518455139963108585482777896586862520862143127925372409717756310003062754623191677191903136183538117776185053641905135972858775896156063975096788064600203647741866164982154964987485410833744556255744493539405656787905700735508952069635239926130695685229994493494891667977382519660928384115159937435545696121514909050291532837606002376420340901444392785513379283110869302343993143648819297561814458004712131063435094620954732631217210181451455501977192138926220668323513792535220545909481345636694589519435813955104423948322920866422191809290138930017703509335558333650119031777933598453479687258732712291059999831469608164020234011262665053213605112107025346248910691561652683934132441968503442585354875642036354498003498008872988923076333386330551396660127274573501482924890031101286238348309716208884742031964117517924875737882269320265156552390381356983562891154159026798141693059966705902930045654747031367389355794828188711780073978084159456701044939647006237558989585254593578157794747503909868063546369126287125932575038806945129474915850006585398129627561167619123976416923394957014951722149250421656398107659336649241885888751034016851605038549095825445913403455843761508440949420130639383458984301730903433188225234255359267796080098288778148445638975119681035611797943343170141191763756630211867796310711544578048 /2**4711/",
+   "constructs": [
+    "prelude.bignums"
+   ],
+   "source": "test/6-bigint.cddl: `;;+ 142006941233646187870594320724394975041022747500394945990647585607910209752385081054706581533120518455139963108585482777896586862520862143127925372409717756310003062754623191677191903136183538117776185053641905135972858775896156063975096788064600203647741866164982154964987485410833744556255744493539405656787905700735508952069635239926130695685229994493494891667977382519660928384115159937435545696121514909050291532837606002376420340901444392785513379283110869302343993143648819297561814458004712131063435094620954732631217210181451455501977192138926220668323513792535220545909481345636694589519435813955104423948322920866422191809290138930017703509335558333650119031777933598453479687258732712291059999831469608164020234011262665053213605112107025346248910691561652683934132441968503442585354875642036354498003498008872988923076333386330551396660127274573501482924890031101286238348309716208884742031964117517924875737882269320265156552390381356983562891154159026798141693059966705902930045654747031367389355794828188711780073978084159456701044939647006237558989585254593578157794747503909868063546369126287125932575038806945129474915850006585398129627561167619123976416923394957014951722149250421656398107659336649241885888751034016851605038549095825445913403455843761508440949420130639383458984301730903433188225234255359267796080098288778148445638975119681035611797943343170141191763756630211867796310711544578048 /2**4711/`"
+  },
+  {
+   "id": "cddlc/6-bigint/02",
+   "schema": "schemas/cddlc/6-bigint.cddl",
+   "hex": "c3586700800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+   "expect": "valid",
+   "edn": "-218497496936607064853048583478354175496839440705647678599864575975883972208808167719614290358159090999064327310325620422930884252602183354953346451122776638950446123565515229051718149272758321962318725648740732173736042431692028683588857933856768 /-2**815/",
+   "constructs": [
+    "prelude.bignums"
+   ],
+   "source": "test/6-bigint.cddl: `;;+ -218497496936607064853048583478354175496839440705647678599864575975883972208808167719614290358159090999064327310325620422930884252602183354953346451122776638950446123565515229051718149272758321962318725648740732173736042431692028683588857933856768 /-2**815/`"
+  },
+  {
+   "id": "cddlc/6-bigint/03",
+   "schema": "schemas/cddlc/6-bigint.cddl",
+   "hex": "01",
+   "expect": "valid",
+   "edn": "1",
+   "constructs": [
+    "prelude.bignums"
+   ],
+   "source": "test/6-bigint.cddl: `;;+ 1`",
+   "status": "divergence",
+   "reason": "The RFC 8610 prelude defines `bigint = biguint / bignint` (tags 2 and 3 only) and this library follows it: an integer that fits in 64 bits is an `int` or `integer`, not a `bigint`. The cddlc test also accepts such integers."
+  },
+  {
+   "id": "cddlc/6-bigint/04",
+   "schema": "schemas/cddlc/6-bigint.cddl",
+   "hex": "00",
+   "expect": "valid",
+   "edn": "0",
+   "constructs": [
+    "prelude.bignums"
+   ],
+   "source": "test/6-bigint.cddl: `;;+ 0`",
+   "status": "divergence",
+   "reason": "The RFC 8610 prelude defines `bigint = biguint / bignint` (tags 2 and 3 only) and this library follows it: an integer that fits in 64 bits is an `int` or `integer`, not a `bigint`. The cddlc test also accepts such integers."
+  },
+  {
+   "id": "cddlc/6-bigint/05",
+   "schema": "schemas/cddlc/6-bigint.cddl",
+   "hex": "2a",
+   "expect": "valid",
+   "edn": "-11",
+   "constructs": [
+    "prelude.bignums"
+   ],
+   "source": "test/6-bigint.cddl: `;;+ -11`",
+   "status": "divergence",
+   "reason": "The RFC 8610 prelude defines `bigint = biguint / bignint` (tags 2 and 3 only) and this library follows it: an integer that fits in 64 bits is an `int` or `integer`, not a `bigint`. The cddlc test also accepts such integers."
+  },
+  {
+   "id": "cddlc/6-bigint/06",
+   "schema": "schemas/cddlc/6-bigint.cddl",
+   "hex": "f93c00",
+   "expect": "invalid",
+   "edn": "1.0",
+   "constructs": [
+    "prelude.bignums"
+   ],
+   "source": "test/6-bigint.cddl: `;;- 1.0`"
+  },
+  {
+   "id": "cddlc/6-bigint/07",
+   "schema": "schemas/cddlc/6-bigint.cddl",
+   "hex": "fb54b249ad2594c37d",
+   "expect": "invalid",
+   "edn": "1e100",
+   "constructs": [
+    "prelude.bignums"
+   ],
+   "source": "test/6-bigint.cddl: `;;- 1e100`"
+  },
+  {
+   "id": "cddlc/6-tag/01",
+   "schema": "schemas/cddlc/6-tag.cddl",
+   "hex": "d9126763666f6f",
+   "expect": "valid",
+   "edn": "4711(\"foo\")",
+   "constructs": [
+    "syntax.tag"
+   ],
+   "source": "test/6-tag.cddl: `;;+ 4711(\"foo\")`"
+  },
+  {
+   "id": "cddlc/6-tag/02",
+   "schema": "schemas/cddlc/6-tag.cddl",
+   "hex": "d9126703",
+   "expect": "invalid",
+   "edn": "4711(3)",
+   "constructs": [
+    "syntax.tag"
+   ],
+   "source": "test/6-tag.cddl: `;;- 4711(3)`"
+  },
+  {
+   "id": "cddlc/6-tag/03",
+   "schema": "schemas/cddlc/6-tag.cddl",
+   "hex": "d9126863666f6f",
+   "expect": "invalid",
+   "edn": "4712(\"foo\")",
+   "constructs": [
+    "syntax.tag"
+   ],
+   "source": "test/6-tag.cddl: `;;- 4712(\"foo\")`"
+  },
+  {
+   "id": "cddlc/7-bool/01",
+   "schema": "schemas/cddlc/7-bool.cddl",
+   "hex": "f4",
+   "expect": "valid",
+   "edn": "false",
+   "constructs": [
+    "prelude.bool"
+   ],
+   "source": "test/7-bool.cddl: `;;+ false`"
+  },
+  {
+   "id": "cddlc/7-bool/02",
+   "schema": "schemas/cddlc/7-bool.cddl",
+   "hex": "f5",
+   "expect": "valid",
+   "edn": "true",
+   "constructs": [
+    "prelude.bool"
+   ],
+   "source": "test/7-bool.cddl: `;;+ true`"
+  },
+  {
+   "id": "cddlc/7-bool/03",
+   "schema": "schemas/cddlc/7-bool.cddl",
+   "hex": "f6",
+   "expect": "invalid",
+   "edn": "null",
+   "constructs": [
+    "prelude.bool"
+   ],
+   "source": "test/7-bool.cddl: `;;- null`"
+  },
+  {
+   "id": "cddlc/7-bool/04",
+   "schema": "schemas/cddlc/7-bool.cddl",
+   "hex": "191267",
+   "expect": "invalid",
+   "edn": "4711",
+   "constructs": [
+    "prelude.bool"
+   ],
+   "source": "test/7-bool.cddl: `;;- 4711`"
+  },
+  {
+   "id": "cddlc/7-float16/01",
+   "schema": "schemas/cddlc/7-float16.cddl",
+   "hex": "f93c00",
+   "expect": "valid",
+   "edn": "1.0",
+   "constructs": [
+    "prelude.floats"
+   ],
+   "source": "test/7-float16.cddl: `;;+ 1.0`"
+  },
+  {
+   "id": "cddlc/7-float16/02",
+   "schema": "schemas/cddlc/7-float16.cddl",
+   "hex": "f93e00",
+   "expect": "valid",
+   "edn": "1.5",
+   "constructs": [
+    "prelude.floats"
+   ],
+   "source": "test/7-float16.cddl: `;;+ 1.5`"
+  },
+  {
+   "id": "cddlc/7-float16/03",
+   "schema": "schemas/cddlc/7-float16.cddl",
+   "hex": "fb3ff999999999999a",
+   "expect": "invalid",
+   "edn": "1.6",
+   "constructs": [
+    "prelude.floats"
+   ],
+   "source": "test/7-float16.cddl: `;;- 1.6`"
+  },
+  {
+   "id": "cddlc/8-op/01",
+   "schema": "schemas/cddlc/8-op.cddl",
+   "hex": "63666f6f",
+   "expect": "valid",
+   "edn": "\"foo\"",
+   "constructs": [
+    "control.regexp"
+   ],
+   "source": "test/8-op.cddl: `;;+ \"foo\"`"
+  },
+  {
+   "id": "cddlc/8-op/02",
+   "schema": "schemas/cddlc/8-op.cddl",
+   "hex": "64666f6f6c",
+   "expect": "invalid",
+   "edn": "\"fool\"",
+   "constructs": [
+    "control.regexp"
+   ],
+   "source": "test/8-op.cddl: `;;- \"fool\"`"
+  }
+ ]
+}
