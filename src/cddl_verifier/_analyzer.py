@@ -2888,15 +2888,20 @@ class CBORAnalyzer:
         if fmt is None or fmt.kind != 'text':
             raise computed.ComputeError("the format of '.printf' must be one text string")
         try:
-            pattern, specs = conversions.printf_pattern(conversions.parse_format(fmt.value))
+            parts = conversions.parse_format(fmt.value)
         except conversions.PrintfError as exc:
             return [_CheckError(f"the format of .printf is not usable: {exc}", category='schema')]
+        specs = [part for part in parts if not isinstance(part, str)]
         if len(specs) != len(entries) - 1:
             return [_CheckError(f"the format of .printf has {len(specs)} conversion(s) but the array gives "
                                 f"{len(entries) - 1} data item(s)", category='schema')]
-        match = pattern.match(value)
-        if match is not None:
-            readings = [conversions.read_conversion(spec, group) for spec, group in zip(specs, match.groups())]
+        try:
+            groups = conversions.match_printf(parts, value)
+        except conversions.PrintfLimit:
+            return [_CheckError("matching the text against the .printf format took too many steps; it was "
+                                "not accepted", category='value', actual=self._format_value_for_log(value))]
+        if groups is not None:
+            readings = [conversions.read_conversion(spec, group) for spec, group in zip(specs, groups)]
             if all(reading is not None for reading in readings):
                 for number, (reading, (item, _occurrence)) in enumerate(zip(readings, entries[1:]), 1):
                     if self._check_value(reading, item, _depth + 1, strict):

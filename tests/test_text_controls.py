@@ -106,6 +106,12 @@ class Json(Cases, unittest.TestCase):
     def test_applies_to_text_only(self):
         self.refuses("r = bytes .json any", fragment="byte string")
 
+    def test_maps_and_arrays_are_checked_by_shape(self):
+        self.check("r = text .json {a: int, ? b: [* tstr]}", [('{"a":1}', True), ('{"a":1,"b":["x"]}', True),
+                                                                 ('{"a":1,"b":[1]}', False), ('{"b":[]}', False),
+                                                                 ('{"a":1,"c":2}', False)])
+        self.check("r = text .json [* {a: int}]", [('[{"a":1},{"a":2}]', True), ('[{"a":"x"}]', False)])
+
 
 class Printf(Cases, unittest.TestCase):
     def test_formats(self):
@@ -114,8 +120,7 @@ class Printf(Cases, unittest.TestCase):
         self.check('r = text .printf ["%X", uint]', [("FF", True), ("ff", False)])
         self.check('r = text .printf ["%+d", int]', [("+5", True), ("5", False), ("-5", True)])
         self.check('r = text .printf ["%c", uint]', [("A", True), ("AB", False)])
-        self.check('r = text .printf ["100%%"]'.replace('"100%%"]', '"100%%", 1]') if False else 'r = text .printf ["%d%%", uint]',
-                   [("5%", True), ("5", False)])
+        self.check('r = text .printf ["%d%%", uint]', [("5%", True), ("5", False)])
 
     def test_floats(self):
         self.check('r = text .printf ["%.2f", float]', [("3.14", True), ("3.1", False), ("3.141", False)])
@@ -145,6 +150,23 @@ class Printf(Cases, unittest.TestCase):
         spec = conversions.parse_format("a%03db")
         self.assertEqual(len(spec), 3)
 
+    def test_matching_takes_the_first_split_and_is_bounded(self):
+        parts = conversions.parse_format("%s%s%s")
+        self.assertEqual(conversions.match_printf(parts, "abc"), ["", "", "abc"])
+        self.assertIsNone(conversions.match_printf(conversions.parse_format("%d-%d"), "1x2"))
+        with self.assertRaises(conversions.PrintfLimit):
+            conversions.match_printf(conversions.parse_format("%s%s%s%s%sX"), "a" * 3000)
+
+    def test_hostile_formats_do_not_stall(self):
+        # adjacent conversions and a literal that is missing used to be a regular expression's worst case
+        validator = Validator('r = text .printf ["%s%s%s%s%sX", tstr, tstr, tstr, tstr, tstr]')
+        result = validator.validate(cbor.encode("a" * 3000))
+        self.assertFalse(result.valid)
+        self.assertIn("too many steps", str(result.errors[0]))
+        self.assertTrue(validator.validate(cbor.encode("abcdX")).valid)
+        floats = Validator('r = text .printf ["%f%f%f%fX", float, float, float, float]')
+        self.assertFalse(floats.validate(cbor.encode("1" * 3000)).valid)
+
 
 class Join(Cases, unittest.TestCase):
     def test_literals_and_types(self):
@@ -173,9 +195,12 @@ class Join(Cases, unittest.TestCase):
         self.check('r = text .join ["a"]', [(1, False), (b"a", False), ("a", True)])
 
     def test_work_is_bounded(self):
-        validator = Validator('r = text .join [*tstr]'.replace('*tstr', 'tstr, tstr, tstr, tstr, tstr, tstr'))
-        # very long input with many split points must finish and not accept a string that cannot match
-        self.assertIsNotNone(validator.validate(cbor.encode("a" * 2000)))
+        validator = Validator('r = text .join [tstr, tstr, tstr, tstr, tstr, tstr]')
+        # a long string with very many ways to split it is not accepted, and says why
+        result = validator.validate(cbor.encode("a" * 2000))
+        self.assertFalse(result.valid)
+        self.assertIn("too many ways", str(result.errors[0]))
+        self.assertTrue(validator.validate(cbor.encode("a" * 20)).valid)
 
     def test_schema_errors(self):
         self.refuses('r = text .join [* tstr]', 'r = text .join [int]', 'r = text .join "a"',

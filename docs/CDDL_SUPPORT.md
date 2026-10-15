@@ -527,16 +527,18 @@ anywhere a type is: as a field, array element, map key (`(BASE .plus 1) => int`,
 including the RFC 9165 `interval<BASE>` example) or the controller of another control.
 A target of bytes with text (or the reverse) gives the type of the target. Operands that
 are not literals (`uint .plus 1`, `tstr .cat "a"`), numbers where strings are needed,
-a text result that is not UTF-8, more than 4096 results and a recursive definition are
-schema errors.
+a text result that is not UTF-8, more than 4096 results (counted before they are built),
+a string longer than 1,048,576 characters, more than 16 MiB of results and a recursive
+definition are schema errors.
 
 **`.abnf` and `.abnfb`** check a string against an ABNF grammar (RFC 5234, with the
 case-sensitive strings of RFC 7405). The controller is a text string, usually computed
 with `.cat` or `.det` from several lines; its first rule is the start rule, or the text
 starts with a bare rule name or expression. `.abnf` reads bytes as UTF-8 and text as
 code points; `.abnfb` reads both as bytes. Matching is exact for the whole grammar,
-including left recursion and ambiguity. It stops after two million steps and then does
-not accept the string, so hostile input cannot stall validation. Grammars that do not
+including left recursion and ambiguity. It stops after two million steps, or when a
+grammar recurses once per symbol on a very long string (tens of thousands of symbols),
+and then does not accept the string, so hostile input cannot stall or crash validation. Grammars that do not
 parse, use prose values or leave a rule undefined are schema errors.
 
 **Conversions.** `text .b64u`, `.b64c`, `.b64u-sloppy`, `.b64c-sloppy`, `.b45`, `.b32`,
@@ -553,7 +555,8 @@ modifiers, `*`, `a`, `p` and `n` are schema errors, as is a count of conversions
 differs from the count of items. The text is taken apart by the format, each conversion
 is read back and written again, and only exact output matches. Where a format can split
 in several ways (adjacent `%s`), only the first split is tried, so a string that only
-the other split would explain is rejected.
+the other split would explain is rejected. Taking the text apart is bounded (200,000 steps);
+a string that needs more is not accepted.
 
 **`.join`** checks that a string is the concatenation of strings that fit the elements
 of an array that is written out, each element once (`text .join ["id-", (tstr .base10 uint)]`).

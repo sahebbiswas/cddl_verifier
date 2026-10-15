@@ -24,6 +24,10 @@ OPERATORS = frozenset({'plus', 'cat', 'det'})
 #: How many values a computation may produce (``("a" / "b") .cat ("c" / "d")`` has four).
 MAX_VALUES = 4096
 
+#: How long one computed string may be, and how much text all the results of one computation may hold.
+MAX_STRING = 1 << 20
+MAX_TOTAL = 16 << 20
+
 _MAX_DEPTH = 64
 
 
@@ -81,7 +85,8 @@ def evaluate(rules: Dict[str, object], node, _depth: int = 0) -> List[Item]:
         items: List[Item] = []
         for alternative in node.alternatives:
             items.extend(evaluate(rules, alternative, _depth + 1))
-        return _bounded(items)
+            _bounded(items)
+        return items
     if isinstance(node, IntLit):
         return [Value('int', node.value)]
     if isinstance(node, FloatLit):
@@ -102,6 +107,8 @@ def evaluate(rules: Dict[str, object], node, _depth: int = 0) -> List[Item]:
     if isinstance(node, Control) and node.op in OPERATORS:
         left = evaluate(rules, node.target, _depth + 1)
         right = evaluate(rules, node.arg, _depth + 1)
+        if len(left) * len(right) > MAX_VALUES:  # before building the product, not after
+            raise ComputeError(f"the computation has more than {MAX_VALUES} results")
         if node.op == 'plus':
             return _bounded([_plus(a, b) for a in left for b in right])
         return _bounded([_concatenate(a, b, node.op == 'det') for a in left for b in right])
@@ -110,12 +117,17 @@ def evaluate(rules: Dict[str, object], node, _depth: int = 0) -> List[Item]:
 
 
 def _bounded(items: List[Item]) -> List[Item]:
+    """Raise ComputeError when the results are too many or hold too much text."""
     if len(items) > MAX_VALUES:
         raise ComputeError(f"the computation has more than {MAX_VALUES} results")
+    if sum(len(item.value) for item in items if isinstance(item, Value) and item.kind in ('text', 'bytes')) \
+            > MAX_TOTAL:
+        raise ComputeError("the results of the computation hold too much text")
     return items
 
 
 def _interval(rules, node: Range, depth: int) -> Interval:
+    """A range node as an Interval."""
     bounds = []
     for bound in (node.low, node.high):
         values = evaluate(rules, bound, depth + 1)
@@ -131,12 +143,14 @@ def _interval(rules, node: Range, depth: int) -> Interval:
 # ----------------------------------------------------------------------- plus
 
 def _number(item: Item) -> Item:
+    """*item* if it is a number or a range of numbers, else a ComputeError."""
     if isinstance(item, Interval) or item.kind in ('int', 'float'):
         return item
     raise ComputeError(f"'.plus' needs numbers, not {_describe(item)}")
 
 
 def _describe(item: Item) -> str:
+    """A short name for the kind of *item*, for error messages."""
     return {'text': 'a text string', 'bytes': 'a byte string'}.get(getattr(item, 'kind', ''), 'a number')
 
 
@@ -154,6 +168,7 @@ def _sum(kind: str, left, right):
 
 
 def _plus(left: Item, right: Item) -> Item:
+    """The sum of two operands of ``.plus`` (ranges shift)."""
     left, right = _number(left), _number(right)
     if isinstance(left, Value) and isinstance(right, Value):
         return Value(left.kind, _sum(left.kind, left.value, right.value))
@@ -188,11 +203,14 @@ def dedent(text):
 
 
 def _concatenate(left: Item, right: Item, dedenting: bool) -> Item:
+    """Join two operands of ``.cat`` or ``.det`` in the string type of the left one."""
     for item in (left, right):
         if not isinstance(item, Value) or item.kind not in ('text', 'bytes'):
             raise ComputeError(f"'.{'det' if dedenting else 'cat'}' needs strings, not "
                                f"{'a range' if isinstance(item, Interval) else _describe(item)}")
     a, b = left.value, right.value
+    if len(a) + len(b) > MAX_STRING:
+        raise ComputeError(f"the result of the concatenation is longer than {MAX_STRING} characters")
     if dedenting:
         a, b = dedent(a), dedent(b)
     a_bytes = a.encode('utf-8') if left.kind == 'text' else a
@@ -220,6 +238,7 @@ def contains(items: List[Item], value) -> bool:
 
 
 def _same(item: Value, value) -> bool:
+    """Whether *value* is exactly the literal *item* (same type, same sign of zero)."""
     if item.kind == 'int':
         return isinstance(value, int) and not isinstance(value, bool) and value == item.value
     if item.kind == 'float':
@@ -231,6 +250,7 @@ def _same(item: Value, value) -> bool:
 
 
 def _in_interval(item: Interval, value) -> bool:
+    """Whether the number *value* is inside *item*."""
     if item.kind == 'int':
         if not isinstance(value, int) or isinstance(value, bool):
             return False
@@ -274,6 +294,7 @@ def array_entries(rules: Dict[str, object], node, _depth: int = 0):
 
 
 def _collect(rules, group_entries, entries: list, depth: int) -> None:
+    """Append the entries of a group to *entries*, flattening plain inline groups."""
     for entry in group_entries:
         if isinstance(entry, GroupRef):
             # a bare name in an array is a type unless the schema defines a group of that name

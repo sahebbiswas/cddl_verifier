@@ -8,8 +8,8 @@ alphabet of the control, no blank space, the padding the control prescribes
 the ``-sloppy`` variants, no stray bits after the last character.
 
 ``.printf`` is here too: :func:`parse_format` reads a C ``printf`` format, and
-:func:`printf_pattern` gives the regular expression its output has and how to read
-each conversion back into a data item, so that a text is checked by taking it
+:func:`match_printf` takes a text apart by a format and :func:`read_conversion` reads
+each piece back into a data item, so that a text is checked by taking it
 apart (the data items are checked against the controller by the caller).
 """
 
@@ -119,10 +119,12 @@ def decode_base10(text: str) -> Optional[int]:
 # -------------------------------------------------------------------- JSON
 
 def _no_constant(name: str):
+    """Reject ``NaN`` and ``Infinity``, which JSON does not have."""
     raise ValueError(f"{name} is not JSON")
 
 
 def _object(pairs):
+    """Build a JSON object, rejecting duplicate keys."""
     result = {}
     for key, value in pairs:
         if key in result:
@@ -156,6 +158,7 @@ class Spec:
     __slots__ = ('flags', 'width', 'precision', 'conv')
 
     def __init__(self, flags: str, width: int, precision: Optional[int], conv: str):
+        """Set up the object."""
         self.flags, self.width, self.precision, self.conv = flags, width, precision, conv
 
 
@@ -202,6 +205,7 @@ def parse_format(fmt: str) -> List[object]:
 
 
 def _int_digits(value: int, conv: str) -> str:
+    """The digits of *value* in the base of *conv*."""
     if conv in 'di':
         return str(abs(value))
     if conv == 'u':
@@ -229,6 +233,7 @@ def format_int(spec: Spec, value: int) -> Optional[str]:
 
 
 def _pad(spec: Spec, prefix: str, body: str, zero: bool) -> str:
+    """Pad *body* (with *prefix*) to the width of *spec*."""
     gap = spec.width - len(prefix) - len(body)
     if gap <= 0:
         return prefix + body
@@ -252,29 +257,86 @@ def format_text(spec: Spec, text: str) -> str:
     return _pad(spec, '', text, zero=False)
 
 
-_INT_CLASS = {'d': r'[-+ 0-9]+?', 'i': r'[-+ 0-9]+?', 'u': r'[ 0-9]+?', 'o': r'[ 0-7]+?',
-              'x': r'[ 0-9a-fx]+?', 'X': r'[ 0-9A-FX]+?'}
-_FLOAT_CLASS = r'(?:[-+ ]?(?:inf|nan|INF|NAN)|[-+ 0-9.eE]+?)'
+_INT_CLASS = {'d': r'[-+ 0-9]+', 'i': r'[-+ 0-9]+', 'u': r'[ 0-9]+', 'o': r'[ 0-7]+',
+              'x': r'[ 0-9a-fx]+', 'X': r'[ 0-9A-FX]+'}
+_FLOAT_CLASS = r'(?:[-+ ]?(?:inf|nan|INF|NAN)|[-+ 0-9.eE]+)'
+
+#: How many steps :func:`match_printf` may take before it gives up.
+MATCH_BUDGET = 200_000
 
 
-def printf_pattern(parts: List[object]) -> Tuple['re.Pattern', List[Spec]]:
-    """``(regex, specs)``: the regex has one group for each conversion, in order."""
-    pieces, specs = [], []
-    for part in parts:
+class PrintfLimit(Exception):
+    """Taking a text apart by a format needed more steps than :data:`MATCH_BUDGET` allows."""
+
+
+_FLOAT_RUN = re.compile(r'[-+ 0-9.eE]+')
+_FLOAT_WORD = re.compile(r'[-+ ]?(?:inf|nan|INF|NAN)')
+_RUNS = {conv: re.compile(pattern) for conv, pattern in _INT_CLASS.items()}
+
+
+def _ends(part: 'Spec', text: str, start: int) -> List[int]:
+    """Where a piece that *part* may have written, starting at *start*, can end (shortest first)."""
+    conv, size = part.conv, len(text)
+    if conv in _RUNS:  # a run of characters of a class
+        run = _RUNS[conv].match(text, start)
+        return list(range(start + 1, run.end() + 1)) if run else []
+    if conv in 'eEfFgG':
+        ends = set()
+        run = _FLOAT_RUN.match(text, start)
+        if run:
+            ends.update(range(start + 1, run.end() + 1))
+        word = _FLOAT_WORD.match(text, start)
+        if word:
+            ends.add(word.end())
+        return sorted(ends)
+    if conv == 'c':
+        return list(range(start + 1, size + 1)) if part.width > 1 else ([start + 1] if start < size else [])
+    return list(range(start, size + 1))  # 's'
+
+
+def match_printf(parts: List[object], text: str, budget: int = MATCH_BUDGET) -> Optional[List[str]]:
+    """The pieces of *text* that the conversions of *parts* wrote, or ``None`` if it does not fit.
+
+    Literal parts must appear as they are; each conversion takes the shortest piece
+    that leaves the rest matchable (the first split, when there are several). A
+    position that cannot be completed is remembered, so the work is bounded by the
+    number of parts and the length of the text, and by *budget*.
+
+    Raises:
+        PrintfLimit: the work needed is more than *budget* characters.
+    """
+    failed = set()
+    spent = [0]
+    pieces: List[str] = []
+
+    def charge(amount: int) -> None:
+        """Count a step and stop when the budget is spent."""
+        spent[0] += amount
+        if spent[0] > budget:
+            raise PrintfLimit("matching the text against the .printf format needed too much work")
+
+    def walk(index: int, start: int) -> bool:
+        """Whether parts[index:] can take the text from *start*; the pieces are kept in order."""
+        if index == len(parts):
+            return start == len(text)
+        if (index, start) in failed:
+            return False
+        part = parts[index]
         if isinstance(part, str):
-            pieces.append(re.escape(part))
-            continue
-        specs.append(part)
-        conv = part.conv
-        if conv in _INT_CLASS:
-            pieces.append('(' + _INT_CLASS[conv] + ')')
-        elif conv in 'eEfFgG':
-            pieces.append('(' + _FLOAT_CLASS + ')')
-        elif conv == 'c':
-            pieces.append('(.+?)' if part.width > 1 else '(.)')
+            charge(len(part) + 1)
+            if text.startswith(part, start) and walk(index + 1, start + len(part)):
+                return True
         else:
-            pieces.append('(.*?)')
-    return re.compile(''.join(pieces) + r'\Z', re.DOTALL), specs
+            for end in _ends(part, text, start):
+                charge(1)
+                pieces.append(text[start:end])
+                if walk(index + 1, end):
+                    return True
+                pieces.pop()
+        failed.add((index, start))
+        return False
+
+    return list(pieces) if walk(0, 0) else None
 
 
 def read_conversion(spec: Spec, text: str):

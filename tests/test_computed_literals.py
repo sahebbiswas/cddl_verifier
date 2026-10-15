@@ -143,6 +143,21 @@ class SchemaErrors(unittest.TestCase):
         with self.assertRaises(SchemaError):
             Validator(f'a = ({choices})\nr = a .cat a .cat a')
 
+    def test_the_product_is_counted_before_it_is_built(self):
+        import time
+        choices = " / ".join(f'"{n}"' for n in range(64))
+        start = time.monotonic()
+        with self.assertRaises(SchemaError):
+            Validator(f'x = ({choices})\ny = x .cat x\nr = y .cat y')   # 4096 x 4096
+        self.assertLess(time.monotonic() - start, 5)
+
+    def test_long_strings_are_refused(self):
+        schema = 'x = "%s"\n' % ("a" * 100000) + "".join(
+            f"{name} = {prev} .cat {prev}\n" for prev, name in zip("xyzwqu", "yzwqu" + "v")) + "r = v"
+        with self.assertRaises(SchemaError) as caught:
+            Validator(schema)
+        self.assertIn("longer than", str(caught.exception))
+
     def test_runaway_recursion(self):
         with self.assertRaises(SchemaError):
             Validator('a = a .cat "x"\nr = a')

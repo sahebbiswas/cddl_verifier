@@ -113,6 +113,21 @@ class Matching(unittest.TestCase):
         self.assertTrue(accepts(grammar, "a" * 400))
         self.assertFalse(accepts(grammar, "a" * 400 + "b"))
 
+    def test_deep_recursion_is_a_limit_not_a_crash(self):
+        # one level of recursion per symbol: a long string runs out of stack, which is a limit
+        with self.assertRaises(abnf.AbnfLimit):
+            accepts('s\ns = "a" s / ""\n', "a" * 50000)
+        self.assertTrue(accepts('s\ns = "a" s / ""\n', "a" * 100))
+        validator = Validator('r = text .abnf "s\\ns = \\"a\\" s / \\"\\"\\n"')
+        result = validator.validate(cbor.encode("a" * 50000))
+        self.assertFalse(result.valid)
+        self.assertIn("too much work", str(result.errors[0]))
+
+    def test_deeply_nested_text_is_an_error(self):
+        text = "x\nx = " + "(" * 20000 + '"a"' + ")" * 20000
+        with self.assertRaises(abnf.AbnfError):
+            abnf.compile_abnf(text)
+
     def test_work_is_bounded(self):
         with mock.patch.object(abnf, "MAX_STEPS", 50):
             with self.assertRaises(abnf.AbnfLimit):

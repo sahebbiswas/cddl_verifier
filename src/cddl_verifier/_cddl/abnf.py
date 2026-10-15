@@ -61,6 +61,7 @@ _DIGITS = {16: '0123456789abcdefABCDEF', 10: '0123456789', 2: '01'}
 
 
 def _tokens(text: str) -> List[Tuple[str, str]]:
+    """Split ABNF text into tokens (names, numbers, strings, operators, line breaks)."""
     result: List[Tuple[str, str]] = []
     pos = 0
     while pos < len(text):
@@ -76,15 +77,19 @@ def _tokens(text: str) -> List[Tuple[str, str]]:
 
 
 class _Parser:
+    """Recursive-descent reader of ABNF text (RFC 5234 section 4, with RFC 7405 strings)."""
     def __init__(self, text: str):
+        """Set up the object."""
         self.tokens = _tokens(text)
         self.pos = 0
 
     def peek(self, offset: int = 0) -> Tuple[str, str]:
+        """The next token, without consuming it."""
         index = self.pos + offset
         return self.tokens[index] if index < len(self.tokens) else ('end', '')
 
     def skip_newlines(self):
+        """Skip line breaks and comments between rules."""
         while self.peek()[0] == 'nl':
             self.pos += 1
 
@@ -96,6 +101,7 @@ class _Parser:
         return self.peek(offset)[0] == 'name' and self.peek(offset + 1)[0] == 'defined'
 
     def alternation(self):
+        """Read ``a / b / c``."""
         branches = [self.concatenation()]
         while self.peek_after_newlines() == ('punct', '/'):
             self.skip_newlines()
@@ -104,12 +110,14 @@ class _Parser:
         return branches[0] if len(branches) == 1 else ('alt', branches)
 
     def peek_after_newlines(self) -> Tuple[str, str]:
+        """The next token after any line breaks, without consuming anything."""
         offset = 0
         while self.peek(offset)[0] == 'nl':
             offset += 1
         return self.peek(offset)
 
     def concatenation(self):
+        """Read a sequence of repetitions."""
         items = []
         while True:
             if self.at_rule_start():
@@ -124,6 +132,7 @@ class _Parser:
         return items[0] if len(items) == 1 else ('seq', items)
 
     def repetition(self):
+        """Read an element with its repeat prefix (``*``, ``1*``, ``2*3``, ``3``)."""
         kind, value = self.peek()
         low, high = 1, 1
         if kind == 'repeat':
@@ -140,6 +149,7 @@ class _Parser:
         return node if (low, high) == (1, 1) else ('rep', low, high, node)
 
     def element(self):
+        """Read a rule name, group, option, string, or numeric value."""
         kind, value = self.peek()
         self.pos += 1
         if kind == 'name':
@@ -169,6 +179,7 @@ class _Parser:
 
     @staticmethod
     def number(value: str):
+        """Read an integer in the base the ``%b``/``%d``/``%x`` prefix names."""
         base = _BASES[value[1].lower()]
         body = value[2:]
         for char in body:
@@ -188,12 +199,16 @@ class Grammar:
     """The rules of an ABNF text and its start element."""
 
     def __init__(self, start, rules: Dict[str, object]):
+        """Set up the object."""
         self.start = start
         self.rules = rules
 
     def matches(self, symbols: Sequence[int]) -> bool:
         """Whether the whole of *symbols* (a sequence of integers) is in the language of the start element."""
-        return len(symbols) in _Matcher(self, symbols).ends(self.start, 0)
+        try:
+            return len(symbols) in _Matcher(self, symbols).ends(self.start, 0)
+        except RecursionError:  # a grammar that recurses once per symbol, on a long string
+            raise AbnfLimit("the grammar recurses too deeply for this string") from None
 
 
 def compile_abnf(text: str) -> Grammar:
@@ -205,11 +220,15 @@ def compile_abnf(text: str) -> Grammar:
     """
     if len(text) > MAX_TEXT:
         raise AbnfError("the ABNF text is too long")
-    return _compile(text)
+    try:
+        return _compile(text)
+    except RecursionError:
+        raise AbnfError("the ABNF text is nested too deeply") from None
 
 
 @lru_cache(maxsize=256)
 def _compile(text: str) -> Grammar:
+    """Compile ABNF text into a Grammar; results are cached by text."""
     parser = _Parser(text)
     parser.skip_newlines()
     if parser.at_rule_start():
@@ -248,6 +267,7 @@ def _compile(text: str) -> Grammar:
 
 
 def _check_references(node, rules: Dict[str, object]):
+    """Raise AbnfError for a rule that is used but not defined."""
     kind = node[0]
     if kind == 'rule':
         if node[1] not in rules:
@@ -266,6 +286,7 @@ class _Matcher:
     """The set of positions each node can reach, for one input."""
 
     def __init__(self, grammar: Grammar, symbols: Sequence[int]):
+        """Set up the object."""
         self.grammar = grammar
         self.symbols = symbols
         self.steps = 0
@@ -274,6 +295,7 @@ class _Matcher:
         self.reentered = set()
 
     def ends(self, node, start: int) -> frozenset:
+        """The set of positions where this node can end, starting at *start*."""
         self.steps += 1
         if self.steps > MAX_STEPS:
             raise AbnfLimit("the ABNF match needed too much work")
@@ -337,6 +359,7 @@ class _Matcher:
         return self.rule(node[1], start)
 
     def rule(self, name: str, start: int) -> frozenset:
+        """The compiled definition of the rule *name*."""
         key = (name, start)
         if key in self.done:
             return self.done[key]
