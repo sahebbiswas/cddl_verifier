@@ -29,8 +29,8 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
-test = ["pytest>=8", "pycddl>=0.6.4,<0.7"]
-dev = ["pytest>=8", "pycddl>=0.6.4,<0.7", "build", "twine"]
+test = ["pytest>=8", "pycddl>=0.6.4,<0.7", "hypothesis>=6.100"]
+dev = ["pytest>=8", "pycddl>=0.6.4,<0.7", "hypothesis>=6.100", "build", "twine"]
 
 [project.urls]
 Homepage = "https://github.com/sahebbiswas/cddl_verifier"

@@ -43,6 +43,9 @@ and the standard-library **unittest** runner with no code changes required.
 | `tests/test_and_within.py` | `.and` / `.within` around generic structures (`non-empty<M>`) as a rule, field and array element; minimum counts of wildcard map members (`+ K => V`, `2*3 K => V`); an empty CoRIM `triples-map` (#120) |
 | `tests/test_check_version_bump.py` | `.github/scripts/check_version_bump.py`: one-step bumps pass, missing or larger bumps and malformed `_version.py` fail (#125) |
 | `tests/test_differential.py` | Differential testing against `pycddl` (the Rust `cddl` crate) (#81): every divergence on the conformance corpus and its mutants is explained in `docs/divergences.json`, stale explanations fail, minimized regression cases hold for this library; the `pycddl` part is skipped when it is not installed |
+| `tests/test_cli_diagnostics.py` | `cddl-verify --diagnostics json` (#145): stdout is only the JSON document, schema, decode, missing and unreadable-input failures as diagnostics, `-o` and EDN, inferred-type warnings, ordering; `path_expr` notation |
+| `tests/test_nested_arrays.py` | Arrays written inside arrays, map members and choices are checked element by element, with the path and offset of the element (#196) |
+| `tests/test_properties.py` | Property-based tests (#82): arbitrary and damaged bytes, deep nesting and huge lengths for the decoder, encode/decode and JSON round trips, arbitrary schema text, and validation checked against a reference written in a few lines of Python; see [Property-based testing](#property-based-testing) |
 
 ---
 
@@ -153,6 +156,39 @@ python scripts/differential.py check                # the CI policy; exit 1 on f
 When a divergence is new, decide who is right from the RFC (not from either
 implementation), fix this library if it is wrong or open an issue, and add an
 entry; add a `fixture` for a divergence worth pinning.
+
+## Property-based testing
+
+`tests/test_properties.py` uses [Hypothesis](https://hypothesis.readthedocs.io)
+and is skipped when it is not installed (`pip install -e ".[test]"` has it). It
+checks four things:
+
+- **Arbitrary input fails in a controlled way.** Any bytes, bytes with one byte
+  changed, removed or added, a hundred thousand levels of nesting and claimed
+  lengths far beyond the input give a decoded value or a `CBORDecodeError`,
+  never an `IndexError`, `RecursionError` or `MemoryError`. Any schema text
+  (random text and random runs of CDDL tokens) gives a schema or a
+  `SchemaError`, and `schema_diagnostics` never raises.
+- **Supported values round-trip** through CBOR, canonical CBOR (stable, and
+  independent of key order) and typed JSON.
+- **Validation agrees with a reference.** Schemas are built from a small grammar
+  (scalars, arrays with occurrences, maps with text or integer keys, wildcard
+  maps, choices, ranges, literals, `.size`, tags, named rules), and `accepts()`
+  in the test says whether data matches. Data is generated to match, or to
+  nearly match with one element, member, length or tag off, and the validator
+  must give the same answer, with a diagnostic when it says no. This is the
+  test that finds validation that is too loose or too strict (#196).
+- **Nothing hangs**: each example has a five second budget.
+
+By default the examples are the same on every run, so a failure is never a
+flake. To search further:
+
+```bash
+CDDL_VERIFIER_FUZZ_EXAMPLES=5000 CDDL_VERIFIER_FUZZ_RANDOM=1 pytest tests/test_properties.py
+```
+
+Hypothesis minimizes a failing example and prints it. Fix the cause, and keep
+the example in `TestRegressions` (with the issue number) so it stays fixed.
 
 ## Project layout
 
