@@ -4,7 +4,7 @@ Usage: ``cddl-verify SCHEMA.cddl DATA.cbor [--type NAME] [--output FILE]``.
 Run ``cddl-verify --help`` for all options.
 """
 
-from ._analyzer import main
+from ._cli import main
 
 __all__ = ["main"]
 

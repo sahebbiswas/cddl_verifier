@@ -8,6 +8,7 @@ and the standard-library **unittest** runner with no code changes required.
 | File | Covers |
 |------|--------|
 | `tests/test_public_api.py` | Public API: `validate`, `Validator`, `cddl_verifier.cbor`, `json_codec`, `python -m cddl_verifier` |
+| `tests/test_module_layout.py` | Every private module imports on its own in a fresh interpreter (no import cycle); the CLI names moved out of `_analyzer` (#83) are still importable from it |
 | `tests/test_cbor_cddl_analyzer.py` | CDDL parsing, validation, EDN generation, CoRIM (internal classes) |
 | `tests/test_cddl_parser.py` | CDDL lexer, AST and parser: node shapes, spans, syntax errors, printer round trip, bundled schemas, strict parsing through the API and CLI |
 | `tests/test_resolve.py` | `_cddl/resolve.py`: semantic errors with positions (undefined and duplicate names, sockets, type/group misuse, generic arity, controls, ranges, occurrences, alias loops), imports, the resolved model, generic instantiation in the tables (#70) |
@@ -216,7 +217,8 @@ the example in `TestRegressions` (with the issue number) so it stays fixed.
 │   ├── json_codec.py       ← public CBOR ↔ JSON conversion
 │   ├── cli.py, __main__.py ← `cddl-verify` / `python -m cddl_verifier`
 │   ├── _api.py             ← validate()/Validator implementation
-│   ├── _analyzer.py        ← CDDLParser tables, CBORAnalyzer (validation), EDNGenerator, CLI (internal)
+│   ├── _analyzer.py        ← CDDLParser tables, CBORAnalyzer (validation), EDNGenerator (internal)
+│   ├── _cli.py, _log.py    ← the `cddl-verify` command; its colours and stderr logging (internal, #83)
 │   ├── _diagnostics.py     ← Diagnostic data model and renderers (internal)
 │   ├── _cbor.py            ← CBOR encoder/decoder (internal)
 │   ├── _cbor_values.py     ← CBORTag, undefined, simple values, how an item was written (internal)
@@ -289,7 +291,7 @@ class TestMyFeature(unittest.TestCase):
 ```
 
 Tests of internals import from the private modules, for example
-`from cddl_verifier._analyzer import CDDLParser`.
+`from cddl_verifier._analyzer import CDDLParser`. The command-line functions (`main`, `load_cddl`, `load_cbor`) live in `_cli`; `_analyzer` still hands them out under the old import path.
 
 pytest discovers any `TestCase` subclass automatically; no registration in a
 `run_tests()` function is needed.
