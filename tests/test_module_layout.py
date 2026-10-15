@@ -17,8 +17,10 @@ class Layout(unittest.TestCase):
                 continue
             with self.subTest(module=name):
                 done = subprocess.run(
-                    [sys.executable, "-I", "-c", f"import cddl_verifier.{name}"],
-                    env={"PYTHONPATH": str(SRC)}, capture_output=True, text=True)
+                    [sys.executable, "-I", "-c",
+                     f"import sys; sys.path.insert(0, {str(SRC)!r}); import cddl_verifier.{name}; "
+                     f"import cddl_verifier; assert cddl_verifier.__file__.startswith({str(SRC)!r})"],
+                    capture_output=True, text=True)
                 self.assertEqual(done.returncode, 0, done.stderr)
 
     def test_the_cli_names_are_still_importable_from_the_analyzer(self):
