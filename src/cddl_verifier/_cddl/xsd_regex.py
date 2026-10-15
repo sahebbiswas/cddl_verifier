@@ -186,7 +186,10 @@ def _multi(letter: str) -> Ranges:
 # ('rep', node, low, high)   low..high repeats, high None for no limit
 
 def _set(ranges: Ranges):
-    return ('set', _normalize(ranges))
+    """A character class node. The bound lists are made once here, so every copy of a
+    repeated body in the NFA shares them (``\\W{1000}`` has 770 ranges per state)."""
+    ranges = _normalize(ranges)
+    return ('set', ranges, [lo for lo, _ in ranges], [hi for _, hi in ranges])
 
 
 # ----------------------------------------------------------------- parsing
@@ -401,14 +404,18 @@ class _Nfa:
         """Add the states of *node*, continuing at *after*; return its entry state."""
         kind = node[0]
         if kind == 'set':
-            ranges = node[1]
-            return self.add(([lo for lo, _ in ranges], [hi for _, hi in ranges], after))
+            return self.add((node[2], node[3], after))
         if kind == 'cat':
             for part in reversed(node[1]):
                 after = self.build(part, after)
             return after
         if kind == 'alt':
-            return self.add(split=[self.build(part, after) for part in node[1]])
+            destinations: List[int] = []
+            for part in node[1]:  # empty branches all lead to *after*: keep one
+                destination = self.build(part, after)
+                if destination not in destinations:
+                    destinations.append(destination)
+            return self.add(split=destinations)
         _, body, low, high = node
         if high is None:
             loop = self.add(split=[])
@@ -429,10 +436,13 @@ class _Compiled:
         self.match = self.nfa.add()
         self.start = self.nfa.build(tree, self.match)
 
-    def closure(self, seeds, live: set) -> None:
-        """Add to *live* every state reachable from *seeds* by epsilon moves."""
+    def closure(self, seeds, live: set) -> int:
+        """Add to *live* every state reachable from *seeds* by epsilon moves.
+
+        Returns the work done (states looked at), which the caller charges to the budget."""
         splits = self.nfa.splits
         stack = list(seeds)
+        work = len(stack)
         while stack:
             state = stack.pop()
             if state in live:
@@ -440,12 +450,13 @@ class _Compiled:
             live.add(state)
             if splits[state] is not None:
                 stack.extend(splits[state])
+                work += len(splits[state])
+        return work
 
     def fullmatch(self, text: str) -> bool:
         classes = self.nfa.classes
         live: set = set()
-        self.closure([self.start], live)
-        steps = 0
+        steps = self.closure([self.start], live)
         for char in text:
             if not live:
                 return False
@@ -463,7 +474,7 @@ class _Compiled:
                     if i >= 0 and code <= ends[i]:
                         moves.append(nxt)
             live = set()
-            self.closure(moves, live)
+            steps += self.closure(moves, live)
         return self.match in live
 
 

@@ -252,6 +252,23 @@ class LinearTimeTests(unittest.TestCase):
             xsd_regex.MATCH_BUDGET = original
         self.assertFalse(result)
 
+    def test_repeated_classes_share_their_range_lists(self):
+        matcher = xsd_regex.compile_pattern('(\\W{200}){5}')
+        lists = {id(cls[0]) for cls in matcher.nfa.classes if cls is not None}
+        self.assertEqual(len(lists), 1)
+        self.assertEqual(len([c for c in matcher.nfa.classes if c is not None]), 1000)
+
+    def test_empty_alternatives_are_one_destination_and_work_is_charged(self):
+        import time
+        pattern = '(' + '|' * 5000 + 'a)*b'
+        matcher = xsd_regex.compile_pattern(pattern)
+        for targets in matcher.nfa.splits:
+            if targets is not None:
+                self.assertEqual(len(targets), len(set(targets)))
+        started = time.monotonic()
+        self.assertFalse(xsd_regex.fullmatch(pattern, 'a' * 50000))
+        self.assertLess(time.monotonic() - started, 5)
+
 
 if __name__ == '__main__':
     unittest.main()
