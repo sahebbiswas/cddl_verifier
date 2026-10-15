@@ -584,6 +584,8 @@ class CDDLParser:
         try:
             if xsd_regex.fullmatch(pattern, value):
                 return None
+        except xsd_regex.XsdRegexLimit as exc:  # fail closed: the value is not accepted
+            return f"cannot check {value[:20]!r}... against .regexp /{pattern}/: {exc}"
         except xsd_regex.XsdRegexError as exc:
             return f"invalid .regexp pattern /{pattern}/: {exc}"
         return f"{value!r} does not match .regexp /{pattern}/"

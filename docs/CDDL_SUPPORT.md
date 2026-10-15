@@ -38,10 +38,13 @@ class. Categories come from the running Python's Unicode database, and only
 the common blocks are known. XSD has no lazy quantifier, `(?:...)`,
 look-around or back reference: such a pattern, or an unknown category or
 block, is a schema error that names it. The argument is checked again
-once a generic's arguments are in (`g<"a+?">`). Matching uses Python's
-backtracking engine, so a pattern such as `(a+)+b` can take very long on a
-long text: do not use `.regexp` with schemas or data you do not trust
-([#185](https://github.com/sahebbiswas/cddl_verifier/issues/185)).
+once a generic's arguments are in (`g<"a+?">`). Matching runs
+the pattern as an NFA, one character at a time, so the time is linear in the
+text: `(a+)+b` against 50 000 `a` returns at once
+([#185](https://github.com/sahebbiswas/cddl_verifier/issues/185)). A pattern
+that needs more than 50 000 states (a big repeat count inside another repeat) is
+a schema error, and a match of more than 10 million steps is refused with a
+message saying so, so a hostile pattern or text cannot stall validation.
 
 `bstr .cborseq T` holds a CBOR sequence (RFC 8742). The sequence is decoded
 and its items, taken as an array, must match `T`, which must be an array type:
