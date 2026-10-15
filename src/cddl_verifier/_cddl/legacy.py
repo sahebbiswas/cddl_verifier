@@ -238,37 +238,49 @@ class LegacyTables:
 
     @staticmethod
     def _partial_def(fields: Dict, computed: List) -> Dict:
+        """The table entry of one alternative of a map (see :meth:`_map`).
+
+        A repeated group choice among its members (#201) is flattened: the members
+        of every alternative are checked as optional ones, and the choice itself
+        (``repeated``) is checked on the data as a whole by the validator. A key the
+        map already has as an ordinary member stays that member's, as a key cannot
+        be written twice.
+        """
         type_def = {'fields': dict(fields), 'type': 'map'}
-        members = [c for c in computed if 'choice' not in c]
-        if members:
-            type_def['computed_keys'] = [dict(c) for c in members]
+        members = [dict(c) for c in computed if 'choice' not in c]
+        base_keys = set(fields)
         pending = [c['choice'] for c in computed if 'choice' in c]
         while pending:
-            # a repeated group choice (#201): the members of every alternative
-            # are optional, and the choice is checked as a whole on the data
             repeated = pending.pop(0)
+            spec = {'min': repeated['min'], 'max': repeated['max'], 'alternatives': []}
             for alt in repeated['alternatives']:
                 # a choice inside an alternative is checked beside it, whether or not
                 # the alternative is present, so it can only be required to be allowed
-                for inner in [c['choice'] for c in alt['members'] if 'choice' in c]:
-                    pending.append(dict(inner, min=0))
-                alt = dict(alt, members=[c for c in alt['members'] if 'choice' not in c])
-                for key, info in alt['fields'].items():
+                for inner in alt['members']:
+                    if 'choice' in inner:
+                        pending.append(dict(inner['choice'], min=0))
+                own = {key: info for key, info in alt['fields'].items() if key not in base_keys}
+                for key, info in own.items():
                     shared = type_def['fields'].get(key)
                     if shared is not None and shared['type'] != info['type']:
                         info = dict(info, type=_joined(shared['type'], info['type']))
                     type_def['fields'][key] = dict(info, optional=True)
-                if alt['members']:
-                    type_def.setdefault('computed_keys', []).extend(
-                        dict(c, min=0) for c in alt['members'])
-            type_def.setdefault('repeated', []).append(
-                {'min': repeated['min'], 'max': repeated['max'],
-                 'alternatives': [{'types': {key: info['type'] for key, info in alt['fields'].items()},
-                                   'names': {key: info['name'] for key, info in alt['fields'].items()},
-                                   'required': [key for key, info in alt['fields'].items()
-                                                if not info.get('optional')],
-                                   'free': any('choice' not in c for c in alt['members']) or not alt['fields']}
-                                  for alt in repeated['alternatives']]})
+                taken = []
+                for member in alt['members']:
+                    if 'choice' in member:
+                        continue
+                    # the member is checked like any other, but how many entries it may take
+                    # is a matter of how many repetitions use this alternative
+                    taken.append({'index': len(members), 'min': member['min'], 'max': member['max']})
+                    members.append(dict(member, min=0, max=None))
+                spec['alternatives'].append({
+                    'types': {key: info['type'] for key, info in own.items()},
+                    'names': {key: info['name'] for key, info in own.items()},
+                    'required': [key for key, info in own.items() if not info.get('optional')],
+                    'members': taken})
+            type_def.setdefault('repeated', []).append(spec)
+        if members:
+            type_def['computed_keys'] = members
         return type_def
 
     def _flat_partial(self, group, owner: str):

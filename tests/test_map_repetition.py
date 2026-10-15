@@ -71,8 +71,40 @@ class RepeatedChoices(unittest.TestCase):
         self.assertFalse(ok(s, {1: b"a"}))
         self.assertTrue(ok(s, {1: b"a", 3: 3}))
         self.assertFalse(ok(s, {1: b"a", 2: 1, 3: 3}))
-        self.assertIn("needs exactly 2 of the alternatives of a repeated group choice, found 3",
+        self.assertIn("needs exactly 2 repetitions of a group choice, found 3",
                       errors(s, {1: b"a", 2: 1, 3: 3})[0])
+
+    def test_nested_repeated_choice_scales_bounds(self):
+        s = "r = {2*2 (+ ((1 => int) // (2 => int)))}"
+        self.assertFalse(ok(s, {1: 1}))
+        self.assertTrue(ok(s, {1: 1, 2: 2}))
+
+    def test_wildcard_alternatives_repeat_to_take_all_entries(self):
+        s = "r = {2*2 ((tstr => int) // (uint => int))}"
+        self.assertTrue(ok(s, {"a": 1, "b": 2}))      # one alternative twice
+        self.assertTrue(ok(s, {"a": 1, 1: 2}))        # each once
+        self.assertFalse(ok(s, {"a": 1}))             # one repetition
+        self.assertFalse(ok(s, {"a": 1, "b": 2, 1: 3}))  # three
+
+    def test_wildcard_alternatives_need_the_choice_minimum(self):
+        s = "r = {+ ((tstr => int) // (uint => int))}"
+        self.assertFalse(ok(s, {}))
+        self.assertTrue(ok(s, {"a": 1}))
+        self.assertTrue(ok(s, {"a": 1, 5: 2, "b": 3}))
+
+    def test_wildcard_member_occurrence_per_repetition(self):
+        s = "r = {1*2 ((2*2 tstr => int) // (uint => int))}"
+        self.assertTrue(ok(s, {"a": 1, "b": 2}))                    # one repetition of two entries
+        self.assertTrue(ok(s, {"a": 1, "b": 2, "c": 3, "d": 4}))    # two repetitions
+        self.assertFalse(ok(s, {"a": 1}))                           # a repetition takes two
+        self.assertFalse(ok(s, {"a": 1, "b": 2, "c": 3, "d": 4, "e": 5, "f": 6}))  # three
+
+    def test_ordinary_member_is_not_made_optional(self):
+        s = "r = {0: int, * ((0 => tstr) // (1 => uint))}"
+        self.assertFalse(ok(s, {}))
+        self.assertFalse(ok(s, {0: "x"}))
+        self.assertTrue(ok(s, {0: 1}))
+        self.assertTrue(ok(s, {0: 1, 1: 2}))
 
     def test_a_fixed_key_cannot_repeat(self):
         s = "r = {2*3 g}\ng = ((1 => bstr) // (2 => uint))\n"

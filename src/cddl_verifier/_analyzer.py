@@ -48,6 +48,19 @@ def _tuple_hint(value: Any) -> str:
 
 
 # Compatibility wrapper for existing code that uses SimpleCBORDecoder
+def _entries_wanted(low, high) -> str:
+    """``at least 2 entries``, ``exactly 1 entry``... for a member's occurrence."""
+    if high is None:
+        text, count = f"at least {low}", low
+    elif low == high:
+        text, count = f"exactly {low}", low
+    elif low == 0:
+        text, count = f"at most {high}", high
+    else:
+        text, count = f"{low} to {high}", high
+    return f"{text} {'entry' if count == 1 else 'entries'}"
+
+
 class SimpleCBORDecoder:
     """Compatibility wrapper around unified CBOR class."""
     def __init__(self, data: bytes):
@@ -1970,7 +1983,7 @@ class CBORAnalyzer:
                                  f"with key '{format_node(computed['key'])}', found {count}")
                     logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
                     self._report(error_msg)
-            self._check_repeated_choices(data, type_def, type_name, breadcrumb)
+            self._check_repeated_choices(data, type_def, type_name, breadcrumb, computed_counts)
             # One diagnostic per unknown member, in the order they appear in the map (#155)
             for key in [k for k in data if k in extra_keys]:
                 error_msg = f"Unknown field {key!r} not in schema for type '{type_name}'"
@@ -2476,41 +2489,73 @@ class CBORAnalyzer:
                 deferred.add(key)
         return deferred
 
-    def _check_repeated_choices(self, data: dict, type_def: dict, type_name: str, breadcrumb) -> None:
+    def _check_repeated_choices(self, data: dict, type_def: dict, type_name: str, breadcrumb,
+                                counts: dict) -> None:
         """A group choice repeated in a map (``{+ g}``): each repetition took one alternative (#201).
 
-        The members of all the alternatives were checked as optional. An
-        alternative is present when an entry of it matches; its other members
-        are then required, and the number of alternatives present (each at most
-        once, as a fixed key cannot repeat) has to fit the occurrence. An
-        alternative with computed-key members or none at all can repeat, so it
-        leaves the upper end open.
+        The members of all the alternatives were checked as optional ones, and the
+        entries of wildcard members counted in *counts* (by position in
+        ``computed_keys``). Here each alternative says how many repetitions it can
+        stand for: an alternative with fixed keys is present when an entry of it
+        matches, takes its other required members, and is used once (a key cannot
+        repeat); one with only wildcard members is used as often as its entries
+        need (each repetition takes the member's own minimum to maximum), and when
+        its members are all optional as often as the choice allows. The numbers
+        of repetitions the alternatives can stand for together have to meet the
+        occurrence of the choice.
         """
+        unbounded = float('inf')
+        computed = type_def.get('computed_keys', ())
+
+        def complain(error_msg, *args, **kwargs):
+            logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
+            self._report(error_msg, *args, **kwargs)
+
         for repeated in type_def.get('repeated', ()):
-            present = 0
+            least, most = 0, 0  # repetitions the alternatives can stand for, in total
             for alternative in repeated['alternatives']:
-                types = alternative['types']
-                found = [k for k in types if k in data and not self._check_value(data[k], types[k])]
-                if not found:
-                    continue
-                present += 1
-                for key in alternative['required']:
-                    if key not in data:
-                        name = alternative['names'].get(key) or key
-                        error_msg = f"Missing required field '{name}' (key {key}) in type '{type_name}'"
-                        logger.error(f"{Colors.MISMATCH}[{breadcrumb}] [X] MISSING:{Colors.RESET} {error_msg}")
-                        self._report(error_msg, 'missing', at_parent=True,
+                types, members = alternative['types'], alternative['members']
+                taken = [counts.get(m['index'], 0) for m in members]
+                can_be_empty = not alternative['required'] and all(m['min'] == 0 for m in members)
+                if types:
+                    found = any(k in data and not self._check_value(data[k], types[k]) for k in types)
+                    if not found and not any(taken):
+                        most += 1 if can_be_empty else 0
+                        continue
+                    least += 1
+                    most += 1  # one repetition: a fixed key cannot repeat
+                    for key in alternative['required']:
+                        if key not in data:
+                            name = alternative['names'].get(key) or key
+                            error_msg = f"Missing required field '{name}' (key {key}) in type '{type_name}'"
+                            complain(error_msg, 'missing', at_parent=True,
                                      expected=f"member '{name}' (key {key})", actual='absent')
-            open_ended = any(a['free'] for a in repeated['alternatives'])
-            low, high = repeated['min'], repeated['max']
-            if (high is not None and present > high) or (not open_ended and present < low):
-                wanted = (f"at least {low}" if high is None else
-                          f"exactly {low}" if low == high else
-                          f"at most {high}" if low == 0 else f"{low} to {high}")
-                error_msg = (f"Type '{type_name}' needs {wanted} of the alternatives of a repeated "
-                             f"group choice, found {present}")
-                logger.error(f"{Colors.MISMATCH}[{breadcrumb}]{Colors.RESET} {error_msg}")
-                self._report(error_msg)
+                    for member, count in zip(members, taken):
+                        if count < member['min'] or (member['max'] is not None and count > member['max']):
+                            complain(f"Type '{type_name}': an alternative of a repeated group choice takes "
+                                     f"{_entries_wanted(member['min'], member['max'])} with key "
+                                     f"'{format_node(computed[member['index']]['key'])}', found {count}")
+                    continue
+                # no fixed key: the alternative repeats as often as its entries need
+                low = max([1 if any(taken) else 0] +
+                          [-(-count // member['max']) for member, count in zip(members, taken)
+                           if member['max']])
+                high = min([unbounded] + [count // member['min'] for member, count in zip(members, taken)
+                                          if member['min']])
+                if not members:
+                    high = unbounded  # nothing to take: any number of empty repetitions
+                if high < low:
+                    complain(f"Type '{type_name}': the entries of a repeated group choice cannot be "
+                             f"divided into repetitions of its alternatives")
+                least += low
+                most += high
+            wanted_low, wanted_high = repeated['min'], repeated['max']
+            if (wanted_high is not None and least > wanted_high) or most < wanted_low:
+                wanted = (f"at least {wanted_low}" if wanted_high is None else
+                          f"exactly {wanted_low}" if wanted_low == wanted_high else
+                          f"at most {wanted_high}" if wanted_low == 0 else f"{wanted_low} to {wanted_high}")
+                found = least if least == most else f"{least} to {'many' if most == unbounded else most}"
+                complain(f"Type '{type_name}' needs {wanted} repetitions of a group choice, found {found}")
 
     def _no_alternative(self, value: Any, alternatives, failures) -> _CheckError:
         """The error for a value that matches none of *alternatives*.

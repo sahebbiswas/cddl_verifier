@@ -159,7 +159,7 @@ A group choice that is repeated in a map (`{+ $$params}` with several
 `$$params //= (...)`, `{* g}`, `{2*3 g}`) lets each repetition take any of its
 alternatives, so a map can mix entries from several. An alternative with fixed
 keys is taken at most once and needs all its required members; the number of
-alternatives present has to fit the occurrence. A repeated choice is not
+alternatives present has to fit the occurrence. An alternative with wildcard members repeats as often as its entries need (each repetition takes the member's own bounds), and the repetitions of all the alternatives together have to meet the occurrence of the choice. An ordinary member with the same key as an alternative's keeps that key. A repeated choice is not
 enumerated, so the number of alternatives does not count against the
 1024-combination limit.
 
