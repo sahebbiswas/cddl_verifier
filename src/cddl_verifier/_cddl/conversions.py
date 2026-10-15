@@ -336,7 +336,10 @@ def match_printf(parts: List[object], text: str, budget: int = MATCH_BUDGET) -> 
         failed.add((index, start))
         return False
 
-    return list(pieces) if walk(0, 0) else None
+    try:
+        return list(pieces) if walk(0, 0) else None
+    except RecursionError:  # a format with more parts than the stack has room for
+        raise PrintfLimit("the .printf format has too many parts to match") from None
 
 
 def read_conversion(spec: Spec, text: str):

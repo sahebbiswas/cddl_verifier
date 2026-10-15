@@ -157,6 +157,15 @@ class Printf(Cases, unittest.TestCase):
         with self.assertRaises(conversions.PrintfLimit):
             conversions.match_printf(conversions.parse_format("%s%s%s%s%sX"), "a" * 3000)
 
+    def test_a_format_with_very_many_parts_is_a_limit_not_a_crash(self):
+        with self.assertRaises(conversions.PrintfLimit):
+            conversions.match_printf(conversions.parse_format("%s," * 5000), "," * 5000)
+        items = ", ".join(["tstr"] * 3000)
+        validator = Validator(f'r = text .printf ["{"%s," * 3000}", {items}]')
+        result = validator.validate(cbor.encode("," * 3000))
+        self.assertFalse(result.valid)
+        self.assertIn("too many steps", str(result.errors[0]))
+
     def test_hostile_formats_do_not_stall(self):
         # adjacent conversions and a literal that is missing used to be a regular expression's worst case
         validator = Validator('r = text .printf ["%s%s%s%s%sX", tstr, tstr, tstr, tstr, tstr]')
