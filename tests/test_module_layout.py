@@ -30,6 +30,11 @@ class Layout(unittest.TestCase):
         with self.assertRaises(AttributeError):
             _analyzer.no_such_name
 
+    def test_the_edn_generator_and_decoder_are_still_importable_from_the_analyzer(self):
+        from cddl_verifier import _analyzer, _decode, _edn
+        self.assertIs(_analyzer.EDNGenerator, _edn.EDNGenerator)
+        self.assertIs(_analyzer.SimpleCBORDecoder, _decode.SimpleCBORDecoder)
+
     def test_the_logging_names_are_the_same_objects(self):
         from cddl_verifier import _analyzer, _log
         self.assertIs(_analyzer.logger, _log.logger)
@@ -37,7 +42,8 @@ class Layout(unittest.TestCase):
 
     def test_the_analyzer_has_no_command_line_code(self):
         text = (SRC / "cddl_verifier" / "_analyzer.py").read_text(encoding="utf-8")
-        for needle in ("argparse", "def _run_cli", "def main", "sys.exit"):
+        for needle in ("argparse", "def _run_cli", "def main", "sys.exit", "class EDNGenerator",
+                       "class SimpleCBORDecoder"):
             self.assertNotIn(needle, text)
 
 

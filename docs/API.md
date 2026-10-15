@@ -8,7 +8,7 @@ consumer workflows, see [Recipes](RECIPES.md).
 | [`cddl_verifier`](#cddl_verifier-validation) | Public | `validate`, `Validator`, `ValidationResult`, `Diagnostic`, `render_text`, `render_json`, `schema_diagnostics`, `SchemaError`, `CBORDecodeError`, `__version__` |
 | [`cddl_verifier.cbor`](#cddl_verifiercbor-encoding-and-decoding) | Public | `encode`, `decode`, `diag_dump`, `CBOR`, `CBORKey`, decode errors |
 | [`cddl_verifier.json_codec`](#cddl_verifierjson_codec-json-conversion) | Public | `cbor_to_json`, `json_to_cbor`, file helpers |
-| [`cddl_verifier._analyzer`](#internal-parser-validator-and-edn-generator) | Internal | `CDDLParser`, `CBORAnalyzer`, `EDNGenerator` |
+| [`cddl_verifier._analyzer`](#internal-parser-validator-and-edn-generator) | Internal | `CDDLParser`, `CBORAnalyzer` (`EDNGenerator` is in `cddl_verifier._edn`; the old import path still works) |
 
 Modules whose names start with an underscore are internal: they can change in
 any release without notice. The public names above follow the versioning policy
@@ -262,7 +262,7 @@ The supported schema syntax and validation rules are described in
 ### Generating annotated EDN
 
 ```python
-from cddl_verifier._analyzer import EDNGenerator
+from cddl_verifier._edn import EDNGenerator
 
 gen = EDNGenerator(cddl, edn_format="keyindex")   # or "keyname", "both"
 print(gen.generate(data, "person"))
