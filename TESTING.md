@@ -35,6 +35,7 @@ and the standard-library **unittest** runner with no code changes required.
 | `tests/test_array_matching.py` | Array elements assigned to entries in order: optional and repeated entries before others, group names, inline groups, group choices, error messages, linear time (#135) |
 | `tests/test_cbor_control_args.py` | Embedded CBOR checked against the whole `.cbor` argument: generic instances, inline maps and arrays, tags; each error reported once (#127) |
 | `tests/test_map_key_types.py` | Decoded map keys keep their CBOR type (`CBORKey`): byte-for-byte round trips, distinct `1` / `true` / `1.0` keys, duplicates and offsets, typed JSON, validation and EDN (#88) |
+| `tests/test_json_annotations.py` | Typed JSON annotations read strictly (#79): base64 forms, unknown types, missing and extra keys, tag and simple values, map pairs, reserved keys, `annotations=False` / `--plain`, deep nesting, CLI exit |
 | `tests/test_json_map_keys.py` | CBOR map keys in JSON conversion: typed `$cbor` map pairs for non-string keys, untyped key collisions, repeated JSON object keys, bundled samples round trip (#91) |
 | `tests/test_ranges.py` | Numeric ranges (`0..10`, `0.0...1.0`, named bounds) at the root, in fields, array elements, choices, sockets, computed keys and generic arguments; integer vs float matching; malformed ranges; `.ge`/`.le` on floats in fields and arrays (#71) |
 | `tests/test_cborseq.py` | `decode_sequence` (empty, several items, truncated and malformed items with offsets, `decode` still strict) and `.cborseq` in a root, field, element and rule (#77) |

@@ -376,6 +376,38 @@ the same string (`0` and `"0"`) raise `ValueError` rather than one value being
 lost. `json_to_cbor` also raises `ValueError` for a JSON object with a
 repeated key.
 
+### Strict reading of annotations (#79)
+
+`"$cbor"` is the only reserved key. `json_to_cbor` treats an object that has it as an
+annotation and checks it; an object without it is ordinary data, so `{"$tag": 5,
+"$value": "x"}` is a plain map.
+
+| Mistake | Result |
+|---------|--------|
+| unknown or non-string type (`"byte"`, `5`) | `ValueError` listing the types, not a quiet map |
+| missing `$value` / `$tag` | `ValueError` naming what is missing |
+| an extra key (`{"$cbor": "bytes", "$value": "AQ==", "note": 1}`) | `ValueError`; nothing is dropped |
+| `bytes` value not a string, not base64, no padding, whitespace, non-ASCII, or stray bits in the last character | `ValueError`; only the form `cbor_to_json` writes is read |
+| `$tag` not an integer 0 to 2**64 - 1 (`1.5`, `true`, `-1`) | `ValueError` |
+| `simple` value outside 0-19 and 32-255 | `ValueError` |
+| a `map` whose `$value` is not a list of `[key, value]` pairs, or repeats a key | `ValueError` |
+| nesting deeper than Python's recursion limit | `ValueError`, not `RecursionError` |
+
+Every message starts with the place in the document, for example
+`$.items[2].data: the $value of a $cbor bytes annotation is not valid base64 (...)`.
+
+To write an ordinary map that has the key `"$cbor"`, use the `map` form;
+`cbor_to_json(typed=True)` already does. For JSON from a source that must not be able
+to make byte strings, tags or simple values, read it as plain data:
+
+```python
+json_to_cbor(text, annotations=False)      # "$cbor" is an ordinary key
+```
+
+or `to-cbor --plain` on the command line. The annotation set is not versioned: a
+future incompatible form would use a new key beside `$cbor` instead of changing what
+these mean.
+
 ### Use Cases
 
 #### 1. API Development
