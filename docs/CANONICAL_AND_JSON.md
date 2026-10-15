@@ -186,7 +186,7 @@ json_str = '''{
 }'''
 
 cbor_bytes = json_to_cbor(json_str)
-# Converts to: {"data": b'\x01\x02\x03\x04', "uri": (32, "http://example.com")}
+# Converts to: {"data": b'\x01\x02\x03\x04', "uri": CBORTag(32, "http://example.com")}
 ```
 
 ### CBOR to JSON
@@ -195,7 +195,7 @@ cbor_bytes = json_to_cbor(json_str)
 
 ```python
 from cddl_verifier.json_codec import cbor_to_json
-from cddl_verifier.cbor import cbor_encode
+from cddl_verifier.cbor import CBORTag, cbor_encode
 
 data = {"name": "test", "items": [1, 2, 3]}
 cbor_bytes = cbor_encode(data)
@@ -212,7 +212,7 @@ print(json_str)
 data = {
     "text": "hello",
     "bytes": b'\x01\x02\x03',
-    "uri": (32, "http://example.com")
+    "uri": CBORTag(32, "http://example.com")
 }
 
 cbor_bytes = cbor_encode(data)
@@ -347,14 +347,14 @@ twice raises `ValueError`.
 ### Round-Trip Conversion
 
 ```python
-from cddl_verifier.cbor import cbor_encode, cbor_decode
+from cddl_verifier.cbor import CBORTag, cbor_encode, cbor_decode
 from cddl_verifier.json_codec import cbor_to_json, json_to_cbor
 
 # Original data with CBOR types
 original = {
     "text": "hello",
     "bytes": b'\x01\x02\x03',
-    "tag": (32, "uri")
+    "tag": CBORTag(32, "uri")
 }
 
 # CBOR → JSON (typed) → CBOR
@@ -463,7 +463,7 @@ Actual CBOR: (send above JSON converted to CBOR)
 ### Complete Example: Secure Data Exchange
 
 ```python
-from cddl_verifier.cbor import CBOR, cbor_encode, cbor_decode
+from cddl_verifier.cbor import CBOR, CBORTag, cbor_encode, cbor_decode
 from cddl_verifier.json_codec import cbor_to_json, json_to_cbor
 import hashlib
 import hmac
@@ -515,9 +515,9 @@ print("✅ Data verified!")
 corim = {
     "id": "example.corim.001",
     "tags": [
-        (506, {  # Tag 506 = CoMID
+        CBORTag(506, {  # Tag 506 = CoMID
             0: "comid-001",
-            1: [...],
+            1: [],
         })
     ]
 }
@@ -529,7 +529,7 @@ canonical = cbor_encode(corim, canonical=True)
 signature = sign_data(canonical, private_key)
 
 # 3. Create signed CoRIM
-signed_corim = (501, corim)  # Tag 501 = unsigned-corim-map
+signed_corim = CBORTag(501, corim)  # Tag 501 = unsigned-corim-map
 
 # 4. Save as CBOR
 with open('corim.cbor', 'wb') as f:

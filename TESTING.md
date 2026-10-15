@@ -47,6 +47,15 @@ and the standard-library **unittest** runner with no code changes required.
 | `tests/test_abnf.py` | ABNF for `.abnf` and `.abnfb` (#205): rules, repetition, ranges, case, `=/`, left and mutual recursion, ambiguity, the step limit, schema errors, bytes and text, computed grammars |
 | `tests/test_computed_literals.py` | `.plus`, `.cat` and `.det` (#205): integers, floats, ranges, choices, names, generics, map keys, the RFC 9165 `interval<BASE>` example, dedenting, schema errors |
 | `tests/test_text_controls.py` | The conversions, `.base10`, `.json`, `.printf` and `.join` (#205): accepted and rejected texts for each, stray bits, constrained results, format errors, ambiguous splits, schema errors |
+| `tests/test_getting_started.py` | The getting-started guide (`docs/GETTING_STARTED.md`): its files are written out, its broken copies made with its own script, and every message and report it quotes must be what the tool prints now |
+| `tests/test_cbor_items_extended.py` | Indefinite-length strings, arrays and maps, `undefined` and other simple values decode; `keep_encoding` records how an item was written; CDDL checks them (#168, #171) |
+| `tests/test_check_findings.py` | Findings from type expressions carry their own details: `expected`/`actual`, the nested item's path, the embedded CBOR and tag contents (#153) |
+| `tests/test_choice_resolution.py` | Choices are resolved by matching alone, with no first-alternative fallback (#74) |
+| `tests/test_conformance.py` | The conformance matrix (`docs/conformance.json`) matches the code: every row names its tests, its probes are run, known gaps keep failing, and `docs/CONFORMANCE.md` is current (#86) |
+| `tests/test_group_composition.py` | Group composition in maps and arrays, and wildcard occurrence bounds (#72, #151, #158) |
+| `tests/test_item_refs.py` | References to data items by encoding (`#`, `#M`, `#M.N`, `#6(t)`, `#6.<type>(t)`) in the root rule, fields, elements, choices and named rules (#167) |
+| `tests/test_modules.py` | Loading imported CDDL modules: `-M`, `--module`, names, cycles and missing modules (#121) |
+| `tests/test_schema_diagnostics.py` | `schema_diagnostics` returns every schema problem as a `Diagnostic` (#156) |
 | `tests/test_corpus.py` | Conformance corpus (#80): 605 cases from RFC 8610 sections, the cddlc suite, COSE, CoRIM, CoSWID, EDHOC and SUIT, each with the source's verdict, constructs and provenance; known gaps, divergences and source defects must keep disagreeing (see [docs/CORPUS.md](docs/CORPUS.md)) |
 | `tests/test_require_deterministic.py` | `require_deterministic` (#95): each RFC 8949 §4.2.1 rule refused at the offset of the first violation (integer, length and tag heads, indefinite lengths, float widths and NaN, key order, bignums), deterministic vectors accepted, accepted bytes equal `encode(canonical=True)`, sequences, `validate()` and the CLI |
 | `tests/test_cli_diagnostics.py` | `cddl-verify --diagnostics json` (#145): stdout is only the JSON document, schema, decode, missing and unreadable-input failures as diagnostics, `-o` and EDN, inferred-type warnings, ordering; `path_expr` notation |
@@ -206,14 +215,24 @@ the example in `TestRegressions` (with the issue number) so it stays fixed.
 │   ├── json_codec.py       ← public CBOR ↔ JSON conversion
 │   ├── cli.py, __main__.py ← `cddl-verify` / `python -m cddl_verifier`
 │   ├── _api.py             ← validate()/Validator implementation
-│   ├── _analyzer.py        ← CDDL parser, validator, EDN generator (internal)
+│   ├── _analyzer.py        ← CDDLParser tables, CBORAnalyzer (validation), EDNGenerator, CLI (internal)
+│   ├── _diagnostics.py     ← Diagnostic data model and renderers (internal)
 │   ├── _cbor.py            ← CBOR encoder/decoder (internal)
+│   ├── _cbor_values.py     ← CBORTag, undefined, simple values, how an item was written (internal)
 │   ├── _json_codec.py      ← JSON conversion (internal)
+│   ├── _cddl/              ← CDDL lexer, parser, AST, resolver, modules, controls (internal):
+│   │   ├── lexer.py, parser.py, ast.py, printer.py   ← syntax and the tree
+│   │   ├── resolve.py, modules.py, prelude.py        ← names, schema checks, imports, RFC 8610 prelude
+│   │   ├── legacy.py, query.py, typeexpr.py          ← tables and queries the validator reads
+│   │   ├── computed.py, abnf.py, conversions.py      ← .plus/.cat/.det, .abnf, .b64u … .printf/.join
+│   │   └── xsd_regex.py, tagcontent.py, items.py     ← .regexp, tag contents, #M.N references
 │   └── _version.py         ← single source of the project version
 ├── CONTRIBUTING.md         ← pull request checklist, versioning, releases
 ├── MANIFEST.in             ← extra files (tests, test data, docs) for the sdist
 ├── pyproject.toml          ← package metadata + pytest configuration
 ├── cddl-schemas/, test-data/  ← sample schemas and CBOR used by the tests
+├── docs/                   ← guides, the conformance matrix and its inputs (conformance.json, divergences.json)
+├── scripts/                ← render_conformance.py, render_corpus.py, build_corpus.py, differential.py
 └── tests/
     ├── conftest.py         ← imports the installed package, or falls back to src/
     ├── __init__.py

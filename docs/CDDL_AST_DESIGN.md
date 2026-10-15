@@ -90,7 +90,7 @@ src/cddl_verifier/_cddl/
     resolve.py      # semantic checks and the resolved model (#70)
 ```
 
-A subpackage keeps the new code out of the 2,900-line `_analyzer.py` and is
+A subpackage keeps the new code out of `_analyzer.py` (2,900 lines when this was written, about 4,200 now) and is
 the first step of the module split in
 [#83](https://github.com/sahebbiswas/cddl_verifier/issues/83). The resolver
 from #70 is added as `_cddl/resolve.py`.

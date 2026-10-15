@@ -30,8 +30,10 @@ and decoding are bundled. Extras for contributors: `pip install "cddl-verifier[t
 
 ## Quick start
 
-For copy-pasteable workflows from installation through validation, debugging,
-JSON conversion, and CI, see the [task-oriented recipes](docs/RECIPES.md).
+New here? [docs/GETTING_STARTED.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/GETTING_STARTED.md)
+walks from installation to reading a failed validation, with a triage flow for each
+kind of failure. For copy-pasteable workflows (validation, debugging, JSON conversion,
+CI), see the [task-oriented recipes](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/RECIPES.md).
 
 ### Command line
 
@@ -103,8 +105,10 @@ its items. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/blob/m
 - CDDL maps, arrays, type aliases, groups, type choices (`a / b` and `/=`), sockets (`//=`),
   optional fields, occurrence indicators, IANA-registered parameters
   (`&(name: n)`), CBOR tags (`#6.n(...)`), numeric ranges (`0..255`,
-  `0.0...1.0`), `.cbor`, `.size`, `.regexp` and the comparison controls
-  (`.ge`, `.gt`, `.le`, `.lt`) on integers and floats. Details: [docs/CDDL_SUPPORT.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CDDL_SUPPORT.md).
+  `0.0...1.0`), and the controls `.size`, `.cbor`, `.cborseq`, `.regexp`, `.bits`,
+  `.ge`, `.gt`, `.le`, `.lt`, `.eq`, `.ne`, `.and`, `.within` and the RFC 9165 / RFC 9741
+  controls (`.plus`, `.cat`, `.det`, `.abnf`, the text conversions, `.printf`, `.json`,
+  `.join`). Details: [docs/CDDL_SUPPORT.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CDDL_SUPPORT.md).
 - Real CoRIM and CoSWID schemas: [docs/CORIM_SUPPORT.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CORIM_SUPPORT.md).
 - CBOR encoding and strict decoding with byte offsets in errors; duplicate map
   keys, invalid UTF-8 and excessive nesting are rejected.
@@ -145,6 +149,7 @@ its items. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/blob/m
 
 | Document | Contents |
 |----------|----------|
+| [docs/GETTING_STARTED.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/GETTING_STARTED.md) | Install, write a schema, validate, and triage each kind of failure, with example commands and output |
 | [docs/RECIPES.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/RECIPES.md) | End-to-end CLI, Python, debugging, JSON/CBOR, CoRIM, and CI recipes |
 | [docs/CLI.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CLI.md) | `cddl-verify` and JSON converter options, input rules, EDN output formats |
 | [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/API.md) | Python API: `validate`, `Validator`, CBOR and JSON helpers |
@@ -156,7 +161,8 @@ its items. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/blob/m
 | [docs/CBOR_BUILDER_QUICK_REF.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CBOR_BUILDER_QUICK_REF.md), [docs/ITERATIVE_CONSTRUCTION.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/ITERATIVE_CONSTRUCTION.md) | `CBOR` builder API in depth |
 | [docs/CBOR_DIAGNOSTIC_DUMP.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CBOR_DIAGNOSTIC_DUMP.md) | Diagnostic dump format |
 | [docs/CANONICAL_AND_JSON.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CANONICAL_AND_JSON.md) | Canonical encoding and JSON round-trips |
-| [docs/](https://github.com/sahebbiswas/cddl_verifier/tree/main/docs) | EDN formatting, tag notation, and annotation notes |
+| [docs/EDN_FORMATTING_IMPROVEMENTS.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/EDN_FORMATTING_IMPROVEMENTS.md), [docs/IANA_ANNOTATIONS_STATUS.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/IANA_ANNOTATIONS_STATUS.md) | What the annotated EDN looks like, and registered parameters |
+| [docs/](https://github.com/sahebbiswas/cddl_verifier/tree/main/docs) | Tag notation and other notes |
 | [docs/CDDL_AST_DESIGN.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CDDL_AST_DESIGN.md) | Contributor design: CDDL AST, parser and migration plan |
 | [TESTING.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/TESTING.md) | Running and writing tests, CI setup |
 | [CONTRIBUTING.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/CONTRIBUTING.md) | Pull request checklist, versioning and releases |

@@ -163,7 +163,8 @@ class NonCuttingKeys(unittest.TestCase):
 
     def test_wildcard_must_accept_the_value_too(self):
         self.assertFalse(ok('r = { ? "a" => int, * tstr => int }', {"a": "x"}))
-        self.assertIn("Type mismatch for field 'a' in 'r'", errors('r = { ? "a" => int, * tstr => int }', {"a": "x"}))
+        self.assertIn("Type mismatch for field 'a' in 'r': expected int, got tstr",
+                      errors('r = { ? "a" => int, * tstr => int }', {"a": "x"}))
 
     def test_wildcard_must_accept_the_key(self):
         self.assertFalse(ok('r = { ? "a" => int, * int => any }', {"a": "x"}))

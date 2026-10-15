@@ -835,6 +835,7 @@ def _name_type(name: str) -> Type:
 
 
 #: The type of a member whose type the tables do not record.
+_CONTROL_CHARS = {c: f"\\u{c:04x}" for c in (*range(0x20), *range(0x7f, 0xa0), 0x2028, 0x2029)}
 _UNKNOWN_TYPE = Type((Name('unknown'),))
 
 #: Marks a breadcrumb component (a rule name) that is not a step in the data.
@@ -1838,7 +1839,8 @@ class CBORAnalyzer:
                     
                     if type_mismatch:
                         expected_text, actual_text = mismatch_detail or (field_type, _describe_value(value))
-                        self._report(f"Type mismatch for field '{field_name}' in '{type_name}'",
+                        self._report(f"Type mismatch for field '{field_name}' in '{type_name}': "
+                                     f"expected {expected_text}, got {actual_text}",
                                      _mismatch_category(_base_type, value),
                                      expected=expected_text, actual=actual_text)
                     elif _base_type in self._ROOT_PRIMITIVES and _base_type != 'any':
@@ -3403,9 +3405,10 @@ class CBORAnalyzer:
                 return f"h'{hex_str}...' ({len(value)} bytes)"
             return f"h'{hex_str}'"
         elif isinstance(value, str):
-            if len(value) > max_len:
-                return f'"{value[:max_len]}..."'
-            return f'"{value}"'
+            # Control characters are escaped so a hostile string cannot move the
+            # cursor or rewrite the terminal when a diagnostic is printed.
+            text = value[:max_len].translate(_CONTROL_CHARS)
+            return f'"{text}..."' if len(value) > max_len else f'"{text}"'
         elif isinstance(value, (list, tuple)):
             return f"[{len(value)} items]"
         elif isinstance(value, dict):
