@@ -31,9 +31,15 @@ else:
         print(diagnostic.code, diagnostic.message)
 ```
 
-### `validate(schema, data, root_type=None, *, modules=None, module_path=(), unique_choices=False) -> ValidationResult`
+### `validate(schema, data, root_type=None, *, modules=None, module_path=(), unique_choices=False, require_deterministic=False) -> ValidationResult`
 
-Shorthand for `Validator(schema, modules=modules, module_path=module_path, unique_choices=unique_choices).validate(data, root_type)`.
+Shorthand for `Validator(schema, modules=modules, module_path=module_path, unique_choices=unique_choices).validate(data, root_type, require_deterministic=require_deterministic)`.
+
+With `require_deterministic=True` the CBOR bytes must also be deterministically
+encoded ([below](#requiring-deterministic-encoding)): bytes that are not give an
+invalid result with one `decode` diagnostic at the offset of the first
+violation. It needs bytes: a decoded Python value has no encoding to check, so
+passing one raises `TypeError`.
 
 ### `Validator(schema, *, modules=None, module_path=(), unique_choices=False)`
 
@@ -369,6 +375,46 @@ detected, and `reason` holds the message without the offset.
 
 `CBORUnsupportedError` (a `CBORDecodeError` and a `NotImplementedError`) is kept
 for code that catches it, but nothing raises it now.
+
+### Requiring deterministic encoding
+
+`decode`, `decode_sequence`, `CBOR.load`, `CBOR.loads` and `CBOR.loads_sequence`
+take `require_deterministic=True` (off by default) for input that must be
+deterministically encoded (RFC 8949 section 4.2.1), such as a signed payload
+that is hashed. Without it the decoder accepts every well-formed encoding of a
+value.
+
+```python
+from cddl_verifier.cbor import CBORNotDeterministicError, decode
+
+decode(bytes.fromhex("a2 01 05 02 06"), require_deterministic=True)   # {1: 5, 2: 6}
+try:
+    decode(bytes.fromhex("a2 01 18 05 02 06"), require_deterministic=True)
+except CBORNotDeterministicError as error:
+    print(error.offset, error.reason)
+    # 2 Not deterministically encoded: integer is not in its shortest form (additional information 24)
+```
+
+The check raises `CBORNotDeterministicError`, a `CBORDecodeError` (so a handler for
+decode errors catches it), with the `offset` of the **first** item that breaks a
+rule, in the order the bytes are read. Malformed input is still reported as
+malformed, not as non-deterministic. The rules:
+
+| Rule | Not deterministic | Deterministic |
+|------|-------------------|---------------|
+| Heads as short as they can be: integers, string, array and map lengths, tag numbers | `18 05`, `58 00`, `98 00`, `d8 01 ..` | `05`, `40`, `80`, `c1 ..` |
+| Definite lengths only | `9f 01 ff`, `bf .. ff`, `5f .. ff`, `7f .. ff` | `81 01` |
+| Floats in the shortest width that keeps the value | `fb 3ff8000000000000` and `fa 3fc00000` for 1.5 | `f9 3e00` |
+| One NaN, `f9 7e00` (any other NaN, in any width, is refused) | `f9 7e01`, `fa 7fc00000` | `f9 7e00` |
+| Map keys in bytewise order of their encodings (not by value or length): `0x01 < 0x0a < 0x1818 < 0x61 61` | `a2 02 00 01 00` | `a2 01 00 02 00` |
+| Bignums (tags 2 and 3) only for values that do not fit in 64 bits, without leading zero bytes | `c2 41 00`, `c2 48 01 00 00 00 00 00 00 00` | `c2 49 01 00 00 00 00 00 00 00 00` |
+
+The check is the inverse of `encode(canonical=True)`: bytes that pass are exactly
+the bytes `encode(decode(data), canonical=True)` writes, and what the canonical
+encoder writes always passes. Two notes on strictness: the RFC leaves the
+treatment of NaN to the protocol, and this check takes the single quiet NaN the
+canonical encoder writes; and it does not require text to be in any Unicode
+normal form, which the RFC does not either.
 
 ### Indefinite-length items, `undefined` and simple values
 

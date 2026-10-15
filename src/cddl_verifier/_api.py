@@ -192,7 +192,8 @@ class Validator:
             raise SchemaError("the CDDL schema defines no rules; pass root_type")
         return root
 
-    def validate(self, data: Any, root_type: Optional[str] = None) -> ValidationResult:
+    def validate(self, data: Any, root_type: Optional[str] = None, *,
+                 require_deterministic: bool = False) -> ValidationResult:
         """Validate *data* against the schema.
 
         Args:
@@ -202,18 +203,31 @@ class Validator:
                 against a ``bstr`` rule, pass its CBOR encoding.
             root_type: Name of the CDDL rule to validate against. Defaults to
                 the first rule in the schema.
+            require_deterministic: Also require the CBOR bytes to be
+                deterministically encoded (RFC 8949 §4.2.1; see
+                :func:`cddl_verifier.cbor.decode`). Bytes that are not give an
+                invalid result with a ``"decode"`` diagnostic at the offset of
+                the first violation, before the schema is checked.
 
         Returns:
             A :class:`ValidationResult`. CBOR that cannot be decoded is
             reported as an invalid result with a ``"decode"`` diagnostic, not
             raised.
+
+        Raises:
+            TypeError: ``require_deterministic`` is true and *data* is an
+                already-decoded value, which has no encoding to check.
         """
         root = self._resolve_root(root_type)
         cbor_bytes = None
+        if require_deterministic and not isinstance(data, _BYTES_TYPES):
+            raise TypeError("require_deterministic checks how CBOR bytes are encoded; "
+                            "pass the bytes, not a decoded value")
         if isinstance(data, _BYTES_TYPES):
             cbor_bytes = bytes(data)
             try:
-                data = CBOR.loads(cbor_bytes, keep_encoding=True)
+                data = CBOR.loads(cbor_bytes, keep_encoding=True,
+                                  require_deterministic=require_deterministic)
             except CBORDecodeError as e:
                 return ValidationResult(False, root, (decode_diagnostic(e, cbor_bytes),), None)
         analyzer = _analyzer.CBORAnalyzer(self._parser, unique_choices=self._unique_choices)
@@ -251,11 +265,13 @@ def validate(schema: SchemaSource, data: Any,
              root_type: Optional[str] = None, *,
              modules: Optional[Mapping[str, SchemaSource]] = None,
              module_path: Sequence[Union[str, "os.PathLike[str]"]] = (),
-             unique_choices: bool = False) -> ValidationResult:
+             unique_choices: bool = False,
+             require_deterministic: bool = False) -> ValidationResult:
     """Validate *data* against a CDDL *schema*.
 
     Shorthand for ``Validator(schema).validate(data, root_type)``; build a
     :class:`Validator` once to check many items against the same schema.
     """
     return Validator(schema, modules=modules, module_path=module_path,
-                     unique_choices=unique_choices).validate(data, root_type)
+                     unique_choices=unique_choices).validate(
+        data, root_type, require_deterministic=require_deterministic)
