@@ -47,6 +47,8 @@ class Guide(unittest.TestCase):
             Path(cls.dir, name).write_text(text, encoding="utf-8")
         code, out, err = run("-m", "cddl_verifier.json_codec", "to-cbor", "good.json", "good.cbor", cwd=cls.dir)
         assert code == 0, err
+        converted = "[OK] Converted good.json to good.cbor (80 bytes)"
+        assert converted in out + err and converted in GUIDE, (out, err)
         code, out, err = run("make_cases.py", cwd=cls.dir)
         assert code == 0, err
 

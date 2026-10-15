@@ -83,7 +83,7 @@ A byte string that is not under a tag, even with `.cbor` in the schema, is print
 
 ## When the data does not match
 
-EDN is written only for data that passed validation with an explicit `--type`. Without
+With an explicit `--type`, EDN is written only when validation succeeds. Without
 `--type`, the first rule is used and a failure is a warning, so EDN is still written, without
 annotations. With `--type` and a failure nothing is written. With `--diagnostics json`, EDN is
 written only with `-o FILE`.

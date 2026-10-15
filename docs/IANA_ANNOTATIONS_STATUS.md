@@ -76,8 +76,9 @@ comment and prints the plain EDN.
 
 ## What is not annotated
 
-- A member whose key is not a registered parameter is printed without a name
-  comment, as `"name": ...` is already readable.
+- A member with a readable text key is printed without a name comment, as
+  `"name": ...` is already readable. Legacy comment-derived names can still
+  annotate non-registered keys; this behavior is deprecated below.
 - A byte string that holds CBOR (`bstr .cbor T`) is printed as a byte string. Nested CBOR is
   expanded when the schema says it sits inside a tag; see
   [EDN_FORMATTING_IMPROVEMENTS.md](EDN_FORMATTING_IMPROVEMENTS.md#nested-cbor).

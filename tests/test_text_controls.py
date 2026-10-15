@@ -218,3 +218,12 @@ class Join(Cases, unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ControlCharacterEscapingTests(unittest.TestCase):
+    def test_diagnostics_do_not_carry_raw_control_characters(self):
+        from cddl_verifier._analyzer import CBORAnalyzer, CDDLParser
+        analyzer = CBORAnalyzer(CDDLParser("r = tstr"))
+        shown = analyzer._format_value_for_log("a\x1b[2Jb\n")
+        self.assertEqual(shown, '"a\\u001b[2Jb\\u000a"')
+        self.assertNotIn("\x1b", shown)
