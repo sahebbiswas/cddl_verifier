@@ -7,6 +7,7 @@ from pathlib import Path
 
 SRC = Path(__file__).parent.parent / "src"
 MODULES = sorted(p.stem for p in (SRC / "cddl_verifier").glob("*.py") if p.stem != "__init__")
+VALIDATOR_MODULES = sorted(p.stem for p in (SRC / "cddl_verifier" / "_validator").glob("*.py") if p.stem != "__init__")
 
 
 class Layout(unittest.TestCase):
@@ -22,6 +23,28 @@ class Layout(unittest.TestCase):
                      f"import cddl_verifier; assert cddl_verifier.__file__.startswith({str(SRC)!r})"],
                     capture_output=True, text=True)
                 self.assertEqual(done.returncode, 0, done.stderr)
+
+    def test_every_validator_module_imports_first_in_a_fresh_interpreter(self):
+        for name in VALIDATOR_MODULES:
+            with self.subTest(module=name):
+                done = subprocess.run(
+                    [sys.executable, "-I", "-c",
+                     f"import sys; sys.path.insert(0, {str(SRC)!r}); import cddl_verifier._validator.{name}; "
+                     f"import cddl_verifier; assert cddl_verifier.__file__.startswith({str(SRC)!r})"],
+                    capture_output=True, text=True)
+                self.assertEqual(done.returncode, 0, done.stderr)
+
+    def test_the_analyzer_is_composed_of_every_mixin_and_none_shadows_another(self):
+        """A method defined in two mixins silently hides one of them."""
+        from cddl_verifier._analyzer import CBORAnalyzer
+        mixins = [c for c in CBORAnalyzer.__mro__ if c.__module__.startswith("cddl_verifier._validator.")]
+        self.assertEqual(len(mixins), len(VALIDATOR_MODULES) - 1)  # all but support
+        seen = {}
+        for mixin in mixins:
+            for name, value in vars(mixin).items():
+                if callable(value) and not name.startswith("__"):
+                    self.assertNotIn(name, seen, f"{name} is in {seen.get(name)} and {mixin.__name__}")
+                    seen[name] = mixin.__name__
 
     def test_the_cli_names_are_still_importable_from_the_analyzer(self):
         from cddl_verifier import _analyzer, _cli

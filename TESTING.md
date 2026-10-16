@@ -8,7 +8,7 @@ and the standard-library **unittest** runner with no code changes required.
 | File | Covers |
 |------|--------|
 | `tests/test_public_api.py` | Public API: `validate`, `Validator`, `cddl_verifier.cbor`, `json_codec`, `python -m cddl_verifier` |
-| `tests/test_module_layout.py` | Every private module imports on its own in a fresh interpreter (no import cycle); the CLI names moved out of `_analyzer` (#83) are still importable from it |
+| `tests/test_module_layout.py` | Every private module imports on its own in a fresh interpreter (no import cycle); the CLI names moved out of `_analyzer` (#83) are still importable from it; the analyzer mixins in `_validator/` each import first and none shadows another's method |
 | `tests/test_cbor_cddl_analyzer.py` | CDDL parsing, validation, EDN generation, CoRIM (internal classes) |
 | `tests/test_cddl_parser.py` | CDDL lexer, AST and parser: node shapes, spans, syntax errors, printer round trip, bundled schemas, strict parsing through the API and CLI |
 | `tests/test_resolve.py` | `_cddl/resolve.py`: semantic errors with positions (undefined and duplicate names, sockets, type/group misuse, generic arity, controls, ranges, occurrences, alias loops), imports, the resolved model, generic instantiation in the tables (#70) |
@@ -217,7 +217,8 @@ the example in `TestRegressions` (with the issue number) so it stays fixed.
 │   ├── json_codec.py       ← public CBOR ↔ JSON conversion
 │   ├── cli.py, __main__.py ← `cddl-verify` / `python -m cddl_verifier`
 │   ├── _api.py             ← validate()/Validator implementation
-│   ├── _analyzer.py        ← CBORAnalyzer (validation) (internal)
+│   ├── _analyzer.py        ← CBORAnalyzer: the shared state, composed from the mixins in `_validator/` (internal)
+│   ├── _validator/         ← the analyzer's methods, one module per concern: reporting, validation, structures, containers, values, primitives, textcontrols, embedded, support (internal, #83)
 │   ├── _schema.py          ← CDDLParser: the loaded, resolved schema as the tables the validator uses (internal, #83)
 │   ├── _edn.py, _decode.py ← EDNGenerator; SimpleCBORDecoder (internal, #83)
 │   ├── _cli.py, _log.py    ← the `cddl-verify` command; its colours and stderr logging (internal, #83)

@@ -598,7 +598,7 @@ to recognise it.
 | #71–#74, #76 | Implement semantics on `Range`, `Group`/`Occurrence`, literals, `Type.alternatives` and `Control`. |
 | #75 | Diagnostics take the schema location from `Span`. |
 | #82 | Fuzzes `parse_cddl`. It may raise only `CDDLSyntaxError`. |
-| #83 | `_cddl/` is the first module taken out of `_analyzer.py`; then the CLI and logging (`_cli.py`, `_log.py`, #208), then `EDNGenerator` and `SimpleCBORDecoder` (`_edn.py`, `_decode.py`, #209), then `CDDLParser` (`_schema.py`, #210). |
+| #83 | `_cddl/` is the first module taken out of `_analyzer.py`; then the CLI and logging (`_cli.py`, `_log.py`, #208), then `EDNGenerator` and `SimpleCBORDecoder` (`_edn.py`, `_decode.py`, #209), then `CDDLParser` (`_schema.py`, #210), then the analyzer itself, split into one mixin per concern in `_validator/` (#211). |
 | #86 | The conformance matrix gets a "parser/AST" column, filled in from Phase A's tests. |
 | #94, #99, #100, #104 | Fixed by, or made simple by, Phases B and C and #70. |
 
