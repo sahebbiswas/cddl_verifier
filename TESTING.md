@@ -293,7 +293,7 @@ class TestMyFeature(unittest.TestCase):
 ```
 
 Tests of internals import from the private modules, for example
-`from cddl_verifier._analyzer import CDDLParser`. The command-line functions (`main`, `load_cddl`, `load_cbor`) live in `_cli`, `EDNGenerator` in `_edn`, `SimpleCBORDecoder` in `_decode` and `CDDLParser` in `_schema`; `_analyzer` still hands them out under the old import path.
+`from cddl_verifier._schema import CDDLParser`. The command-line functions (`main`, `load_cddl`, `load_cbor`) live in `_cli`, `EDNGenerator` in `_edn`, `SimpleCBORDecoder` in `_decode` and `CDDLParser` in `_schema`; `_analyzer` still hands them out under the old import path.
 
 pytest discovers any `TestCase` subclass automatically; no registration in a
 `run_tests()` function is needed.
