@@ -148,8 +148,8 @@ no meaning beyond separating tokens, which removes every line-based heuristic.
 Tabs are accepted as whitespace, although the ABNF allows only spaces and
 line breaks. Rejecting them would break schemas for no benefit.
 
-Comments are kept because the current parser uses a trailing comment as a
-field name (`0: tstr ; name`), and EDN output depends on that (see §9).
+Comments are kept because a trailing comment can name a member (`0: tstr ; name`)
+when `comment_names` is on (see §9); by default comments carry no meaning.
 
 ## 6. Node catalog
 
@@ -390,12 +390,13 @@ CONTRIBUTING.md, that is a `0.x` minor bump: it ships in 0.2.0, since 0.1.0 had
 already been released. The
 public API does not change shape, so no major bump is needed.
 
-**Comment-derived field names stay.** `0: tstr ; name` names field `0`
-"name" in EDN output. This isn't RFC behaviour, but it is how the current
-parser works and the EDN tests depend on it. The AST keeps the comment on the
-entry (`comment`), and the legacy adapter uses it the way the current parser
-does. It will be deprecated later
-([#108](https://github.com/sahebbiswas/cddl_verifier/issues/108)).
+**Comment-derived field names are opt-in.** `0: tstr ; name` names field `0`
+"name" in messages and EDN output only with `comment_names=True` (`--comment-names`).
+This isn't RFC behaviour, since comments carry no meaning in CDDL, so since 0.36.0 the
+default is to name a member by its key, a bareword or its `&(name: 0)` label. The
+AST keeps the comment on the entry (`comment`) and the legacy adapter reads it when
+the option is on ([#108](https://github.com/sahebbiswas/cddl_verifier/issues/108)).
+Until 0.35.0 the comment always named the member.
 
 ## 10. Migration plan
 
@@ -609,8 +610,8 @@ PR #107.
 
 1. **Strict parsing starts at the end of Phase B**, not in Phase A, so no
    behaviour change ships before the AST has replaced the line parser.
-2. **Comment-derived field names are kept for now and deprecated later**, once
-   EDN takes labels from `registered_label` and bareword keys everywhere
+2. **Comment-derived field names became opt-in** in 0.36.0 (`comment_names`): the
+   default is RFC 8610 behaviour, the old behaviour is one option away
    ([#108](https://github.com/sahebbiswas/cddl_verifier/issues/108)).
 3. **Unknown control operators were accepted and ignored** until #70, which
    rejects them as schema errors.

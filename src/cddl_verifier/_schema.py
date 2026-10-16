@@ -79,7 +79,7 @@ class CDDLParser:
     """
     
     def __init__(self, cddl_content: str, source_name: Optional[str] = None,
-                 loader: Optional[ModuleLoader] = None):
+                 loader: Optional[ModuleLoader] = None, comment_names: bool = False):
         """Initialise the parser and immediately parse *cddl_content*.
 
         Args:
@@ -88,6 +88,11 @@ class CDDLParser:
             source_name: File name used in syntax error messages.
             loader: Finds the modules the schema imports (``;# import X as P``);
                 without one, imported modules are not loaded (#121).
+            comment_names: Name a member after its trailing comment (``0: tstr ; name``
+                names member ``0`` "name") in messages and EDN annotations. Off by
+                default: comments carry no meaning in CDDL (RFC 8610), so a member is
+                named by its key, a bareword or the label of ``&(name: 0)``. For schemas
+                that document their members in comments (#108).
 
         Raises:
             CDDLSyntaxError: (a ``SchemaError``) when *cddl_content* is not
@@ -99,6 +104,7 @@ class CDDLParser:
         self.content = cddl_content
         self.source_name = source_name
         self.loader = loader
+        self.comment_names = comment_names
         self.warnings: List[str] = []  # imports whose module was not found (#121)
         self.types: Dict[str, Dict] = {}
         self.groups: Dict[str, List] = {}  # Store group definitions
@@ -202,7 +208,7 @@ class CDDLParser:
         self._origins = linked.origins
         self.resolved = resolve(self.ast, linked.imports)
         self.warnings = unloaded_warnings(linked, self.resolved.external)
-        tables = LegacyTables(self.ast, self.resolved)
+        tables = LegacyTables(self.ast, self.resolved, self.comment_names)
         self.types = tables.types
         self.groups = tables.groups
         self.type_choices = tables.type_choices

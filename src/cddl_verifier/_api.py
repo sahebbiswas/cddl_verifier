@@ -146,6 +146,11 @@ class Validator:
             (map, array or tag) alternative of a choice. By default a choice
             accepts data that fits any alternative, as CDDL defines it; EDN
             output labels such data with the first alternative that matches.
+        comment_names: Name a member after its trailing comment, so ``0: tstr ; name``
+            is "name" in messages and EDN annotations. Off by default: comments carry no
+            meaning in CDDL (RFC 8610), so a member is named by its key, a bareword key
+            or the label of ``&(name: 0)``. Turn it on for a schema that documents its
+            members in comments (#108).
 
     Attributes:
         warnings: What the schema relies on without checking: an import whose
@@ -163,7 +168,8 @@ class Validator:
     def __init__(self, schema: SchemaSource, *,
                  modules: Optional[Mapping[str, SchemaSource]] = None,
                  module_path: Sequence[Union[str, "os.PathLike[str]"]] = (),
-                 unique_choices: bool = False):
+                 unique_choices: bool = False,
+                 comment_names: bool = False):
         text = _read_schema(schema)
         name = os.fspath(schema) if isinstance(schema, os.PathLike) else None
         self._unique_choices = unique_choices
@@ -172,7 +178,8 @@ class Validator:
             search.append(Path(name).parent)
         loader = ModuleLoader(modules, search)
         try:
-            self._parser = _schema.CDDLParser(text, source_name=name, loader=loader)
+            self._parser = _schema.CDDLParser(text, source_name=name, loader=loader,
+                                              comment_names=comment_names)
         except SchemaError:
             raise  # syntax errors already say where: "file:line:col: message"
         except Exception as e:  # noqa: BLE001 - anything else is a parser bug
@@ -266,6 +273,7 @@ def validate(schema: SchemaSource, data: Any,
              modules: Optional[Mapping[str, SchemaSource]] = None,
              module_path: Sequence[Union[str, "os.PathLike[str]"]] = (),
              unique_choices: bool = False,
+             comment_names: bool = False,
              require_deterministic: bool = False) -> ValidationResult:
     """Validate *data* against a CDDL *schema*.
 
@@ -273,5 +281,5 @@ def validate(schema: SchemaSource, data: Any,
     :class:`Validator` once to check many items against the same schema.
     """
     return Validator(schema, modules=modules, module_path=module_path,
-                     unique_choices=unique_choices).validate(
+                     unique_choices=unique_choices, comment_names=comment_names).validate(
         data, root_type, require_deterministic=require_deterministic)

@@ -63,9 +63,12 @@ _OPTIONAL = ('?', '*')
 class LegacyTables:
     """The dictionaries ``CDDLParser`` exposes, built from a ``Schema``."""
 
-    def __init__(self, schema, resolved=None):
+    def __init__(self, schema, resolved=None, comment_names: bool = False):
         #: ``ResolvedSchema`` (#70), used for rule kinds and generics.
         self.resolved = resolved
+        #: Name a member after its trailing comment (``0: tstr ; name``)? Comments carry no
+        #: meaning in CDDL (RFC 8610), so by default a member is named by its key (#108).
+        self.comment_names = comment_names
         self.types: Dict[str, Dict] = {}
         self.groups: Dict[str, List[str]] = {}
         self.type_choices: Dict[str, List[Type]] = {}
@@ -445,6 +448,10 @@ class LegacyTables:
             return [({}, [computed])]
         return [({}, [])]
 
+    def _comment(self, member: Member) -> Optional[str]:
+        """The trailing comment of *member* when comments name members, else ``None`` (#108)."""
+        return member.comment if self.comment_names else None
+
     def _field(self, member: Member, owner: str, optional: bool = False):
         """``(key, field-info)`` for a member with a fixed key, else ``None``."""
         key_node = member.key
@@ -454,16 +461,16 @@ class LegacyTables:
         if label is not None:
             key, name = _literal_key(label[1], self._rule_names), label[0]
         elif key_node.kind == 'bareword':
-            key, name = key_node.name, member.comment or key_node.name
+            key, name = key_node.name, self._comment(member) or key_node.name
         else:
             # '1: T', '"x": T', and literal keys written '1 => T' (#104)
             literal = key_node.value if key_node.kind == 'value' else key_node.type
             key = _literal_key(literal, self._rule_names)
             if key is NOT_A_KEY:
                 key = self._computed_key(literal)  # '(BASE .plus 1) => int' (RFC 9165)
-                name = member.comment or (str(key) if key is not NOT_A_KEY else None)
+                name = self._comment(member) or (str(key) if key is not NOT_A_KEY else None)
             else:
-                name = member.comment or _spelling(literal)
+                name = self._comment(member) or _spelling(literal)
         if key is NOT_A_KEY:
             return None
         info = {'name': name,

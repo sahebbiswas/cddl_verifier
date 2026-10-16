@@ -22,13 +22,16 @@ from ._log import _configure_cli_logging, _reset_cli_logging, logger
 from ._version import __version__
 
 
-def load_cddl(filepath: Path, loader: Optional[ModuleLoader] = None) -> CDDLParser:
+def load_cddl(filepath: Path, loader: Optional[ModuleLoader] = None,
+              comment_names: bool = False) -> CDDLParser:
     """Load a CDDL schema file from *filepath* and return a :class:`CDDLParser`.
 
     Args:
         filepath: Path to the ``.cddl`` file.
         loader: Finds the modules the schema imports. By default modules are
             looked up next to the schema file.
+        comment_names: Name members after their trailing comments (see
+            :class:`CDDLParser`).
 
     Returns:
         A fully parsed :class:`CDDLParser` instance ready for validation or
@@ -41,7 +44,8 @@ def load_cddl(filepath: Path, loader: Optional[ModuleLoader] = None) -> CDDLPars
         content = filepath.read_text(encoding='utf-8')
         if loader is None:
             loader = ModuleLoader(path=[filepath.parent])
-        return CDDLParser(content, source_name=str(filepath), loader=loader)
+        return CDDLParser(content, source_name=str(filepath), loader=loader,
+                          comment_names=comment_names)
     except Exception as e:
         print(f"Error loading CDDL file: {e}")
         sys.exit(1)
@@ -148,6 +152,10 @@ Examples:
     parser.set_defaults(annotate=True)
     parser.add_argument('--no-annotate', action='store_false', dest='annotate',
                         help='Suppress field-name comments in EDN output')
+    parser.add_argument('--comment-names', action='store_true',
+                        help='Name a member after its trailing comment (0: tstr ; name) in messages '
+                             'and EDN annotations. Off by default: comments carry no meaning in CDDL '
+                             '(RFC 8610), so a member is named by its key')
     parser.add_argument('--edn-format', choices=['keyindex', 'keyname', 'both'], default='keyindex',
                         help='EDN key format: keyindex (0: val / name /), keyname ("name": val), both (0 / name /: val)')
     parser.add_argument('-M', '--module-path', action='append', default=[], metavar='DIR',
@@ -210,7 +218,8 @@ Examples:
     loader = ModuleLoader(modules, [*args.module_path, args.cddl_file.parent])
     try:
         cddl = CDDLParser(args.cddl_file.read_text(encoding='utf-8'),
-                          source_name=str(args.cddl_file), loader=loader)
+                          source_name=str(args.cddl_file), loader=loader,
+                          comment_names=args.comment_names)
     except Exception as e:  # noqa: BLE001 - any read or parse error is a schema problem
         problems = _schema_problems(args.cddl_file, modules, args.module_path, e)
         if json_mode:
