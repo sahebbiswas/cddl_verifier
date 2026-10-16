@@ -19,6 +19,7 @@ and the standard-library **unittest** runner with no code changes required.
 | `tests/test_simple_cbor.py` | CBOR encode/decode, diagnostics, round-trips |
 | `tests/test_cbor_builder.py` | Iterative construction, nested access, merge |
 | `tests/test_canonical_and_json.py` | Canonical encoding, JSON ↔ CBOR conversion |
+| `tests/test_mime_message.py` | Tag 36 content must be a MIME message (#187): accepted and refused messages with the reason, folding, comments, multipart boundaries, parts and nesting, the tag check and the validator, no exception on random input, large and hostile input in linear time |
 | `tests/test_benchmark.py` | `scripts/benchmark.py` (#85): every case builds, checks its own result and times; names, selection, the table, `--json`, `--compare`, `--fail-above`, `--list`, `--profile` |
 | `tests/test_validation_caches.py` | What is remembered about schema nodes (#85) changes no answer: `ast.walk` order, the text kept on a node, the type-definition and check memos and their bounds |
 | `tests/test_float_serialization.py` | Preferred serialization of floats in the default mode (#96): shortest widths equal to canonical mode, `float_width` for each width, refused values, decoded widths kept with `keep_encoding`, agreement with the `float16`/`float32`/`float64` checks |
@@ -31,7 +32,7 @@ and the standard-library **unittest** runner with no code changes required.
 | `tests/test_cbor_tag.py` | `CBORTag` as a value (equality, hash, immutability, copy, pickle, tag-number checks), decode and encode round trips (nested, as a map key, canonical), the refused `(tag, value)` tuple, validator and EDN on tags, typed JSON (#78) |
 | `tests/test_strict_decoding.py` | Strict single-item decoding, error offsets, duplicate map keys of every key type and depth (#92), CLI `--version` |
 | `tests/test_literal_types.py` | Literal types (`1`, `1.5`, `"a"`, `h'01'`, `true`) in map fields, arrays, inline arrays, named rules and the root (#73) |
-| `tests/test_tag_content.py` | what the content of tags 0, 24, 32, 33, 34 and 35 must be (RFC 3339, URI reference, base64, regular expression, embedded CBOR), and that the check runs at the root, in fields, elements, choices and nested tags (#169) |
+| `tests/test_tag_content.py` | what the content of tags 0, 24, 32, 33, 34, 35 and 36 must be (RFC 3339, URI reference, base64, regular expression, embedded CBOR, MIME message), and that the check runs at the root, in fields, elements, choices and nested tags (#169) |
 | `tests/test_prelude_types.py` | RFC 8610 prelude types: `uri`, `tdate`, `time`, `number`, `decfrac` and other tagged rules (#130); `nint` and the bignum types `biguint`, `bignint`, `bigint`, `integer`, `unsigned` at the 64-bit boundaries (#99) |
 | `tests/test_set_nested.py` | `set_nested` path creation and errors |
 | `tests/test_cbor_diag_dump_extra.py` | Diagnostic dump edge cases and truncated input |

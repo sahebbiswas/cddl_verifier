@@ -260,8 +260,10 @@ Note how IANA registered parameter keys (0, 1, 2, etc.) are displayed as their s
 3. **`.regexp` limits:** Patterns are read as XSD regular expressions and matched in time
    linear in the text. A pattern over 50 000 NFA states is a schema error, and a match
    over 10 million steps is refused ([CDDL_SUPPORT.md](CDDL_SUPPORT.md)).
-4. **Tag 36 content:** The content of tag 36 (`mime-message`) is checked only as text
-   ([#187](https://github.com/sahebbiswas/cddl_verifier/issues/187)).
+4. **Tag 36 content:** The content of tag 36 (`mime-message`) must be a MIME message:
+   header fields, well-formed `MIME-Version`, `Content-Type` and `Content-Transfer-Encoding`,
+   and multipart bodies with their boundary and parts. The body itself is not decoded
+   ([CDDL_SUPPORT.md](CDDL_SUPPORT.md#cbor-tags)).
 
 For full semantic validation of CoRIM documents, use a complete CoRIM validator alongside
 this tool.

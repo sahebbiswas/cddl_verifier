@@ -4140,19 +4140,20 @@
    "area": "prelude",
    "construct": "`mime-message`",
    "spec": "RFC 8610 Appendix D",
-   "status": "partial",
+   "status": "supported",
    "layers": {
     "parser": "supported",
     "ast": "supported",
     "resolver": "supported",
-    "validator": "partial",
+    "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "The tag number and the type of the content (text) are checked. The text is not parsed as a MIME message (RFC 2045): that needs a MIME parser, so tag 36 is shape-only by design.",
+   "notes": "The tag number is checked, and the text must be a MIME message (RFC 5322, RFC 2045, RFC 2046): header fields (folding allowed), then optionally an empty line and a body; `MIME-Version`, `Content-Type` and `Content-Transfer-Encoding` well formed and not repeated; a `multipart` body needs a valid boundary, its delimiters, and every part checked the same way (nested up to 10 levels). Lines may end in CRLF or LF and headers may hold UTF-8. The body is not decoded (`base64`, `quoted-printable`, `message/rfc822`).",
    "issues": [
     187
    ],
    "tests": [
+    "tests/test_mime_message.py",
     "tests/test_prelude_types.py",
     "tests/test_tag_content.py"
    ],
@@ -4166,6 +4167,14 @@
       {
        "$tag": 36,
        "$value": "Content-Type: text/plain\r\n\r\nhi"
+      },
+      {
+       "$tag": 36,
+       "$value": "Subject: hi"
+      },
+      {
+       "$tag": 36,
+       "$value": "MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=XX\r\n\r\n--XX\r\nContent-Type: text/plain\r\n\r\nhi\r\n--XX--\r\n"
       }
      ],
      "invalid": [
@@ -4177,6 +4186,26 @@
       {
        "$tag": 35,
        "$value": "x"
+      },
+      {
+       "$tag": 36,
+       "$value": "x"
+      },
+      {
+       "$tag": 36,
+       "$value": ""
+      },
+      {
+       "$tag": 36,
+       "$value": "MIME-Version: 2.0\r\n\r\nx"
+      },
+      {
+       "$tag": 36,
+       "$value": "Content-Type: multipart/mixed\r\n\r\nx"
+      },
+      {
+       "$tag": 36,
+       "$value": "Content-Type: multipart/mixed; boundary=XX\r\n\r\n--XX\r\n\r\nno closing delimiter"
       }
      ]
     }

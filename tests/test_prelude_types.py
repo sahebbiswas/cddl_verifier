@@ -57,7 +57,7 @@ class TestTaggedTextTypes(PreludeTestCase):
         # checked in tests/test_tag_content.py (#169)
         for name, tag, text in (("tdate", 0, "2020-01-01T00:00:00Z"), ("b64url", 33, "YQ"),
                                 ("b64legacy", 34, "YQ=="), ("regexp", 35, "a+"),
-                                ("mime-message", 36, "x")):
+                                ("mime-message", 36, "Subject: x\r\n\r\nbody")):
             with self.subTest(type=name):
                 self.check_type(name, [
                     (CBORTag(tag, text), True),

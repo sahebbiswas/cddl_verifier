@@ -72,11 +72,11 @@ class TestContentError(unittest.TestCase):
             self.assertIsNotNone(content_error(24, data), data)
 
     def test_other_tags_and_other_types_are_left_alone(self):
-        self.assertIsNone(content_error(36, 'anything'))
+        self.assertIsNone(content_error(36, 5))          # not text: the type check reports that
         self.assertIsNone(content_error(1, 'x'))
         self.assertIsNone(content_error(0, 5))          # the type check reports that
         self.assertIsNone(content_error(24, 'text'))
-        self.assertEqual(CHECKED_TAGS, {0, 24, 32, 33, 34, 35})
+        self.assertEqual(CHECKED_TAGS, {0, 24, 32, 33, 34, 35, 36})
 
     def test_message_names_the_tag_and_the_problem(self):
         message = content_error(0, '2021-02-29T00:00:00Z')
