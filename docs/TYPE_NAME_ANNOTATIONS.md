@@ -8,7 +8,8 @@ EDN output now includes CDDL type names as inline comments on opening braces/bra
 
 The names in the field annotations (`/ id /`) are the member's key: a bareword
 (`id: uint`), the label of `&(id: 0)`, or the key's spelling. A trailing comment
-(`0: tstr ; id`) names a member only when comment names are on:
+(`0: tstr ; id`) names a member only when comment names are on, and never one that has a
+`&(id: 0)` label (a label always wins):
 `Validator(schema, comment_names=True)`, or `--comment-names` on the command line
 ([CDDL_SUPPORT.md](CDDL_SUPPORT.md#member-names)).
 

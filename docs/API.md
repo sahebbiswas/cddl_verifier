@@ -6,13 +6,13 @@ consumer workflows, see [Recipes](RECIPES.md).
 | Module | Status | Main entry points |
 |--------|--------|-------------------|
 | [`cddl_verifier`](#cddl_verifier-validation) | Public | `validate`, `Validator`, `ValidationResult`, `Diagnostic`, `render_text`, `render_json`, `schema_diagnostics`, `SchemaError`, `CBORDecodeError`, `__version__` |
-| [`cddl_verifier.cbor`](#cddl_verifiercbor-encoding-and-decoding) | Public | `encode`, `decode`, `diag_dump`, `CBOR`, `CBORKey`, decode errors |
-| [`cddl_verifier.json_codec`](#cddl_verifierjson_codec-json-conversion) | Public | `cbor_to_json`, `json_to_cbor`, file helpers |
-| [`cddl_verifier._analyzer`](#internal-parser-validator-and-edn-generator) | Internal | `CBORAnalyzer` (composed from the mixins in `cddl_verifier._validator`), and `CDDLParser` (now in `cddl_verifier._schema`) and `EDNGenerator` (now in `cddl_verifier._edn`); the old import paths still work |
+| [`cddl_verifier.cbor`](#cddl_verifiercbor-encoding-and-decoding) | Public | `encode`, `decode`, `decode_sequence`, `diag_dump`, `CBOR`, `CBORKey`, `CBORTag`, `CBORSimple`, `UNDEFINED`, `float_width`, `head_info`, decode errors |
+| [`cddl_verifier.json_codec`](#cddl_verifierjson_codec-json-conversion) | Public | `cbor_to_json`, `json_to_cbor`, `cbor_file_to_json_file`, `json_file_to_cbor_file`, `CBORJSONEncoder` |
+| [`cddl_verifier._analyzer`](#internal-parser-validator-and-edn-generator) | Internal | `CBORAnalyzer` (composed from the mixins in `cddl_verifier._validator`), `CDDLParser` (in `cddl_verifier._schema`) and `EDNGenerator` (in `cddl_verifier._edn`) |
 
 Modules whose names start with an underscore are internal: they can change in
 any release without notice. The public names above follow the versioning policy
-in the [README](../README.md#versioning).
+in [COMPATIBILITY.md](COMPATIBILITY.md), which says what is covered and what is not.
 
 ---
 
@@ -60,7 +60,7 @@ Parses a schema once so it can check many items.
 - `comment_names`: name a member after its trailing comment, so `0: tstr ; name`
   is "name" in messages and EDN annotations. Off by default: comments carry no
   meaning in CDDL (RFC 8610), so a member is named by its key, a bareword or the
-  label of `&(name: 0)` ([CDDL_SUPPORT.md](CDDL_SUPPORT.md#member-names)).
+  label of `&(name: 0)`; with the option on, a label still wins over a comment ([CDDL_SUPPORT.md](CDDL_SUPPORT.md#member-names)).
 - A module that is not found is not an error: the names used from it are not
   checked and match any value. `Validator.warnings` lists these imports (and
   each is also issued as a `UserWarning`).
@@ -233,9 +233,9 @@ progress and errors to stderr.
 
 ## Internal: parser, validator and EDN generator
 
-These classes back the public API. They are documented for contributors and
-will change during the CDDL AST and semantic-resolution work
-([#69](https://github.com/sahebbiswas/cddl_verifier/issues/69), [#70](https://github.com/sahebbiswas/cddl_verifier/issues/70)); use `Validator` instead.
+These classes back the public API. They are documented for contributors, are **not**
+covered by the [compatibility promise](COMPATIBILITY.md), and can change in any
+release; use `Validator` instead.
 
 ### Parsing and validating
 
@@ -503,8 +503,35 @@ raw = cbor.encode(canonical=True)
 
 See [CBOR_BUILDER_QUICK_REF.md](CBOR_BUILDER_QUICK_REF.md) and
 [ITERATIVE_CONSTRUCTION.md](ITERATIVE_CONSTRUCTION.md) for the full builder API,
-including nested access (`get_nested` / `set_nested`), merge, copy, and dict/list
-methods.
+including merge, copy, and dict/list methods.
+
+Nested access takes a path of segments joined by a separator:
+
+- `get_nested(path, separator=".", default=None)` returns the value at the path, or
+  `default` when a segment is missing.
+- `set_nested(path, value, separator=".", create=True)` sets it and returns the
+  object. With `create=True` missing dicts (or lists, when the next segment is a
+  number) are created, and a list index past the end extends the list with `None`.
+  With `create=False` a missing segment raises `KeyError`. An empty path raises
+  `ValueError`. `separator` is for keys that contain a dot.
+
+```python
+cbor = CBOR({"user": {"name": "Alice"}})
+cbor.set_nested("user.address.city", "NYC")
+cbor.get_nested("user.address.city")        # 'NYC'
+cbor.get_nested("user/age", "/", default=0) # 0
+```
+
+### Where an item sits in the input
+
+`CBOR.loads_with_locations(data, max_steps=1_000_000)` and
+`CBOR.loads_sequence_with_locations(data, max_steps=1_000_000)` decode like `loads` and
+`loads_sequence` and also return a `CBORLocations` that maps the path of an item to its
+byte span. The validator uses them for the `offset` of a diagnostic. `max_steps` bounds
+the work of the index: input that needs more is still decoded in full, but items past the
+budget have no location (`complete` is `False`). These methods and `CBORLocations` are
+**internal**: they can change in any release ([COMPATIBILITY.md](COMPATIBILITY.md)).
+Use the `offset` and `hex` of a `Diagnostic`, or `diag_dump`, to find an item.
 
 ### Diagnostic dump
 
@@ -648,5 +675,21 @@ cbor_file_to_json_file("data.cbor", "data.json", pretty=True, typed=True)
 json_file_to_cbor_file("data.json", "data.cbor", canonical=True)
 json_file_to_cbor_file("data.json", "data.cbor", annotations=False)   # "$cbor" is plain data
 ```
+
+| Function | Parameters |
+|----------|------------|
+| `cbor_file_to_json_file(cbor_path, json_path, typed=False, pretty=True)` | Reads one CBOR item from `cbor_path` and writes JSON to `json_path`; `typed` and `pretty` are as in `cbor_to_json` (here `pretty` defaults to `True`) |
+| `json_file_to_cbor_file(json_path, cbor_path, canonical=False, annotations=True)` | Reads JSON from `json_path` and writes CBOR to `cbor_path`; `canonical` and `annotations` are as in `json_to_cbor` |
+
+The CBOR file is read and written as bytes, the JSON file as UTF-8 whatever the locale.
+Decoding and conversion errors are raised as for the in-memory functions.
+
+### `CBORJSONEncoder`
+
+`json.JSONEncoder` subclass that `cbor_to_json` uses. `CBORJSONEncoder(typed=False, **kwargs)`
+takes the usual `json.JSONEncoder` options plus `typed`, and writes `bytes`, `CBORTag`,
+`CBORSimple`, `UNDEFINED` and the non-finite floats as the annotated objects of
+[Type annotations in JSON](#type-annotations-in-json) when `typed=True`. Use `cbor_to_json`
+unless you need to embed the encoding in your own `json.dump` call.
 
 See [CANONICAL_AND_JSON.md](CANONICAL_AND_JSON.md) for round-trip examples.

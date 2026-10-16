@@ -172,6 +172,35 @@ class Command(unittest.TestCase):
             with self.assertRaises(ValueError):
                 json_file_to_cbor_file(str(Path(tmp, "a.json")), str(Path(tmp, "b.cbor")))
 
+    def test_file_helpers_use_utf8_whatever_the_locale(self):
+        # Non-ASCII text must survive a round trip where the locale encoding is not UTF-8.
+        import os
+        import subprocess
+        text = "naïve ✓"
+        script = (
+            "import sys\n"
+            "from pathlib import Path\n"
+            "from cddl_verifier.cbor import decode\n"
+            "from cddl_verifier.json_codec import cbor_file_to_json_file, json_file_to_cbor_file\n"
+            "d = Path(sys.argv[1])\n"
+            "cbor_file_to_json_file(str(d / 'a.cbor'), str(d / 'a.json'))\n"
+            "json_file_to_cbor_file(str(d / 'a.json'), str(d / 'b.cbor'))\n"
+            "import subprocess\n"
+            "for args in (['to-json', str(d / 'a.cbor'), str(d / 'cli.json')],\n"
+            "             ['to-cbor', str(d / 'cli.json'), str(d / 'cli.cbor')]):\n"
+            "    subprocess.run([sys.executable, '-m', 'cddl_verifier.json_codec', *args], check=True)\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "a.cbor").write_bytes(cbor_encode({"k": text}))
+            env = dict(os.environ, LC_ALL="C", LANG="C", PYTHONUTF8="0", PYTHONCOERCECLOCALE="0")
+            done = subprocess.run([sys.executable, "-c", script, tmp], env=env,
+                                  capture_output=True, text=True)
+            self.assertEqual(done.returncode, 0, done.stderr)
+            self.assertIn(text, Path(tmp, "a.json").read_bytes().decode("utf-8"))
+            self.assertEqual(cbor_decode(Path(tmp, "b.cbor").read_bytes()), {"k": text})
+            self.assertIn(text, Path(tmp, "cli.json").read_bytes().decode("utf-8"))
+            self.assertEqual(cbor_decode(Path(tmp, "cli.cbor").read_bytes()), {"k": text})
+
 
 if __name__ == "__main__":
     unittest.main()

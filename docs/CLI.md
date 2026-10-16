@@ -57,7 +57,7 @@ cddl-verify --version
 | `--no-annotate` | Suppress field-name comments in EDN output |
 | `--require-deterministic` | Fail when the CBOR is not deterministically encoded (RFC 8949 §4.2.1), with the offset of the first violation; see [API.md](API.md#requiring-deterministic-encoding) for the rules |
 | `--unique-choices` | Fail when data matches more than one map, array or tag alternative of a choice |
-| `--comment-names` | Name a member after its trailing comment (`0: tstr ; name`) in messages and EDN annotations. Off by default: comments carry no meaning in CDDL (RFC 8610), so a member is named by its key; see [CDDL_SUPPORT.md](CDDL_SUPPORT.md#member-names) |
+| `--comment-names` | Name a member after its trailing comment (`0: tstr ; name`) in messages and EDN annotations. Off by default: comments carry no meaning in CDDL (RFC 8610), so a member is named by its key; a `&(name: 0)` label always wins over a comment; see [CDDL_SUPPORT.md](CDDL_SUPPORT.md#member-names) |
 | `--edn-format {keyindex,keyname,both}` | EDN key format (default: `keyindex`) |
 | `-M DIR`, `--module-path DIR` | Directory searched for imported CDDL modules (`<name>.cddl`); repeatable. The schema file's own directory is always searched, last |
 | `--module NAME=FILE` | CDDL file for the imported module `NAME`; repeatable |
