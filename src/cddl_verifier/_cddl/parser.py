@@ -63,11 +63,13 @@ class Parser:
             raise self.error(f"expected {what or repr(kind)}", (what or repr(kind),))
         return self.advance()
 
-    def error(self, expected_msg: str, expected: Tuple[str, ...] = ()) -> CDDLSyntaxError:
+    def error(self, expected_msg: str, expected: Tuple[str, ...] = (),
+              hint: Optional[str] = None) -> CDDLSyntaxError:
         t = self.tok
         found = describe(t.kind, t.text)
         span = Span(t.start, max(t.end, t.start + 1)) if t.kind != 'EOF' else Span(t.start, t.start)
-        return CDDLSyntaxError(f"{expected_msg}, found {found}", span, self.source, expected)
+        message = f"{expected_msg}, found {found}" + (f" ({hint})" if hint else "")
+        return CDDLSyntaxError(message, span, self.source, expected)
 
     def span_from(self, start: int) -> Span:
         return Span(start, self.prev_end)
@@ -343,10 +345,21 @@ class Parser:
         alts = [t1]
         while self.accept('/'):
             alts.append(self.parse_type1())
+        if self.tok.kind == ':':
+            # '&(a: 0): T': ':' follows only a bare name or a literal key, so a key
+            # that is a type needs '=>' (RFC 8610 memberkey, #224)
+            raise self.error(f"expected '=>' after the key '{self._key_text(t1.span.start)}'",
+                             ("'=>'",),
+                             "':' follows only a bare name or a literal, as in 'a: T' or '1: T'")
         if len(alts) == 1 and isinstance(t1, Name):
             return GroupRef(occurrence, t1.name, t1.args, span=self.span_from(start))
         ty = Type(tuple(alts), span=self.span_from(t1.span.start))
         return Member(occurrence, None, ty, span=self.span_from(start))
+
+    def _key_text(self, start: int) -> str:
+        """The source from *start* to the end of what was just read, on one line, shortened."""
+        text = ' '.join(self.source.text[start:self.prev_end].split())
+        return text if len(text) <= 40 else text[:37] + '...'
 
     def trailing_comment(self, end: int) -> Optional[str]:
         """The comment on the same line after *end*, with nothing but spaces between."""

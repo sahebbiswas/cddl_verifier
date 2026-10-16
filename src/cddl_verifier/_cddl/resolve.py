@@ -576,19 +576,27 @@ class _Resolver:
                 self.check_range(node, scope)
         elif isinstance(node, Control):
             self.collecting(self.check_type1, node.target, scope)
-            self.collecting(self.check_type2, node.arg, scope)
+            self.collecting(self.check_type2, node.arg, scope, node.op)
             if len(self.errors) == before:  # the target and the argument mean something
                 self.check_control(node, scope)
         else:
             self.check_type2(node, scope)
 
-    def check_type2(self, node, scope):
+    def check_type2(self, node, scope, control: Optional[str] = None):
         if isinstance(node, Name):
             rule = self.reference(node.name, node.args, node.span, scope, TYPE)
             if rule is not None and rule.kind == GROUP:
-                raise self.error(f"'{node.name}' is a group and cannot be used as a "
-                                 f"type; wrap it as '{{ {node.name} }}' or "
-                                 f"'[ {node.name} ]'", node.span)
+                n = node.name
+                if control == 'bits':       # '.bits' takes an enumeration (RFC 8610 3.8.5)
+                    hint = f"use '&{n}' for the bit positions it lists"
+                elif control in ('cbor', 'cborseq'):
+                    hint = f"wrap it as '{{ {n} }}' or '[ {n} ]'"
+                elif control is not None:
+                    hint = f"wrap it as '{{ {n} }}' or '[ {n} ]', or use '&{n}' for its values"
+                else:
+                    hint = f"wrap it as '{{ {n} }}' or '[ {n} ]'"
+                raise self.error(f"'{n}' is a group and cannot be used as a type; {hint}",
+                                 node.span)
             self.check_args(node.args, scope)
             if node.args and rule is not None and rule.kind == TYPE:
                 self.check_instance_controls(node, scope)

@@ -52,6 +52,9 @@ class TestRejected(unittest.TestCase):
         ("a = (a)", (1, 1), "'a' is defined only in terms of itself (a -> a)"),
         # types and groups used as the other
         ("r = { a: g }\ng = (x: int)", (1, 10), "'g' is a group and cannot be used as a type"),
+        ("r = uint .bits f\nf = (a: 0)", (1, 16), "use '&f' for the bit positions it lists"),
+        ("r = bstr .cbor f\nf = (a: 0)", (1, 16), "wrap it as '{ f }' or '[ f ]'"),
+        ("r = uint .le f\nf = (a: 0)", (1, 14), "or use '&f' for its values"),
         ("r = { u }\nu = uint", (1, 7), "'u' is a type, so it needs a key in a map"),
         ("r = { uint }", (1, 7), "'uint' is a type, so it needs a key in a map"),
         ("r = { [uint] }", (1, 7), "a map entry needs a key"),
