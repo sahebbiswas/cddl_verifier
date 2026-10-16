@@ -64,6 +64,10 @@
   {"schema": "r = uri", "data": "68687474703a2f2f61", "expected": "invalid", "fixture": true, "cause": "their-bug", "reason": "uri is tag 32"},
   {"schema": "r = decfrac", "data": "c400", "expected": "invalid", "fixture": true, "cause": "their-bug", "reason": "the tag content is a two-item array"},
   {"schema": "r = \"a\\nb\"", "data": "63610a62", "expected": "valid", "fixture": true, "cause": "their-bug", "reason": "escapes are decoded"},
-  {"schema": "r = undefined", "data": "f7", "expected": "valid", "fixture": true, "cause": "their-bug", "reason": "undefined is #7.23"}
+  {"schema": "r = undefined", "data": "f7", "expected": "valid", "fixture": true, "cause": "their-bug", "reason": "undefined is #7.23"},
+  {"schema": "r = [2* $t]\n$t /= int\n$t /= tstr", "kind": "validation", "ours": "valid", "theirs": "invalid", "cause": "their-bug", "reason": "A type socket in an array is one element, and the occurrence written on it counts (RFC 8610 §3.2, §3.9): `2* $t` takes two or more integers or text strings. The cddl crate rejects arrays that match, `[1, \"a\"]` among them (#223)."},
+  {"schema": "r = [2* $t]\n$t /= int\n$t /= tstr", "data": "82016161", "expected": "valid", "fixture": true, "cause": "their-bug", "reason": "`2* $t` takes `1` and `\"a\"`, each an alternative of `$t`"},
+  {"schema": "r = [? $$g, bool]\n$$g //= (int, tstr)\n$$g //= (bytes)", "kind": "validation", "ours": "valid", "theirs": "invalid", "cause": "their-bug", "reason": "A group socket in an array is one of the groups it was extended with, as often as its occurrence allows (RFC 8610 §3.9), so `? $$g` may be absent or take `(int, tstr)`. The cddl crate rejects `[true]` and `[1, \"a\", true]` (#223)."},
+  {"schema": "r = [? $$g, bool]\n$$g //= (int, tstr)\n$$g //= (bytes)", "data": "81f5", "expected": "valid", "fixture": true, "cause": "their-bug", "reason": "`? $$g` is absent, and `true` is the `bool`"}
  ]
 }

@@ -56,8 +56,9 @@ class TestSequenceTable(unittest.TestCase):
         self.assertTrue(validate('r = [g]\ng = (int, ? g)', [1, 2, 3]).valid)
 
     def test_group_that_cannot_be_expanded_has_no_sequence(self):
-        self.assertIsNone(self.sequence('r = [? int, g]\ng = (int, ? g, ? $s)'))
-        self.assertIsNone(self.sequence('r = [? int, a]\na = (int, ? b)\nb = (tstr, ? a, ? $s)'))
+        # a group socket that nothing extends and the entry requires (#223)
+        self.assertIsNone(self.sequence('r = [? int, g]\ng = (int, ? g, $$e)'))
+        self.assertIsNone(self.sequence('r = [? int, a]\na = (int, ? b)\nb = (tstr, ? a, $$e)'))
 
 
 class TestMatching(unittest.TestCase):

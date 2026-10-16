@@ -350,12 +350,15 @@
     "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "On array entries, map members, groups and wildcard members (bounds and the default of exactly one are enforced, #151).",
-   "issues": [],
+   "notes": "On array entries (also entries that are sockets, #223), map members, groups and wildcard members (bounds and the default of exactly one are enforced, #151).",
+   "issues": [
+    223
+   ],
    "tests": [
     "tests/test_array_length.py",
     "tests/test_group_composition.py",
-    "tests/test_array_matching.py"
+    "tests/test_array_matching.py",
+    "tests/test_socket_occurrences.py"
    ],
    "probes": [
     {
@@ -1055,11 +1058,14 @@
     "validator": "supported",
     "edn": "supported"
    },
-   "notes": "An empty socket matches nothing; extensions (`/=`, `//=`) from the schema and its modules are merged.",
-   "issues": [],
+   "notes": "An empty socket matches nothing; extensions (`/=`, `//=`) from the schema and its modules are merged. In an array a socket takes its occurrence like any other entry: a type socket is one element and a group socket one of its groups (#223).",
+   "issues": [
+    223
+   ],
    "tests": [
     "tests/test_type_choices.py",
-    "tests/test_group_composition.py"
+    "tests/test_group_composition.py",
+    "tests/test_socket_occurrences.py"
    ],
    "probes": [
     {
@@ -1103,6 +1109,50 @@
         ]
        ]
       }
+     ]
+    },
+    {
+     "schema": "r = [2* $t]\n$t /= int\n$t /= tstr",
+     "valid": [
+      [
+       1,
+       "a"
+      ],
+      [
+       1,
+       2,
+       "b"
+      ]
+     ],
+     "invalid": [
+      [
+       1
+      ],
+      []
+     ]
+    },
+    {
+     "schema": "r = [? $$g, bool]\n$$g //= (int, tstr)\n$$g //= (bytes)",
+     "valid": [
+      [
+       true
+      ],
+      [
+       1,
+       "a",
+       true
+      ]
+     ],
+     "invalid": [
+      [
+       1,
+       true
+      ],
+      [
+       1,
+       "a"
+      ],
+      []
      ]
     }
    ]

@@ -332,7 +332,13 @@ b = [ * int, tstr ]            ; ["x"], [1, 2, "x"]
 c = [ int, pair ]              ; [1, 2, "x"] with pair = (a: int, b: tstr)
 d = [ + ( int, tstr ) ]        ; [1, "a", 2, "b"]
 e = [ int // tstr, bool ]      ; [1] and ["x", true], not [1, true]
+f = [ 2* $role ]               ; two or more elements, each an alternative of $role
+g = [ ? $$ext, int ]           ; [1] and, with $$ext //= (tstr), ["a", 1]
 ```
+
+A type socket (`$role`) counts as one element, whatever it was extended with, and
+a group socket (`$$ext`) as one of the groups it was extended with, so both take
+an occurrence like any other entry: `f` rejects `[1]` when `$role /= uint`.
 
 When no assignment takes every element, the error names the first element
 that none gets past: "Array element [1] of 'c' matches no entry (int:
@@ -526,7 +532,8 @@ A socket of an imported module can be named with the module's prefix
 (`coswid.$version-scheme`): it is the same shared socket as `$version-scheme`,
 so extensions made in the importing schema apply to it. A prefixed name for a
 socket the module does not have is still an undefined name. An optional group
-socket (`? $$ext`) with no alternatives takes no entries.
+socket (`? $$ext`) with no alternatives takes no entries, in a map and in an
+array (`[ int, ? $$ext ]` rejects `[1, 2]`).
 
 A choice from a group (`&(a: 0, b: 1)`, or `&colors` with
 `colors = (red: 0, green: 1)`) is the choice of the group's entry types,
