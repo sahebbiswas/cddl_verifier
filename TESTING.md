@@ -39,6 +39,7 @@ and the standard-library **unittest** runner with no code changes required.
 | `tests/test_cbor_diag_dump_extra.py` | Diagnostic dump edge cases and truncated input |
 | `tests/test_array_length.py` | Array length from entry occurrences: missing and extra elements in rules, inline arrays, group references, choices and tags (#133) |
 | `tests/test_array_matching.py` | Array elements assigned to entries in order: optional and repeated entries before others, group names, inline groups, group choices, error messages, linear time (#135) |
+| `tests/test_socket_occurrences.py` | Occurrences on socket entries in arrays (#223): every occurrence at every length for a type socket and a group socket, sockets between other entries, structured and multi-element alternatives, `one-or-more<$s>`, empty sockets, and every array of up to four elements giving the same verdict with a socket as with the equivalent rule |
 | `tests/test_cbor_control_args.py` | Embedded CBOR checked against the whole `.cbor` argument: generic instances, inline maps and arrays, tags; each error reported once (#127) |
 | `tests/test_map_key_types.py` | Decoded map keys keep their CBOR type (`CBORKey`): byte-for-byte round trips, distinct `1` / `true` / `1.0` keys, duplicates and offsets, typed JSON, validation and EDN (#88) |
 | `tests/test_json_annotations.py` | Typed JSON annotations read strictly (#79): base64 forms, unknown types, missing and extra keys, tag and simple values, map pairs, reserved keys, `annotations=False` / `--plain`, deep nesting, CLI exit |

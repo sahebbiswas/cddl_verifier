@@ -560,7 +560,9 @@ class LegacyTables:
         while matching, so the recursion is followed as deep as the elements
         go (#138). *texts* are the type texts already written for the
         top-level entries, by index. ``None`` when an entry cannot be
-        expanded: an undefined name, a socket or a generic parameter.
+        expanded: an undefined name, a generic parameter, or a group socket
+        that nothing extends and the entry requires. A type socket is a type
+        and a group socket a group with one choice per ``//=`` (#223).
         """
         choices = []
         index = 0
@@ -596,11 +598,16 @@ class LegacyTables:
         if isinstance(entry, InlineGroup):
             group = self._sequence(entry.group, path, expanding)
             return None if group is None else {'group': group}
-        if not isinstance(entry, GroupRef) or self.resolved is None \
-                or entry.name.startswith('$'):
+        if not isinstance(entry, GroupRef) or self.resolved is None:
             return None
         kind = self.resolved.kind(entry.name)
         key = (entry.name, entry.args)
+        if kind == 'group' and entry.name.startswith('$$') \
+                and self.resolved.lookup(entry.name) is None:
+            # '? $$ext' that nothing extends takes no entries, as in a map (#223); a
+            # required one is left unexpanded, as the map does
+            occurrence = entry.occurrence
+            return {'group': [[]]} if occurrence is not None and occurrence.min == 0 else None
         if kind == 'group' and key in self._sequences_building:
             return {'ref': key}  # a group that refers to itself, directly or not
         if entry.name in expanding:
@@ -643,9 +650,11 @@ class LegacyTables:
         """``(min, max)`` elements an array with *group* holds, or ``None``.
 
         ``max`` is ``None`` when there is no upper bound. Group choices give
-        the widest bounds of their alternatives. ``None`` means the bounds are
-        unknown: a reference to an undefined name, a socket or a generic
-        parameter, or a group that refers to itself.
+        the widest bounds of their alternatives, and so does a group socket
+        (``$$name``, one choice per ``//=``, #223). ``None`` means the bounds
+        are unknown: a reference to an undefined name, a group socket that
+        nothing extends or a generic parameter, or a group that refers to
+        itself.
         """
         bounds = []
         for choice in group.choices:
@@ -692,11 +701,11 @@ class LegacyTables:
 
     def _ref_length(self, ref: GroupRef, expanding: tuple):
         """Elements a bare name in an array stands for: one for a type."""
-        if self.resolved is None or ref.name.startswith('$') or ref.name in expanding:
+        if self.resolved is None or ref.name in expanding:
             return None
         kind = self.resolved.kind(ref.name)
         if kind == 'type':
-            return 1, 1
+            return 1, 1  # a type socket (``$name``) is one element, whatever its alternatives (#223)
         if kind != 'group':
             return None
         try:
