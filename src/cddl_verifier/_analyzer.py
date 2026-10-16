@@ -9,6 +9,7 @@ public ``cddl_verifier`` API (``validate``, ``Validator``) instead.
 
 * ``reporting``: breadcrumbs, locations, byte offsets, error and diagnostic reports
 * ``validation``: ``validate`` and the root and type-expression checks
+* ``structures``: tags, constraints, and the members of maps and arrays
 * ``containers``: arrays, maps, groups and repeated choices
 * ``values``: one value against one type, set controls, parentheses, choices
 * ``primitives``: primitive types, ranges and literals
@@ -29,13 +30,14 @@ from ._validator.containers import ContainersMixin
 from ._validator.embedded import EmbeddedMixin
 from ._validator.primitives import PrimitivesMixin
 from ._validator.reporting import ReportingMixin
+from ._validator.structures import StructuresMixin
 from ._validator.support import _CheckError, _EmbeddedFrame, _NO_STEP  # noqa: F401 (_CheckError, _NO_STEP: re-exported)
 from ._validator.textcontrols import TextControlsMixin
 from ._validator.validation import ValidationMixin
 from ._validator.values import ValuesMixin
 
 
-class CBORAnalyzer(ReportingMixin, ValidationMixin, ContainersMixin, ValuesMixin, PrimitivesMixin,
+class CBORAnalyzer(ReportingMixin, ValidationMixin, StructuresMixin, ContainersMixin, ValuesMixin, PrimitivesMixin,
                    TextControlsMixin, EmbeddedMixin):
     """Validate decoded CBOR data against a parsed CDDL schema.
 
