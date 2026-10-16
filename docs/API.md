@@ -8,7 +8,7 @@ consumer workflows, see [Recipes](RECIPES.md).
 | [`cddl_verifier`](#cddl_verifier-validation) | Public | `validate`, `Validator`, `ValidationResult`, `Diagnostic`, `render_text`, `render_json`, `schema_diagnostics`, `SchemaError`, `CBORDecodeError`, `__version__` |
 | [`cddl_verifier.cbor`](#cddl_verifiercbor-encoding-and-decoding) | Public | `encode`, `decode`, `diag_dump`, `CBOR`, `CBORKey`, decode errors |
 | [`cddl_verifier.json_codec`](#cddl_verifierjson_codec-json-conversion) | Public | `cbor_to_json`, `json_to_cbor`, file helpers |
-| [`cddl_verifier._analyzer`](#internal-parser-validator-and-edn-generator) | Internal | `CDDLParser`, `CBORAnalyzer` (`EDNGenerator` is in `cddl_verifier._edn`; the old import path still works) |
+| [`cddl_verifier._analyzer`](#internal-parser-validator-and-edn-generator) | Internal | `CBORAnalyzer`, and `CDDLParser` (now in `cddl_verifier._schema`) and `EDNGenerator` (now in `cddl_verifier._edn`); the old import paths still work |
 
 Modules whose names start with an underscore are internal: they can change in
 any release without notice. The public names above follow the versioning policy
@@ -236,7 +236,8 @@ will change during the CDDL AST and semantic-resolution work
 ### Parsing and validating
 
 ```python
-from cddl_verifier._analyzer import CDDLParser, CBORAnalyzer
+from cddl_verifier._schema import CDDLParser
+from cddl_verifier._analyzer import CBORAnalyzer
 from cddl_verifier.cbor import CBOR
 
 # Parse a CDDL schema

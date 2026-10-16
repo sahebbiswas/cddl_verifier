@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Sequence, Tuple, Union
 
-from . import _analyzer, _edn
+from . import _analyzer, _edn, _schema
 from ._cddl import parse_cddl
 from ._cddl.modules import ModuleLoader, link
 from ._cddl.resolve import resolve_all
@@ -172,7 +172,7 @@ class Validator:
             search.append(Path(name).parent)
         loader = ModuleLoader(modules, search)
         try:
-            self._parser = _analyzer.CDDLParser(text, source_name=name, loader=loader)
+            self._parser = _schema.CDDLParser(text, source_name=name, loader=loader)
         except SchemaError:
             raise  # syntax errors already say where: "file:line:col: message"
         except Exception as e:  # noqa: BLE001 - anything else is a parser bug

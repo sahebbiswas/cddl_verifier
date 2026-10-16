@@ -9,7 +9,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, Optional
 
-from ._analyzer import CBORAnalyzer, CDDLParser
+from ._analyzer import CBORAnalyzer
 from ._cbor import CBOR, CBORDecodeError
 from ._cddl.modules import ModuleLoader
 from ._cddl.printer import format_node
@@ -17,6 +17,7 @@ from ._decode import SimpleCBORDecoder
 from ._edn import EDNGenerator
 from ._diagnostics import (Diagnostic, decode_diagnostic, render_json, render_text,
                            schema_diagnostic)
+from ._schema import CDDLParser
 from ._log import _configure_cli_logging, _reset_cli_logging, logger
 from ._version import __version__
 
