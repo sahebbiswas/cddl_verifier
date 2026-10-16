@@ -449,8 +449,10 @@ float always carries its width (`info` 25, 26 or 27), and an integer, string,
 array or map carries the additional information of its head when that is not
 the shortest one, or 31 for an indefinite length. They are instances of a
 subclass of the Python type (`type(x).__name__` is still `int`, `float`, ...)
-that compare, hash, print and encode as the plain value; copying or pickling
-gives the plain value. The validator decodes this way to check `float16`,
+that compare, hash and print as the plain value. A float is encoded in the width it
+carries, so `encode(decode(data, keep_encoding=True))` gives back the bytes (apart
+from heads other than a float's, which the encoder writes the shortest way); copying
+or pickling gives the plain value (a float keeps its width when copied). The validator decodes this way to check `float16`,
 `float32`, `float64` and `#M.N`. It is off by default so decoded values are
 plain Python values.
 
@@ -539,8 +541,31 @@ Canonical mode follows the RFC 8949 §4.2.1 core deterministic encoding
 requirements: shortest integer, length and tag arguments; floats in the
 shortest exact width (`1.5` is `f9 3e00`); one NaN (`f9 7e00`); map keys sorted
 bytewise by their encoding. Keys that encode identically (for example two NaNs)
-raise `ValueError`. Without `canonical=True`, floats are written as 8-byte
-doubles and maps keep insertion order.
+raise `ValueError`. Without `canonical=True`, maps keep insertion order. Floats are
+written in the shortest exact width in both modes (RFC 8949 §4.1 preferred
+serialization), so `encode(1.5)` is `f9 3e00`; before 0.34.0 the default wrote
+every float as an 8-byte double.
+
+### Fixing the width of a float: `float_width`
+
+Some schemas and protocols fix the width: `float64` accepts only a float written as
+a double, so `encode({"x": 1.5})` (a half float) would fail it. `float_width(value, bits)`
+marks one value with the width (16, 32 or 64) the encoder writes it in:
+
+```python
+from cddl_verifier.cbor import encode, float_width
+
+encode({"x": float_width(1.5, 64)}).hex()   # a1 6178 fb 3ff8000000000000
+```
+
+The result is a `float` that compares, hashes and prints as the plain value and
+carries its width as `info` (see `head_info`), like a float decoded with
+`keep_encoding=True`; the validator takes it for a float of that width, so Python
+data and the bytes it encodes to agree on `float16`, `float32` and `float64`.
+`ValueError` for a width other than 16, 32 or 64 and for a value the width cannot
+hold exactly (`float_width(0.1, 32)`); `TypeError` for anything but a float or an
+int. `encode(canonical=True)` always writes the shortest width and ignores it.
+Arithmetic on the result gives a plain float again.
 
 ---
 

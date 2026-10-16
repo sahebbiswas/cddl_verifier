@@ -19,6 +19,7 @@ and the standard-library **unittest** runner with no code changes required.
 | `tests/test_simple_cbor.py` | CBOR encode/decode, diagnostics, round-trips |
 | `tests/test_cbor_builder.py` | Iterative construction, nested access, merge |
 | `tests/test_canonical_and_json.py` | Canonical encoding, JSON ↔ CBOR conversion |
+| `tests/test_float_serialization.py` | Preferred serialization of floats in the default mode (#96): shortest widths equal to canonical mode, `float_width` for each width, refused values, decoded widths kept with `keep_encoding`, agreement with the `float16`/`float32`/`float64` checks |
 | `tests/test_deterministic_encoding.py` | RFC 8949 §4.2 deterministic encoding golden vectors, Appendix A encoder vectors and float-width boundaries |
 | `tests/test_rfc8949_conformance.py` | RFC 8949 decode vectors, non-preferred encodings, malformed/truncated inputs and strict single-item rejection |
 | `tests/test_size_control.py` | RFC 8610 `.size` on `tstr`/`bstr`/`uint`, arguments, nested and root contexts |

@@ -21,7 +21,7 @@ Layers: the **parser** reads the syntax into the typed **AST**; the **resolver**
 | CDDL syntax and semantics | 28 | 0 | 0 | 28 |
 | Control operators | 34 | 0 | 0 | 34 |
 | Prelude types (RFC 8610 Appendix D) | 14 | 1 | 0 | 15 |
-| CBOR data model (RFC 8949) | 10 | 1 | 0 | 11 |
+| CBOR data model (RFC 8949) | 11 | 0 | 0 | 11 |
 
 ## CDDL syntax and semantics
 
@@ -131,7 +131,7 @@ What the decoder, encoder, validator, EDN output and typed JSON bridge do with e
 | Byte and text strings (definite length) | RFC 8949 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Text strings must be valid UTF-8. | `test_rfc8949_conformance.py`, `test_strict_decoding.py` |
 | Arrays and maps (definite length) | RFC 8949 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Duplicate map keys are rejected (#65); non-string keys keep their type (#88). [#92](https://github.com/sahebbiswas/cddl_verifier/issues/92) | `test_rfc8949_conformance.py`, `test_map_key_types.py`, `test_strict_decoding.py` |
 | `false`, `true`, `null` | RFC 8949 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |  | `test_rfc8949_conformance.py` |
-| Floats (half, single, double) | RFC 8949 | 🟡 | ✅ | 🟡 | ✅ | ✅ | ✅ | All three widths decode to a Python float, and `keep_encoding=True` (the validator's decoding) records the width so `float16`, `float32` and `float64` check it. The encoder writes doubles unless `canonical=True` (shortest form that keeps the value); preferred serialization in non-canonical mode is #96. [#96](https://github.com/sahebbiswas/cddl_verifier/issues/96) | `test_deterministic_encoding.py`, `test_rfc8949_conformance.py` |
+| Floats (half, single, double) | RFC 8949 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | All three widths decode to a Python float, and `keep_encoding=True` (the validator's decoding) records the width so `float16`, `float32` and `float64` check it. The encoder writes a float in the shortest width that keeps the value (RFC 8949 §4.1) in both modes; `float_width(value, bits)` fixes the width of one value, and a float decoded with `keep_encoding=True` is written in the width it had (#96). [#96](https://github.com/sahebbiswas/cddl_verifier/issues/96) | `test_deterministic_encoding.py`, `test_float_serialization.py`, `test_rfc8949_conformance.py` |
 | Tags (major type 6) | RFC 8949 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Tags decode to `CBORTag(number, value)` and `CBORTag` encodes as a tag. A `(number, value)` tuple is not a tag: the encoder and the typed JSON conversion raise `TypeError` for one. Bignums (2, 3) outside the 64-bit range decode to Python ints in values. | `test_cbor_tag.py`, `test_tag_validation.py`, `test_rfc8949_conformance.py` |
 | Indefinite-length strings, arrays and maps | RFC 8949 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Decoded to the same Python values as definite-length items, with chunks joined; the encoder and typed JSON write them back definite-length. A break with nothing to end, a missing break, a chunk of the wrong type, a map that ends after a key, and an indefinite integer or tag are rejected. `#4.31` and `#5.31` (also `#2.31`, `#3.31`) match them when the data is decoded from bytes. | `test_cbor_items_extended.py` |
 | `undefined` and the other simple values | RFC 8949 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | `undefined` decodes to `UNDEFINED` and the other simple values (0-19, 32-255) to `CBORSimple(n)`; they encode back, keep their type as map keys, and appear in typed JSON as `{"$cbor": "undefined"}` and `{"$cbor": "simple", "$value": n}` (untyped: `null` and the number). The two-byte form below 32 and the reserved informations 28-30 are not well-formed. | `test_cbor_items_extended.py` |

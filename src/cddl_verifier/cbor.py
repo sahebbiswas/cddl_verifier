@@ -20,7 +20,7 @@ A tag decodes to a :class:`CBORTag` and the encoder writes one as a tag. A
 raises ``TypeError``, which asks for a ``CBORTag`` or a list.
 """
 
-from ._cbor_values import UNDEFINED, CBORSimple, CBORTag, CBORUndefined, head_info
+from ._cbor_values import UNDEFINED, CBORSimple, CBORTag, CBORUndefined, float_width, head_info
 from ._cbor import (
     CBOR,
     CBORDecodeError,
@@ -55,6 +55,7 @@ __all__ = [
     "decode_sequence",
     "diag_dump",
     "encode",
+    "float_width",
     "head_info",
 ]
 
@@ -62,8 +63,11 @@ __all__ = [
 def encode(obj, canonical: bool = False) -> bytes:
     """Encode a Python value as CBOR.
 
-    ``canonical=True`` applies RFC 8949 section 4.2.1 deterministic encoding
-    (shortest floats, sorted map keys); see ``CBOR.encode`` for details.
+    Floats are written in the shortest width that holds them exactly (RFC 8949
+    section 4.1): ``1.5`` is ``f9 3e00``. :func:`float_width` fixes the width of
+    one value. ``canonical=True`` applies RFC 8949 section 4.2.1 deterministic
+    encoding (sorted map keys, and every float at its shortest); see
+    ``CBOR.encode`` for details.
     """
     return cbor_encode(obj, canonical=canonical)
 

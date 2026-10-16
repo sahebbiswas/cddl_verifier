@@ -28,7 +28,7 @@ from cddl_verifier.cbor import CBORTag
 
 
 class TestRoundTrip(unittest.TestCase):
-    """decode → encode gives back the same bytes, whatever the key type."""
+    """decode → encode gives back the same bytes, whatever the key type (floats in their shortest width)."""
 
     CASES = {
         "array key": "a1820102f6",                      # {[1, 2]: null}
@@ -38,10 +38,10 @@ class TestRoundTrip(unittest.TestCase):
         "tagged array key": "a1c1820102f6",             # {1([1, 2]): null}
         "true and 1": "a201f5f5f4",                     # {1: true, true: false}
         "false and 0": "a200f5f4f4",                    # {0: true, false: false}
-        "1.0 and 1": "a201f4fb3ff0000000000000f5",      # {1: false, 1.0: true}
-        "0.0 and -0.0": "a2fb000000000000000000fb800000000000000001",
+        "1.0 and 1": "a201f4f93c00f5",                  # {1: false, 1.0: true}
+        "0.0 and -0.0": "a2f90000" "00" "f98000" "01",
         "every key type": ("a9" "0100" "20" "01" "4101" "02" "616103" "f6" "04"
-                           "f5" "05" "fb3ff8000000000000" "06" "8101" "07" "a10101" "08"),
+                           "f5" "05" "f93e00" "06" "8101" "07" "a10101" "08"),
         "nested map with bool key": "a101a2f50101f5",   # {1: {true: 1, 1: true}}
         "array and tag with same content": "a2820181020 0c181020 1".replace(" ", ""),
     }

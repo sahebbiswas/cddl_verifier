@@ -41,8 +41,16 @@ not check whether its input is itself deterministically encoded.
 Byte-for-byte vectors from RFC 8949 Appendix A are in
 `tests/test_deterministic_encoding.py`.
 
-Without `canonical=True`, maps keep insertion order and floats are written as
-8-byte doubles. Integers are shortest-form in both modes.
+Without `canonical=True`, maps keep insertion order. Floats are shortest-form in both
+modes (RFC 8949 §4.1 preferred serialization; before 0.34.0 the default wrote
+8-byte doubles), so the only difference between the modes is the order of map keys
+(and that duplicate encodings are refused in canonical mode). Integers are
+shortest-form in both modes.
+
+A float that carries a width is written in it in the default mode: one made with
+`cddl_verifier.cbor.float_width(1.5, 64)`, or one decoded with `keep_encoding=True`.
+Canonical mode ignores it. The typed JSON form does not record widths, so a float
+written as a double comes back from typed JSON in its shortest width.
 
 To *check* that received bytes are in this form, decode them with
 `require_deterministic=True` (or pass `--require-deterministic` to `cddl-verify`):

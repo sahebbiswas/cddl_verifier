@@ -192,11 +192,19 @@ class TestDeterministicEdgeCases(unittest.TestCase):
         with self.assertRaises(ValueError):
             obj.encode(canonical=True)
         obj.data = 1.5
-        self.assertEqual(obj.encode().hex(), "fb3ff8000000000000")
+        self.assertEqual(obj.encode().hex(), "f93e00")
 
-    def test_non_canonical_floats_stay_float64(self):
-        self.assertEqual(cbor_encode(1.5).hex(), "fb3ff8000000000000")
-        self.assertEqual(cbor_encode(math.inf).hex(), "fb7ff0000000000000")
+    def test_non_canonical_floats_are_shortest_too(self):
+        # RFC 8949 section 4.1 preferred serialization (#96): the same widths as canonical mode
+        for value in (1.5, 0.0, -0.0, math.inf, -math.inf, math.nan, 65504.0, 100000.0, 1.1, 1e300, 5e-324):
+            with self.subTest(value=value):
+                self.assertEqual(cbor_encode(value), cbor_encode(value, canonical=True))
+        self.assertEqual(cbor_encode(1.5).hex(), "f93e00")
+        self.assertEqual(cbor_encode(math.inf).hex(), "f97c00")
+        self.assertEqual(cbor_encode(100000.0).hex(), "fa47c35000")
+        self.assertEqual(cbor_encode(1.1).hex(), "fb3ff199999999999a")
+        self.assertEqual(cbor_encode(math.nan).hex(), "f97e00")
+        self.assertEqual(cbor_encode(-0.0).hex(), "f98000")
 
     def test_bignums_in_non_canonical_mode(self):
         self.assertEqual(cbor_encode(2 ** 64).hex(), "c249010000000000000000")

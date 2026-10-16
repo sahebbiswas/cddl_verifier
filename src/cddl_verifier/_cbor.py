@@ -35,7 +35,7 @@ import copy as copy_module
 from typing import Any, Union, Tuple, Dict, List, Optional
 
 from ._cbor_values import (INDEFINITE, UNDEFINED, CBORSimple, CBORTag, CBORUndefined, head_info,
-                           shortest_info, tag_tuple_error, with_info)
+                           pack_float, shortest_info, tag_tuple_error, with_info)
 from ._version import __version__
 
 # CBOR Major Type Constants (RFC 8949)
@@ -561,8 +561,11 @@ class CBOR:
         - Map keys whose deterministic encodings are identical (for example
           two NaN keys) raise ``ValueError``.
 
-        Non-canonical mode keeps dict insertion order and writes every float
-        as float64.
+        Non-canonical mode keeps dict insertion order. It writes a float in the
+        shortest width that holds it exactly too (§4.1), except a float that
+        carries a width (:func:`~cddl_verifier.cbor.float_width`, or decoded with
+        ``keep_encoding=True``): that is written in its own width. NaN is
+        ``0xf97e00`` in both modes.
         """
         self._canonical = canonical
         try:
@@ -697,22 +700,23 @@ class CBOR:
         return result
     
     def _encode_float(self, value: float) -> bytes:
-        """Encode float (major type 7): float64, or shortest form in canonical mode."""
-        if not getattr(self, '_canonical', False):
-            return bytes([0xfb]) + struct.pack('>d', value)
-        if value != value:
-            return b'\xf9\x7e\x00'  # Canonical quiet NaN (RFC 8949 §4.2.2)
-        for initial_byte, fmt in ((0xf9, '>e'), (0xfa, '>f')):
-            try:
-                packed = struct.pack(fmt, value)
-            except OverflowError:
-                continue
-            # Exact round-trip; copysign check keeps -0.0 distinct from 0.0
-            unpacked = struct.unpack(fmt, packed)[0]
-            if unpacked == value and math.copysign(1.0, unpacked) == math.copysign(1.0, value):
-                return bytes([initial_byte]) + packed
-        return bytes([0xfb]) + struct.pack('>d', value)
-    
+        """Encode float (major type 7): the shortest width that holds it exactly (RFC 8949 section 4.1).
+
+        A float that carries a width (``float_width``, or decoded with
+        ``keep_encoding``) is written in it, except in canonical mode.
+        """
+        info = None if getattr(self, '_canonical', False) else getattr(value, 'info', None)
+        if info in (25, 26, 27):
+            packed = pack_float(value, info)
+            if packed is None:
+                raise ValueError(f"{value!r} does not fit its recorded width (additional information {info})")
+            return bytes([0xe0 | info]) + packed
+        for info in (25, 26, 27):
+            packed = pack_float(value, info)
+            if packed is not None:
+                return bytes([0xe0 | info]) + packed
+        raise AssertionError("a float always fits 64 bits")  # pragma: no cover
+
     # ========================================================================
     # DECODING - Convert CBOR bytes to Python objects
     # ========================================================================

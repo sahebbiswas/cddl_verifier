@@ -4326,8 +4326,8 @@
     {
      "hex": "a2f93c00010102",
      "decode": "ok",
-     "roundtrip": false,
-     "json_roundtrip": false
+     "roundtrip": true,
+     "json_roundtrip": true
     }
    ]
   },
@@ -4375,27 +4375,28 @@
    "area": "cbor",
    "construct": "Floats (half, single, double)",
    "spec": "RFC 8949",
-   "status": "partial",
+   "status": "supported",
    "layers": {
     "decoder": "supported",
-    "encoder": "partial",
+    "encoder": "supported",
     "validator": "supported",
     "edn": "supported",
     "json": "supported"
    },
-   "notes": "All three widths decode to a Python float, and `keep_encoding=True` (the validator's decoding) records the width so `float16`, `float32` and `float64` check it. The encoder writes doubles unless `canonical=True` (shortest form that keeps the value); preferred serialization in non-canonical mode is #96.",
+   "notes": "All three widths decode to a Python float, and `keep_encoding=True` (the validator's decoding) records the width so `float16`, `float32` and `float64` check it. The encoder writes a float in the shortest width that keeps the value (RFC 8949 \u00a74.1) in both modes; `float_width(value, bits)` fixes the width of one value, and a float decoded with `keep_encoding=True` is written in the width it had (#96).",
    "issues": [
     96
    ],
    "tests": [
     "tests/test_deterministic_encoding.py",
+    "tests/test_float_serialization.py",
     "tests/test_rfc8949_conformance.py"
    ],
    "cbor": [
     {
      "hex": "f93c00",
      "decode": "ok",
-     "roundtrip": false,
+     "roundtrip": true,
      "canonical": true
     },
     {

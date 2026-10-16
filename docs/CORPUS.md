@@ -70,7 +70,6 @@ The constructs the [conformance matrix](CONFORMANCE.md) marks unsupported or par
 | Construct | Matrix status | Corpus cases | Showing the gap |
 |---|---|--:|--:|
 | `mime-message` | partial | none |  |
-| Floats (half, single, double) | partial | none |  |
 
 ## Layout
 
