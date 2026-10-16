@@ -281,5 +281,49 @@ class LinearTimeTests(unittest.TestCase):
             xsd_regex.MATCH_BUDGET = original
 
 
+class RememberedSteps(unittest.TestCase):
+    """The steps of a match are remembered per pattern (#85); the answers and the budget do not change."""
+
+    def test_answers_are_the_same_cold_and_warm_and_as_re(self):
+        import random
+        import re
+        rng = random.Random(85)
+        patterns = ['[a-c]+x?(ab|b)*', '(a|b)*abb', '([a-z]|[0-9])*', 'a{2,4}(bc)?', '(ab|a)(bc|c)?', '[^a]*b']
+        for pattern in patterns:
+            for _ in range(200):
+                text = ''.join(rng.choice('abcx0') for _ in range(rng.randint(0, 12)))
+                expected = re.fullmatch(pattern, text) is not None
+                matcher = xsd_regex.compile_pattern(pattern)
+                matcher._transitions.clear()
+                matcher._cached = 0
+                cold = matcher.fullmatch(text)
+                warm = matcher.fullmatch(text)
+                self.assertEqual((cold, warm), (expected, expected), (pattern, text))
+
+    def test_the_budget_counts_a_remembered_step_as_work_done(self):
+        pattern = '(' + '|'.join(['a'] * 400) + ')*'
+        self.assertTrue(xsd_regex.fullmatch(pattern, 'a' * 50))  # warms the steps
+        original = xsd_regex.MATCH_BUDGET
+        xsd_regex.MATCH_BUDGET = 10_000
+        try:
+            with self.assertRaises(xsd_regex.XsdRegexLimit):
+                xsd_regex.fullmatch(pattern, 'a' * 1000)
+            with self.assertRaises(xsd_regex.XsdRegexLimit):
+                xsd_regex.fullmatch(pattern, 'a' * 1000)  # and again, now every step is remembered
+        finally:
+            xsd_regex.MATCH_BUDGET = original
+
+    def test_what_is_remembered_is_bounded(self):
+        original = xsd_regex._CACHE_STATES
+        xsd_regex._CACHE_STATES = 200
+        try:
+            matcher = xsd_regex.compile_pattern('([a-z]|[0-9])*z')
+            for i in range(300):
+                self.assertTrue(matcher.fullmatch(('ab%dz' % i) * 3))
+            self.assertLess(matcher._cached, 200 + 100)
+        finally:
+            xsd_regex._CACHE_STATES = original
+
+
 if __name__ == '__main__':
     unittest.main()
