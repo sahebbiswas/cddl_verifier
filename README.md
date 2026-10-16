@@ -118,7 +118,8 @@ its items. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/blob/m
   keys, invalid UTF-8 and excessive nesting are rejected.
 - Annotated EDN output with field names from the schema. A member is named by its
   key or its `&(name: 0)` label; with `comment_names=True` (`--comment-names`) a
-  trailing comment (`0: tstr ; name`) names it instead.
+  trailing comment (`0: tstr ; name`) names a member that has no `&(name: 0)` label
+  (a label always wins).
 - CBOR ↔ JSON conversion. `typed=True` keeps byte strings, tags and
   non-string map keys (such as the integer keys in CoRIM maps), so typed JSON
   converts back to the same CBOR data. Without it, map keys become JSON strings,

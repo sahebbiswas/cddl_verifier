@@ -185,6 +185,10 @@ class Command(unittest.TestCase):
             "d = Path(sys.argv[1])\n"
             "cbor_file_to_json_file(str(d / 'a.cbor'), str(d / 'a.json'))\n"
             "json_file_to_cbor_file(str(d / 'a.json'), str(d / 'b.cbor'))\n"
+            "import subprocess\n"
+            "for args in (['to-json', str(d / 'a.cbor'), str(d / 'cli.json')],\n"
+            "             ['to-cbor', str(d / 'cli.json'), str(d / 'cli.cbor')]):\n"
+            "    subprocess.run([sys.executable, '-m', 'cddl_verifier.json_codec', *args], check=True)\n"
         )
         with tempfile.TemporaryDirectory() as tmp:
             Path(tmp, "a.cbor").write_bytes(cbor_encode({"k": text}))
@@ -194,6 +198,8 @@ class Command(unittest.TestCase):
             self.assertEqual(done.returncode, 0, done.stderr)
             self.assertIn(text, Path(tmp, "a.json").read_bytes().decode("utf-8"))
             self.assertEqual(cbor_decode(Path(tmp, "b.cbor").read_bytes()), {"k": text})
+            self.assertIn(text, Path(tmp, "cli.json").read_bytes().decode("utf-8"))
+            self.assertEqual(cbor_decode(Path(tmp, "cli.cbor").read_bytes()), {"k": text})
 
 
 if __name__ == "__main__":

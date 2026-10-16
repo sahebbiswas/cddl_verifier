@@ -60,7 +60,7 @@ Parses a schema once so it can check many items.
 - `comment_names`: name a member after its trailing comment, so `0: tstr ; name`
   is "name" in messages and EDN annotations. Off by default: comments carry no
   meaning in CDDL (RFC 8610), so a member is named by its key, a bareword or the
-  label of `&(name: 0)` ([CDDL_SUPPORT.md](CDDL_SUPPORT.md#member-names)).
+  label of `&(name: 0)`; with the option on, a label still wins over a comment ([CDDL_SUPPORT.md](CDDL_SUPPORT.md#member-names)).
 - A module that is not found is not an error: the names used from it are not
   checked and match any value. `Validator.warnings` lists these imports (and
   each is also issued as a `UserWarning`).

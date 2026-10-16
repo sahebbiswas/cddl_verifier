@@ -189,8 +189,9 @@ a member.
 
 Some schemas document their members that way: `0: tstr ; name`. For those, turn on
 `comment_names=True` (`Validator(schema, comment_names=True)`, `--comment-names` on the command
-line): the trailing comment on the member's line (and, in a line that holds only comments, none)
-then names it, so member `0` above is "name". A member without a comment keeps its key's name.
+line): the trailing comment on the member's line then names it, so member `0` above is
+"name". A member without a comment keeps its key's name, and a member with a `&(name: 0)`
+label keeps the label: a label always wins over a comment.
 Before 0.36.0 this was the only behaviour ([#108](https://github.com/sahebbiswas/cddl_verifier/issues/108)).
 
 ## Supported primitive types
