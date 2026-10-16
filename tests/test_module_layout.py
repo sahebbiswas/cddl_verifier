@@ -35,6 +35,15 @@ class Layout(unittest.TestCase):
         self.assertIs(_analyzer.EDNGenerator, _edn.EDNGenerator)
         self.assertIs(_analyzer.SimpleCBORDecoder, _decode.SimpleCBORDecoder)
 
+    def test_the_parser_moved_to_schema_and_has_no_module_level_analyzer_import(self):
+        import re
+        from cddl_verifier import _analyzer, _schema
+        self.assertIs(_analyzer.CDDLParser, _schema.CDDLParser)
+        text = (SRC / "cddl_verifier" / "_schema.py").read_text(encoding="utf-8")
+        top_level = re.findall(r"^(?:from|import) .*_analyzer.*$", text, re.M)
+        self.assertEqual(top_level, [], "_schema must reach the analyzer only by a deferred import")
+        self.assertIn("from ._analyzer import CBORAnalyzer", text)
+
     def test_the_logging_names_are_the_same_objects(self):
         from cddl_verifier import _analyzer, _log
         self.assertIs(_analyzer.logger, _log.logger)
@@ -43,7 +52,7 @@ class Layout(unittest.TestCase):
     def test_the_analyzer_has_no_command_line_code(self):
         text = (SRC / "cddl_verifier" / "_analyzer.py").read_text(encoding="utf-8")
         for needle in ("argparse", "def _run_cli", "def main", "sys.exit", "class EDNGenerator",
-                       "class SimpleCBORDecoder"):
+                       "class SimpleCBORDecoder", "class CDDLParser", "def _prelude_tables"):
             self.assertNotIn(needle, text)
 
 

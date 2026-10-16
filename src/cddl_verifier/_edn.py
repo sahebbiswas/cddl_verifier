@@ -5,7 +5,6 @@ Split from ``_analyzer`` (#83). Nothing in the validator uses it.
 
 from typing import Any, Dict, List, Optional
 
-from ._analyzer import CDDLParser, _is_dollar_type, _name_type, _text_of
 from ._cbor import CBORKey
 from ._cbor_values import CBORTag
 from ._cddl import query
@@ -14,6 +13,7 @@ from ._cddl.printer import format_node
 from ._cddl.typeexpr import as_type, bare_name
 from ._decode import SimpleCBORDecoder
 from ._log import logger
+from ._schema import CDDLParser, _is_dollar_type, _name_type, _text_of
 
 
 class EDNGenerator:
