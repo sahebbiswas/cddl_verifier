@@ -77,8 +77,8 @@ comment and prints the plain EDN.
 ## What is not annotated
 
 - A member with a readable text key is printed without a name comment, as
-  `"name": ...` is already readable. Legacy comment-derived names can still
-  annotate non-registered keys; this behavior is deprecated below.
+  `"name": ...` is already readable. A comment-derived name annotates a
+  non-registered key only with `comment_names` (see below).
 - A byte string that holds CBOR (`bstr .cbor T`) is printed as a byte string. Nested CBOR is
   expanded when the schema says it sits inside a tag; see
   [EDN_FORMATTING_IMPROVEMENTS.md](EDN_FORMATTING_IMPROVEMENTS.md#nested-cbor).
@@ -86,7 +86,9 @@ comment and prints the plain EDN.
 
 ## Comment-derived names
 
-A comment at the end of a member line (`0: tstr ; name`) is used as the field name in
-the output when the member has no registered parameter. That behaviour is deprecated
-([#108](https://github.com/sahebbiswas/cddl_verifier/issues/108)); give the member a
-registered parameter or a name key instead.
+Comments carry no meaning in CDDL (RFC 8610), so by default a comment at the end of a
+member line (`0: tstr ; name`) does not name the member. With `comment_names=True`
+(`--comment-names` on the command line) it is used as the field name in the output
+when the member has no registered parameter
+([#108](https://github.com/sahebbiswas/cddl_verifier/issues/108)). Without the option,
+give the member a registered parameter (`&(name: 0)`) or a name key.

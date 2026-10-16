@@ -71,12 +71,17 @@ releases are cut from `main` whenever it is stable enough (see
   |------|------|---------|
   | Patch (`0.2.0` → `0.2.1`) | Bug fixes, docs, tests, internal refactors, tooling and CI | Fix a crash on a malformed schema |
   | Minor (`0.2.1` → `0.3.0`) | A new feature or capability: a new public function or option, newly supported CDDL or CBOR | Support a new control operator |
-  | Major (`0.x` → `1.0.0`, `1.x` → `2.0.0`) | An incompatible change to the public API contract | Rename or remove a public function or CLI option |
+  | Major (`1.x` → `2.0.0`) | An incompatible change to the public API contract | Rename or remove a public function or CLI option |
 
 - Get the maintainer's agreement before a major bump.
-- While the major version is `0`, a change that breaks compatibility is a minor
-  bump, as SemVer allows. One example is rejecting input that used to be
-  accepted.
+- Since 1.0.0, a change that breaks the public API contract is a major bump:
+  removing or renaming a public name, parameter or CLI option, changing a default
+  that code relies on, or changing the JSON diagnostics or typed-JSON formats
+  incompatibly. What is and is not covered is in
+  [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md). Making the library agree with an
+  RFC where it was wrong (input wrongly accepted or rejected) is a fix, not a
+  breaking change; mark it **Behaviour change** in the pull request. Deprecate in a
+  minor release before removing in a major one.
 - The public API is `cddl_verifier`, `cddl_verifier.cbor`,
   `cddl_verifier.json_codec` and the `cddl-verify` CLI. Modules whose names
   start with `_` are internal and can change in any version.

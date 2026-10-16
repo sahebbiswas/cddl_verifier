@@ -6,11 +6,15 @@ Validate CBOR (RFC 8949) data against CDDL (RFC 8610) schemas, render it as
 annotated EDN (Extended Diagnostic Notation), and convert between CBOR and JSON.
 It is built for attestation formats such as CoRIM and CoSWID.
 
-> **Scope.** cddl-verifier supports a practical subset of CDDL and CBOR. It does
-> **not** claim full RFC 8610 or RFC 8949 conformance yet; see
-> [Limitations](#limitations), [docs/CDDL_SUPPORT.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CDDL_SUPPORT.md)
-> and the [conformance matrix](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CONFORMANCE.md),
-> which lists every construct and control with its status.
+> **Scope.** cddl-verifier parses the whole CDDL grammar (RFC 8610 as updated by
+> RFC 9682) and enforces every construct and control operator in the
+> [conformance matrix](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CONFORMANCE.md),
+> which lists each one with its tests. A [corpus](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CORPUS.md)
+> of real schemas and CBOR from RFCs and IETF drafts is checked against it, and
+> the few places where it differs on purpose are listed there. See also
+> [Limitations](#limitations) and [docs/CDDL_SUPPORT.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CDDL_SUPPORT.md).
+> The public API is stable from 1.0: see
+> [docs/COMPATIBILITY.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/COMPATIBILITY.md).
 
 | Surface | Name |
 |---------|------|
@@ -112,7 +116,9 @@ its items. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/blob/m
 - Real CoRIM and CoSWID schemas: [docs/CORIM_SUPPORT.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CORIM_SUPPORT.md).
 - CBOR encoding and strict decoding with byte offsets in errors; duplicate map
   keys, invalid UTF-8 and excessive nesting are rejected.
-- Annotated EDN output with field names from the schema.
+- Annotated EDN output with field names from the schema. A member is named by its
+  key or its `&(name: 0)` label; with `comment_names=True` (`--comment-names`) a
+  trailing comment (`0: tstr ; name`) names it instead.
 - CBOR ↔ JSON conversion. `typed=True` keeps byte strings, tags and
   non-string map keys (such as the integer keys in CoRIM maps), so typed JSON
   converts back to the same CBOR data. Without it, map keys become JSON strings,
@@ -164,7 +170,9 @@ its items. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/blob/m
 | [docs/CANONICAL_AND_JSON.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CANONICAL_AND_JSON.md) | Canonical encoding and JSON round-trips |
 | [docs/EDN_FORMATTING_IMPROVEMENTS.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/EDN_FORMATTING_IMPROVEMENTS.md), [docs/IANA_ANNOTATIONS_STATUS.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/IANA_ANNOTATIONS_STATUS.md) | What the annotated EDN looks like, and registered parameters |
 | [docs/](https://github.com/sahebbiswas/cddl_verifier/tree/main/docs) | Tag notation and other notes |
-| [docs/CDDL_AST_DESIGN.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CDDL_AST_DESIGN.md) | Contributor design: CDDL AST, parser and migration plan |
+| [docs/COMPATIBILITY.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/COMPATIBILITY.md) | What the 1.x compatibility promise covers, and what it does not; deprecation and Python version policy |
+| [docs/BENCHMARKS.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/BENCHMARKS.md) | Benchmarks and profiling: how to run them and what they found |
+| [docs/CDDL_AST_DESIGN.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CDDL_AST_DESIGN.md) | Contributor design: CDDL AST, parser and how it was introduced |
 | [TESTING.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/TESTING.md) | Running and writing tests, CI setup |
 | [CONTRIBUTING.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/CONTRIBUTING.md) | Pull request checklist, versioning and releases |
 | [Releases](https://github.com/sahebbiswas/cddl_verifier/releases) | Release notes |
@@ -188,8 +196,10 @@ Every pull request merged to `main` bumps the version in
 following [Semantic Versioning 2.0.0](https://semver.org/): a patch bump for
 fixes and docs, a minor bump for new features, and a major bump only for an
 incompatible change to the public API (`cddl_verifier`, `cddl_verifier.cbor`,
-`cddl_verifier.json_codec` and the `cddl-verify` CLI). While the major version
-is `0`, a breaking change is a minor bump. Releases are cut from `main` when it
+`cddl_verifier.json_codec` and the `cddl-verify` CLI). What is covered, and what
+is not (message wording, EDN layout, internal modules), is in
+[docs/COMPATIBILITY.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/COMPATIBILITY.md).
+Releases are cut from `main` when it
 is stable, so not every version is published. Each release's notes are on the
 [GitHub releases page](https://github.com/sahebbiswas/cddl_verifier/releases);
 there is no changelog file. See

@@ -1,6 +1,6 @@
 # CDDL AST and migration design
 
-Status: **accepted** ([#87](https://github.com/sahebbiswas/cddl_verifier/issues/87)).
+Status: **accepted and implemented** ([#87](https://github.com/sahebbiswas/cddl_verifier/issues/87); phases A to C shipped before 1.0, and the sections below are kept as the design record).
 This document is for contributors. It defines the typed syntax tree that
 [#69](https://github.com/sahebbiswas/cddl_verifier/issues/69) introduces, the
 rules every parser and consumer must follow, and the order in which the current
@@ -49,7 +49,7 @@ represent the structure, so each consumer guesses it again:
 - Formatting changes meaning. A member split over two lines, a comment between
   tokens, or `{` on the next line all go down different code paths.
 - Malformed CDDL is accepted silently (see the "lenient" note in
-  [API.md](API.md#validatorschema)).
+  [CDDL_SUPPORT.md](CDDL_SUPPORT.md#schema-syntax)).
 
 ## 2. Goals and non-goals
 
@@ -377,7 +377,7 @@ As implemented in #70 (`_cddl/resolve.py`):
 |---------|--------|------|
 | `validate`, `Validator`, `ValidationResult`, `SchemaError` | public | Unchanged, except that schema rejection becomes stricter (below). |
 | `cddl-verify` CLI | public | Unchanged. |
-| `CDDLParser`, `CBORAnalyzer`, `EDNGenerator` | internal | Can change. Their dict attributes stay until the last consumer has moved (Phase C), because the tests and EDN generator use them. |
+| `CDDLParser`, `CBORAnalyzer`, `EDNGenerator` | internal | Can change in any release. |
 | `_cddl` package | internal | New. Not exported from `cddl_verifier`. |
 
 **Stricter schema parsing is a behaviour change.** Today

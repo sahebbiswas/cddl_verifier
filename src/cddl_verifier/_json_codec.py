@@ -452,7 +452,9 @@ def cbor_file_to_json_file(cbor_path: str, json_path: str,
         json_path: Path to output JSON file
         typed: If True, preserve CBOR types
         pretty: If True, pretty-print JSON
-    
+
+    The JSON file is written as UTF-8, whatever the locale.
+
     Example:
         >>> cbor_file_to_json_file('data.cbor', 'data.json', pretty=True)
     """
@@ -461,7 +463,7 @@ def cbor_file_to_json_file(cbor_path: str, json_path: str,
     
     json_str = cbor_to_json(cbor_bytes, typed=typed, pretty=pretty)
     
-    with open(json_path, 'w') as f:
+    with open(json_path, 'w', encoding='utf-8') as f:
         f.write(json_str)
 
 
@@ -477,10 +479,12 @@ def json_file_to_cbor_file(json_path: str, cbor_path: str,
         annotations: Read ``"$cbor"`` objects as type annotations (see
             :func:`json_to_cbor`); False reads the JSON as plain data
 
+    The JSON file is read as UTF-8, whatever the locale.
+
     Example:
         >>> json_file_to_cbor_file('data.json', 'data.cbor', canonical=True)
     """
-    with open(json_path, 'r') as f:
+    with open(json_path, 'r', encoding='utf-8') as f:
         json_str = f.read()
     
     cbor_bytes = json_to_cbor(json_str, canonical=canonical, annotations=annotations)
@@ -565,7 +569,7 @@ Examples:
                 sys.stdout.write(json_str)
                 sys.stdout.write('\n')
             else:
-                with open(args.output, 'w') as f:
+                with open(args.output, 'w', encoding='utf-8') as f:
                     f.write(json_str)
             
             if args.output != '-':
@@ -576,7 +580,7 @@ Examples:
             if args.input == '-':
                 json_str = sys.stdin.read()
             else:
-                with open(args.input, 'r') as f:
+                with open(args.input, 'r', encoding='utf-8') as f:
                     json_str = f.read()
             
             # Convert to CBOR
