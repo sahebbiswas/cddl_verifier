@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Sequence, Tuple, Union
 
-from . import _analyzer
+from . import _analyzer, _edn
 from ._cddl import parse_cddl
 from ._cddl.modules import ModuleLoader, link
 from ._cddl.resolve import resolve_all
@@ -257,7 +257,7 @@ class Validator:
         if isinstance(data, _BYTES_TYPES):
             data = CBOR.loads(bytes(data), keep_encoding=True)
         root = root_type if root_type is not None else self.default_root_type
-        generator = _analyzer.EDNGenerator(self._parser, edn_format=edn_format)
+        generator = _edn.EDNGenerator(self._parser, edn_format=edn_format)
         return generator.generate(data, root, annotate)
 
 

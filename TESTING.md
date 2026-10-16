@@ -217,7 +217,8 @@ the example in `TestRegressions` (with the issue number) so it stays fixed.
 │   ├── json_codec.py       ← public CBOR ↔ JSON conversion
 │   ├── cli.py, __main__.py ← `cddl-verify` / `python -m cddl_verifier`
 │   ├── _api.py             ← validate()/Validator implementation
-│   ├── _analyzer.py        ← CDDLParser tables, CBORAnalyzer (validation), EDNGenerator (internal)
+│   ├── _analyzer.py        ← CDDLParser tables, CBORAnalyzer (validation) (internal)
+│   ├── _edn.py, _decode.py ← EDNGenerator; SimpleCBORDecoder (internal, #83)
 │   ├── _cli.py, _log.py    ← the `cddl-verify` command; its colours and stderr logging (internal, #83)
 │   ├── _diagnostics.py     ← Diagnostic data model and renderers (internal)
 │   ├── _cbor.py            ← CBOR encoder/decoder (internal)
@@ -291,7 +292,7 @@ class TestMyFeature(unittest.TestCase):
 ```
 
 Tests of internals import from the private modules, for example
-`from cddl_verifier._analyzer import CDDLParser`. The command-line functions (`main`, `load_cddl`, `load_cbor`) live in `_cli`; `_analyzer` still hands them out under the old import path.
+`from cddl_verifier._analyzer import CDDLParser`. The command-line functions (`main`, `load_cddl`, `load_cbor`) live in `_cli`, `EDNGenerator` in `_edn` and `SimpleCBORDecoder` in `_decode`; `_analyzer` still hands them out under the old import path.
 
 pytest discovers any `TestCase` subclass automatically; no registration in a
 `run_tests()` function is needed.
