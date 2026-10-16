@@ -180,6 +180,19 @@ person = {
 }
 ```
 
+### Member names
+
+A member is named by its key: a bareword (`name: tstr`), the label of `&(name: 0)`, or the
+key's spelling (`0`, `"x"`). The name appears in error messages (`Field 'name' ...`) and in EDN
+annotations. Comments carry no meaning in CDDL (RFC 8610), so a trailing comment does not rename
+a member.
+
+Some schemas document their members that way: `0: tstr ; name`. For those, turn on
+`comment_names=True` (`Validator(schema, comment_names=True)`, `--comment-names` on the command
+line): the trailing comment on the member's line (and, in a line that holds only comments, none)
+then names it, so member `0` above is "name". A member without a comment keeps its key's name.
+Before 0.36.0 this was the only behaviour ([#108](https://github.com/sahebbiswas/cddl_verifier/issues/108)).
+
 ## Supported primitive types
 
 | CDDL type | Python type | Notes |

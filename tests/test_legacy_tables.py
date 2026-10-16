@@ -38,7 +38,7 @@ class TestMaps(unittest.TestCase):
 
     def test_key_forms(self):
         p = CDDLParser('m = {\n  a: tstr,\n  ? 1: uint ; one\n  "s": int,\n'
-                       '  ? &(reg: 5) => bstr,\n  7 => bool\n}')
+                       '  ? &(reg: 5) => bstr,\n  7 => bool\n}', comment_names=True)
         self.assertEqual(as_text(p.types['m']), {'type': 'map', 'fields': {
             'a': field('a', 'tstr'),
             1: field('one', 'uint', optional=True),
@@ -49,7 +49,7 @@ class TestMaps(unittest.TestCase):
         self.assertEqual(p.registered_params, {5: 'reg'})
 
     def test_multi_line_members_and_comments(self):
-        p = CDDLParser("m = {\n  &(name: 0)\n    => tstr,\n  1:\n    uint ; count\n}")
+        p = CDDLParser("m = {\n  &(name: 0)\n    => tstr,\n  1:\n    uint ; count\n}", comment_names=True)
         self.assertEqual(as_text(p.types['m']['fields']), {
             0: field('name', 'tstr', registered=True),
             1: field('count', 'uint'),

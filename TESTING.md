@@ -15,6 +15,7 @@ and the standard-library **unittest** runner with no code changes required.
 | `tests/test_type_query.py` | `_cddl/query.py`: questions about type expressions answered from nodes (#111, #177); dotted names, decoded `.regexp`, byte literals, controls on literals, parenthesized types (#118), choices from groups (#119) |
 | `tests/test_node_lookup.py` | Name lookup on nodes (#176): `get_type` gives the same definition for a name or expression as text and as a node, over the bundled schemas; `cbor_inner_type` is a node; `_peel_tagged_primitive` takes and returns nodes; root aliases and tags; embedded CBOR |
 | `tests/test_type_nodes.py` | Type expressions as nodes (#175, #177): no table holds text over the bundled schemas and the conformance probes, a table type prints and parses back to itself, `as_type`, `resolve_alias`, `alias_node`, prelude renaming, and what `query` hands back |
+| `tests/test_comment_names.py` | Members are named by key, bareword or label by default; a trailing comment names one only with `comment_names` / `--comment-names` (#108) |
 | `tests/test_legacy_tables.py` | `CDDLParser` tables built from the AST; inline maps (#100), inline arrays (#133) and `key => type` members (#104) |
 | `tests/test_simple_cbor.py` | CBOR encode/decode, diagnostics, round-trips |
 | `tests/test_cbor_builder.py` | Iterative construction, nested access, merge |

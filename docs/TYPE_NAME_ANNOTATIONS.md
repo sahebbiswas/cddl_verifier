@@ -4,6 +4,14 @@
 
 EDN output now includes CDDL type names as inline comments on opening braces/brackets, making it easy to understand the structure at every level.
 
+## Where member names come from
+
+The names in the field annotations (`/ id /`) are the member's key: a bareword
+(`id: uint`), the label of `&(id: 0)`, or the key's spelling. A trailing comment
+(`0: tstr ; id`) names a member only when comment names are on:
+`Validator(schema, comment_names=True)`, or `--comment-names` on the command line
+([CDDL_SUPPORT.md](CDDL_SUPPORT.md#member-names)).
+
 ## Examples
 
 ### Maps with Type Headers

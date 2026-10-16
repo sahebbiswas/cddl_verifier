@@ -21,7 +21,9 @@ class EDNGenerator:
 
     EDN is the human-readable form of CBOR defined in RFC 8949 §8.  This
     generator enriches plain EDN with field-name comments derived from the
-    CDDL schema.
+    CDDL schema: a member is named by its key, a bareword or its ``&(name: 0)``
+    label, or by its trailing comment when the schema was parsed with
+    ``comment_names=True`` (#108).
 
     EDN format options
     ------------------

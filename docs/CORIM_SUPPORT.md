@@ -61,7 +61,8 @@ comid-map = {
 
 **Support:** ✓ FULL
 - Strips comments during parsing
-- Uses comments as field name hints
+- Members are named by their key or `&(name: 0)` label; a trailing comment names a member only with
+  `--comment-names` / `comment_names=True` ([CDDL_SUPPORT.md](CDDL_SUPPORT.md#member-names))
 
 ### ✓ CBOR Tags
 CoRIM uses CBOR tags with `#6.xxx(type)` notation.
