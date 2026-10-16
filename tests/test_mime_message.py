@@ -16,10 +16,12 @@ from cddl_verifier.cbor import CBORTag
 
 
 def bad(text):
+    """The reason *text* is not a MIME message, or ``None``."""
     return mime.message_error(text)
 
 
 def multipart(boundary, parts, close=True, header="Content-Type: multipart/mixed; boundary=%s"):
+    """A multipart message with these *parts* (each one's text); *close* adds the closing delimiter."""
     out = (header % (boundary if boundary.isalnum() else '"%s"' % boundary)) + "\r\n\r\n"
     for part in parts:
         out += f"--{boundary}\r\n{part}\r\n"

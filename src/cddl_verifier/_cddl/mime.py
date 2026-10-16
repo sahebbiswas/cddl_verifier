@@ -47,6 +47,7 @@ _SINGLE = ('mime-version', 'content-type', 'content-transfer-encoding')
 
 
 def _bad_chars(line: str) -> Optional[str]:
+    """What is wrong with the characters of a header line (a NUL), or ``None``."""
     if '\x00' in line:
         return "a NUL character"
     return None
@@ -118,6 +119,7 @@ def _split_fields(lines: List[str]) -> Tuple[Optional[List[Tuple[str, str]]], in
 
 
 def _parameters(rest: str) -> dict:
+    """The ``attribute=value`` parameters of a Content-Type, by lower-case name; quoted values unquoted."""
     found = {}
     for name, value in _PARAMETER.findall(rest):
         if value.startswith('"'):
@@ -127,6 +129,9 @@ def _parameters(rest: str) -> dict:
 
 
 def _entity(text: str, depth: int, *, needs_fields: bool) -> Optional[str]:
+    """Why *text* is not a MIME entity (a message or a multipart part), or ``None``.
+
+    *depth* is how many multiparts it is inside; a message needs a header field, a part does not."""
     lines = text.split('\n')
     lines = [line[:-1] if line.endswith('\r') else line for line in lines]
     fields, used, problem = _split_fields(lines)
@@ -166,6 +171,7 @@ def _entity(text: str, depth: int, *, needs_fields: bool) -> Optional[str]:
 
 
 def _multipart(boundary: Optional[str], body_lines: List[str], depth: int) -> Optional[str]:
+    """Why the body of a multipart entity is not one (boundary, delimiters, parts), or ``None``."""
     if depth >= MAX_DEPTH:
         return f"multipart entities are nested more than {MAX_DEPTH} levels"
     if boundary is None:

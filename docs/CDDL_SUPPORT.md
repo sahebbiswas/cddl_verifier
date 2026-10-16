@@ -231,7 +231,7 @@ defines it ([#130](https://github.com/sahebbiswas/cddl_verifier/issues/130)):
 | `integer` | `int / bigint` | any integer, of any size |
 | `unsigned` | `uint / biguint` | any non-negative integer, of any size |
 
-The content of tags 0, 24, 32, 33, 34 and 35 is checked for what it means, not
+The content of tags 0, 24, 32, 33, 34, 35 and 36 is checked for what it means, not
 only for its type, wherever the tag is matched, however the schema writes it
 (`tdate`, `#6.0(tstr)`, a field, an element, a choice) (#169):
 
