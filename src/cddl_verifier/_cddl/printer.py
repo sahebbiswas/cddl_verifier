@@ -12,11 +12,22 @@ from .ast import (AnyItem, Array, BytesLit, ChoiceFrom, Control, FloatLit, Group
 
 
 def format_node(node) -> str:
-    """Return canonical CDDL for any AST node."""
+    """Return canonical CDDL for any AST node.
+
+    A node is immutable, so its text is written once and kept on the node (not a field: equality,
+    hashing and ``repr`` ignore it). The validator asks for the same few nodes' text for every
+    item it checks (#85).
+    """
     fn = _FORMATTERS.get(type(node))
     if fn is None:
         raise TypeError(f"not a CDDL AST node: {type(node).__name__}")
-    return fn(node)
+    try:
+        return node.__dict__['_text']
+    except KeyError:
+        pass
+    text = fn(node)
+    node.__dict__['_text'] = text
+    return text
 
 
 def _args(args) -> str:

@@ -27,6 +27,9 @@ def _prelude_tables() -> LegacyTables:
     return LegacyTables(prelude, resolve(prelude))
 
 
+_TYPE_MEMO_LIMIT = 20_000  # nodes whose type definition get_type remembers (#85)
+
+
 class CDDLParser:
     """Parse a CDDL schema and expose its type structure for validation and EDN generation.
 
@@ -109,10 +112,13 @@ class CDDLParser:
         self._choice_checker = None  # a CBORAnalyzer, made on first use (#74)
         self.resolved = None  # ResolvedSchema (#70)
         self._computed: Dict[Any, Any] = {}  # computed literals by node (RFC 9165)
+        self._type_memo: Optional[Dict[int, Tuple[Any, Optional[Dict]]]] = None
         self.parse()
 
         # Add built-in CDDL primitive types
         self._add_builtin_types()
+        # The tables are complete: what get_type finds for a node no longer changes (#85)
+        self._type_memo = {}
         
         # Note: CBOR tag definitions like tagged-unsigned-corim-map = #6.501(...)
         # are parsed automatically as type aliases
@@ -564,7 +570,19 @@ class CDDLParser:
         """
         if not type_name:
             return None
+        if cbor_data is None and self._type_memo is not None and isinstance(type_name, Type):
+            # Without data to choose a type by, the answer depends on the node alone (#85)
+            hit = self._type_memo.get(id(type_name))
+            if hit is not None and hit[0] is type_name:
+                return hit[1]
+            found = self._find_type(type_name, None)
+            if len(self._type_memo) >= _TYPE_MEMO_LIMIT:
+                self._type_memo.clear()
+            self._type_memo[id(type_name)] = (type_name, found)
+            return found
+        return self._find_type(type_name, cbor_data)
 
+    def _find_type(self, type_name, cbor_data: Any) -> Optional[Dict]:
         node = as_type(type_name)
         name = bare_name(node)
         label = _label(type_name)

@@ -326,19 +326,31 @@ Node = Union[Schema, Rule, Type, Type1, Group, GroupChoice, GroupEntry,
 
 # ------------------------------------------------------------------ helpers
 
+_CHILD_FIELDS: dict = {}
+
+
+def _child_fields(cls) -> tuple:
+    names = _CHILD_FIELDS.get(cls)
+    if names is None:
+        names = _CHILD_FIELDS[cls] = tuple(
+            f.name for f in fields(cls) if f.name not in ('span', 'source', 'comment'))
+    return names
+
+
 def walk(node) -> Iterator:
     """Yield *node* and all its descendants, depth first, in source order."""
-    yield node
-    for f in fields(node):
-        if f.name in ('span', 'source', 'comment'):
-            continue
-        child = getattr(node, f.name)
-        if isinstance(child, tuple):
-            for item in child:
-                if _is_node(item):
-                    yield from walk(item)
-        elif _is_node(child):
-            yield from walk(child)
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        yield current
+        children = []
+        for name in _child_fields(type(current)):
+            child = getattr(current, name)
+            if isinstance(child, tuple):
+                children.extend(item for item in child if _is_node(item))
+            elif _is_node(child):
+                children.append(child)
+        stack.extend(reversed(children))
 
 
 def _is_node(value) -> bool:

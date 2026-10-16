@@ -19,6 +19,8 @@ and the standard-library **unittest** runner with no code changes required.
 | `tests/test_simple_cbor.py` | CBOR encode/decode, diagnostics, round-trips |
 | `tests/test_cbor_builder.py` | Iterative construction, nested access, merge |
 | `tests/test_canonical_and_json.py` | Canonical encoding, JSON ↔ CBOR conversion |
+| `tests/test_benchmark.py` | `scripts/benchmark.py` (#85): every case builds, checks its own result and times; names, selection, the table, `--json`, `--compare`, `--fail-above`, `--list`, `--profile` |
+| `tests/test_validation_caches.py` | What is remembered about schema nodes (#85) changes no answer: `ast.walk` order, the text kept on a node, the type-definition and check memos and their bounds |
 | `tests/test_float_serialization.py` | Preferred serialization of floats in the default mode (#96): shortest widths equal to canonical mode, `float_width` for each width, refused values, decoded widths kept with `keep_encoding`, agreement with the `float16`/`float32`/`float64` checks |
 | `tests/test_deterministic_encoding.py` | RFC 8949 §4.2 deterministic encoding golden vectors, Appendix A encoder vectors and float-width boundaries |
 | `tests/test_rfc8949_conformance.py` | RFC 8949 decode vectors, non-preferred encodings, malformed/truncated inputs and strict single-item rejection |
@@ -175,6 +177,12 @@ When a divergence is new, decide who is right from the RFC (not from either
 implementation), fix this library if it is wrong or open an issue, and add an
 entry; add a `fixture` for a divergence worth pinning.
 
+### Benchmarks
+
+`python scripts/benchmark.py` times parsing, resolution, validation, regular expressions, CBOR
+and EDN at two sizes each and reports the growth; `--compare` and `--profile` find what changed
+and where the time goes. See [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+
 ## Property-based testing
 
 `tests/test_properties.py` uses [Hypothesis](https://hypothesis.readthedocs.io)
@@ -239,7 +247,7 @@ the example in `TestRegressions` (with the issue number) so it stays fixed.
 ├── pyproject.toml          ← package metadata + pytest configuration
 ├── cddl-schemas/, test-data/  ← sample schemas and CBOR used by the tests
 ├── docs/                   ← guides, the conformance matrix and its inputs (conformance.json, divergences.json)
-├── scripts/                ← render_conformance.py, render_corpus.py, build_corpus.py, differential.py
+├── scripts/                ← render_conformance.py, render_corpus.py, build_corpus.py, differential.py, benchmark.py
 └── tests/
     ├── conftest.py         ← imports the installed package, or falls back to src/
     ├── __init__.py

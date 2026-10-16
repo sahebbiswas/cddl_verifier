@@ -432,11 +432,19 @@ class _Nfa:
         return entry
 
 
+_CACHE_STATES = 200_000  # states held by the remembered steps of one pattern
+
+
 class _Compiled:
     def __init__(self, tree):
         self.nfa = _Nfa()
         self.match = self.nfa.add()
         self.start = self.nfa.build(tree, self.match)
+        # Steps already taken, by (set of live states, character): a text repeats the same few
+        # (#85). The cost is stored with the step, so the budget counts as if it were worked out.
+        self._transitions: dict = {}
+        self._cached = 0
+        self._start = None
 
     def closure(self, seeds, live: set) -> int:
         """Add to *live* every state reachable from *seeds* by epsilon moves.
@@ -456,29 +464,47 @@ class _Compiled:
         return work
 
     def fullmatch(self, text: str) -> bool:
-        classes = self.nfa.classes
-        live: set = set()
-        steps = self.closure([self.start], live)
+        if self._start is None:
+            live: set = set()
+            work = self.closure([self.start], live)
+            self._start = (frozenset(live), work)
+        live, steps = self._start
+        moves_from = self._transitions
         for char in text:
             if not live:
                 return False
             steps += len(live)
             if steps > MATCH_BUDGET:
                 raise self._limit(text)
-            code = ord(char)
-            moves = []
-            for state in live:
-                cls = classes[state]
-                if cls is not None:
-                    starts, ends, nxt = cls
-                    i = bisect_right(starts, code) - 1
-                    if i >= 0 and code <= ends[i]:
-                        moves.append(nxt)
-            live = set()
-            steps += self.closure(moves, live)
+            key = (live, char)
+            step = moves_from.get(key)
+            if step is None:
+                step = self._step(live, ord(char))
+                if self._cached >= _CACHE_STATES:
+                    moves_from.clear()
+                    self._cached = 0
+                moves_from[key] = step
+                self._cached += len(live) + len(step[0])
+            live, work = step
+            steps += work  # a remembered step costs what it cost the first time
             if steps > MATCH_BUDGET:  # also after the last character: no verdict past the budget
                 raise self._limit(text)
         return self.match in live
+
+    def _step(self, live, code: int):
+        """The states reached from *live* by the character *code*, and the work that took."""
+        classes = self.nfa.classes
+        moves = []
+        for state in live:
+            cls = classes[state]
+            if cls is not None:
+                starts, ends, nxt = cls
+                i = bisect_right(starts, code) - 1
+                if i >= 0 and code <= ends[i]:
+                    moves.append(nxt)
+        reached: set = set()
+        work = self.closure(moves, reached)
+        return frozenset(reached), work
 
     @staticmethod
     def _limit(text: str) -> XsdRegexLimit:

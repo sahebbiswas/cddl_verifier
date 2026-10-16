@@ -15,6 +15,9 @@ from .._cddl.typeexpr import as_type, bare_name
 from .._schema import _name_type
 from .support import _CheckError, _FLOAT_WIDTHS, _tuple_hint
 
+_NODE_TYPES = (Type,)
+_MEMO_LIMIT = 20_000  # entries per table; a validation meets far fewer distinct type nodes
+
 
 class PrimitivesMixin:
     """Primitive types, ranges and literals."""
@@ -205,6 +208,26 @@ class PrimitivesMixin:
         alias = self.cddl.alias_node(name)
         return alias is None or alias == expr  # not redefined
 
+    def _remembered(self, kind: str, expr, compute):
+        """``compute(expr)``, kept for as long as the analyzer lives (#85).
+
+        What the checks work out about a schema node (how it is checked, its text) does not depend
+        on the data, and the same few nodes are met again for every item of an array. The key is
+        the node itself (by identity, the entry holds it so the identity stays valid); anything
+        that is not a node, and a table that has grown large, is not kept.
+        """
+        if not isinstance(expr, _NODE_TYPES):
+            return compute(expr)
+        table = self._memo.setdefault(kind, {})
+        hit = table.get(id(expr))
+        if hit is not None and hit[0] is expr:
+            return hit[1]
+        value = compute(expr)
+        if len(table) >= _MEMO_LIMIT:
+            table.clear()
+        table[id(expr)] = (expr, value)
+        return value
+
     def _checked_as_whole(self, expr) -> bool:
         """True for a type that only :meth:`_check_value` can check: an inline
         choice (``uint / tstr``), a type socket (``$name``), a choice from a
@@ -213,6 +236,9 @@ class PrimitivesMixin:
 
         *expr* may be ``None`` or empty: no type.
         """
+        return self._remembered('whole', expr, self._checked_as_whole_uncached)
+
+    def _checked_as_whole_uncached(self, expr) -> bool:
         if not expr:
             return False
         expr = as_type(expr)

@@ -90,6 +90,8 @@ class CBORAnalyzer(ReportingMixin, ValidationMixin, StructuresMixin, ContainersM
         self._locations_tried = False
         # One frame per byte string whose CBOR is being checked, innermost last (#154)
         self._embedded_frames: List[_EmbeddedFrame] = []
+        # What was worked out about schema nodes, by kind (``_remembered``, #85)
+        self._memo: Dict[str, Dict[int, Any]] = {}
 
 
 def __getattr__(name):
