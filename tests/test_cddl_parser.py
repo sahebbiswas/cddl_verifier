@@ -387,6 +387,9 @@ class TestErrors(unittest.TestCase):
         ("x<A B> = int", "expected ',' or '>'", 1, 5),
         ("r = (a: int) .size 2", "can't be used as a type", 1, 5),
         ("r = { a: uint ?, }", "expected a type, found ','", 1, 16),
+        # a key that is a type needs '=>', not ':' (#224)
+        ("r = { &(a: 0): bool }", "expected '=>' after the key '&(a: 0)'", 1, 14),
+        ("r = { 1 / 2: tstr }", "expected '=>' after the key '1 / 2'", 1, 12),
     ]
 
     def test_errors_report_position(self):
@@ -398,6 +401,12 @@ class TestErrors(unittest.TestCase):
                 self.assertIn(fragment, err.message)
                 self.assertEqual((err.line, err.column), (line, col), err)
                 self.assertTrue(str(err).startswith(f's.cddl:{line}:{col}: '), str(err))
+
+    def test_colon_after_bare_names_and_literals_still_parses(self):
+        for text in ("r = { tstr: int, uint: bool }", "r = { 1: tstr, \"a\": int }",
+                     "r = { &(a: 0) => bool, (tstr / uint) => int }"):
+            with self.subTest(text=text):
+                parse_cddl(text)
 
     def test_error_is_a_schema_error(self):
         with self.assertRaises(SchemaError):

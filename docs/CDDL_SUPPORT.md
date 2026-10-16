@@ -57,7 +57,8 @@ item is an error that names the item and the offset (#77).
 `uint` position `n` is the bit worth `2**n`; for a `bstr` the first byte is
 the least significant, so position 8 is the lowest bit of the second byte.
 The error names the bit that is set. An argument that is not bit positions is
-a schema error. A name from an import that is not loaded cannot be read, so it
+a schema error; a group name there is reported with the `&name` form that
+`.bits` takes (#224). A name from an import that is not loaded cannot be read, so it
 is not enforced; the unloaded-module warning says so.
 
 A type takes one control, as RFC 8610 says. Chained controls such as
@@ -83,6 +84,7 @@ schema.cddl:4:12: undefined name 'tsrt'; did you mean 'tstr'?
 | A name is defined once with `=`; alternatives are added with `/=` (types) or `//=` (groups). Writing the same rule twice is allowed | `a = 1` then `a = 2` |
 | `$name` is a type socket and `$$name` a group socket; either may have no alternatives | `$$ext /= int`, `a: $$ext` |
 | A group is not used as a type, and a map entry without a key is a group | `a: pii` where `pii = (x: int)`; `{ uint }` |
+| A `:` follows only a bare name or a literal key; a key that is a type takes `=>` | `{ &(a: 0): bool }` (write `=>`) |
 | `~x` names a map, array or tag; `&x` names a group | `~uint`, `&tstr` |
 | A generic is given as many arguments as it has parameters | `pair<int>` where `pair<A, B> = [A, B]` |
 | Control operators are those of RFC 8610, RFC 9165 and RFC 9741 | `tstr .sise 3` |

@@ -114,6 +114,25 @@ _ARGUMENT_CHECKED = frozenset({'bits', 'regexp', 'abnf', 'abnfb', 'plus', 'cat',
 TYPE, GROUP = 'type', 'group'
 
 
+def _group_hint(name: str, control: Optional[str]) -> str:
+    """How to use the group *name* where a type is needed, given the control it follows.
+
+    A wrapper makes a map or an array and ``&name`` an enumeration of the group's
+    values, so only the forms the control's argument can take are suggested (#224).
+    """
+    wrap = f"wrap it as '{{ {name} }}' or '[ {name} ]'"
+    if control is None:
+        return wrap
+    if control == 'bits':       # '.bits' takes an enumeration (RFC 8610 3.8.5)
+        return f"use '&{name}' for the bit positions it lists"
+    argument = _CONTROL_KINDS.get(control, (None, None))[1]
+    if argument is None:
+        return f"{wrap}, or use '&{name}' for its values"
+    if argument == frozenset({'array'}):
+        return f"wrap it as '[ {name} ]'"
+    return f"use '&{name}' for its values"
+
+
 class RuleDef:
     """Everything the schema says about one name.
 
@@ -576,19 +595,19 @@ class _Resolver:
                 self.check_range(node, scope)
         elif isinstance(node, Control):
             self.collecting(self.check_type1, node.target, scope)
-            self.collecting(self.check_type2, node.arg, scope)
+            self.collecting(self.check_type2, node.arg, scope, node.op)
             if len(self.errors) == before:  # the target and the argument mean something
                 self.check_control(node, scope)
         else:
             self.check_type2(node, scope)
 
-    def check_type2(self, node, scope):
+    def check_type2(self, node, scope, control: Optional[str] = None):
+        """Check one type2; *control* is the control whose argument it is, if it is one."""
         if isinstance(node, Name):
             rule = self.reference(node.name, node.args, node.span, scope, TYPE)
             if rule is not None and rule.kind == GROUP:
-                raise self.error(f"'{node.name}' is a group and cannot be used as a "
-                                 f"type; wrap it as '{{ {node.name} }}' or "
-                                 f"'[ {node.name} ]'", node.span)
+                raise self.error(f"'{node.name}' is a group and cannot be used as a type; "
+                                 f"{_group_hint(node.name, control)}", node.span)
             self.check_args(node.args, scope)
             if node.args and rule is not None and rule.kind == TYPE:
                 self.check_instance_controls(node, scope)
