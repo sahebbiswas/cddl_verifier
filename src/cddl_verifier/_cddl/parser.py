@@ -65,6 +65,7 @@ class Parser:
 
     def error(self, expected_msg: str, expected: Tuple[str, ...] = (),
               hint: Optional[str] = None) -> CDDLSyntaxError:
+        """A syntax error at the current token: ``<expected>, found <token>`` and any *hint*."""
         t = self.tok
         found = describe(t.kind, t.text)
         span = Span(t.start, max(t.end, t.start + 1)) if t.kind != 'EOF' else Span(t.start, t.start)
