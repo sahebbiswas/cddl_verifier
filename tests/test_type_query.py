@@ -9,6 +9,7 @@ the behaviour that came with it: dotted names, decoded ``.regexp`` strings,
 byte-string literals, controls on literals and choice-aware primitive checks.
 """
 
+import importlib
 import inspect
 import re
 import sys
@@ -131,8 +132,12 @@ class TestQuery(unittest.TestCase):
     def test_no_regex_over_type_text_in_analyzer(self):
         # No regular expression is run over type text; .regexp patterns are
         # matched by xsd_regex (#182).
-        source = inspect.getsource(_analyzer)
-        calls = re.findall(r"\bre\.(\w+)\(", source)
+        import pkgutil
+        from cddl_verifier import _validator
+        sources = [inspect.getsource(_analyzer)]
+        for info in pkgutil.iter_modules(_validator.__path__):
+            sources.append(inspect.getsource(importlib.import_module(f"cddl_verifier._validator.{info.name}")))
+        calls = re.findall(r"\bre\.(\w+)\(", "\n".join(sources))
         self.assertEqual(set(calls), set())
 
 
