@@ -220,7 +220,7 @@ defines it ([#130](https://github.com/sahebbiswas/cddl_verifier/issues/130)):
 | `b64url` | `#6.33(tstr)` | tag 33 around base64url text, without padding |
 | `b64legacy` | `#6.34(tstr)` | tag 34 around base64 text, with padding |
 | `regexp` | `#6.35(tstr)` | tag 35 around a regular expression |
-| `mime-message` | `#6.36(tstr)` | tag 36 around a text string (not parsed as MIME) |
+| `mime-message` | `#6.36(tstr)` | tag 36 around a MIME message (RFC 5322, RFC 2045, RFC 2046) |
 | `encoded-cbor` | `#6.24(bstr)` | tag 24 around a byte string holding one well-formed CBOR item |
 | `eb64url`, `eb64legacy`, `eb16` | `#6.21(any)` … `#6.23(any)` | that tag around any value |
 | `cbor-any` | `#6.55799(any)` | tag 55799 around any value |
@@ -231,7 +231,7 @@ defines it ([#130](https://github.com/sahebbiswas/cddl_verifier/issues/130)):
 | `integer` | `int / bigint` | any integer, of any size |
 | `unsigned` | `uint / biguint` | any non-negative integer, of any size |
 
-The content of tags 0, 24, 32, 33, 34 and 35 is checked for what it means, not
+The content of tags 0, 24, 32, 33, 34, 35 and 36 is checked for what it means, not
 only for its type, wherever the tag is matched, however the schema writes it
 (`tdate`, `#6.0(tstr)`, a field, an element, a choice) (#169):
 
@@ -251,8 +251,17 @@ only for its type, wherever the tag is matched, however the schema writes it
   `\k<name>` are read the Python way. This approximates the PCRE and ECMA-262
   the RFC names; a construct only one of them has is rejected.
 - Tag 24: the bytes decode as exactly one CBOR item.
-- Tag 36 is shape-only: the text is not parsed as a MIME message
-  ([#187](https://github.com/sahebbiswas/cddl_verifier/issues/187)).
+- Tag 36: a MIME message. The text is one or more header fields (`name: value`, folded
+  lines allowed, no continuation before the first field, lines of at most 998 bytes, no NUL
+  and no bare CR), then optionally an empty line and a body. `MIME-Version`, when present, is
+  `1.0`; `Content-Type` is `type/subtype` with `attribute=value` parameters; `Content-Transfer-Encoding`
+  is one token; comments are allowed in those; none of the three may repeat. A `multipart` type
+  needs a `boundary` of 1 to 70 permitted characters, the body needs the opening and closing
+  delimiters, and every part is checked the same way (a part may have no header fields), nested
+  up to 10 levels. Lines may end in CRLF or in LF, and headers may hold UTF-8 (RFC 6532). The body
+  is not decoded: `base64` and `quoted-printable` content, `message/rfc822` and the line-length
+  limit of 7bit bodies are not checked. `36("x")` is rejected;
+  `36("Content-Type: text/plain\r\n\r\nhi")` is accepted.
 
 Content of the wrong type (a number under tag 0) is reported as before.
 

@@ -21,15 +21,22 @@ tag     content
         ``(?<name>...)`` and ``\\k<name>`` are written the Python way, which
         approximates PCRE and ECMA-262 but does not accept every construct
         of either
+36      a MIME message (RFC 5322, RFC 2045, RFC 2046): header fields, then
+        optionally an empty line and a body; ``MIME-Version``, ``Content-Type``
+        and ``Content-Transfer-Encoding`` well formed and not repeated; a
+        ``multipart`` body with its boundary and every part checked too (see
+        :mod:`._cddl.mime` for what is and is not checked)
 ======  ===============================================================
 
-Tag 36 (a MIME message) has no check beyond being text. A content of the
-wrong type (a number under tag 0) is left to the type check of the rule.
+A content of the wrong type (a number under tag 0) is left to the type check of
+the rule.
 """
 
 import ipaddress
 import re
 from typing import Any, Callable, Dict, Optional
+
+from .mime import message_error
 
 __all__ = ['content_error', 'CHECKED_TAGS']
 
@@ -222,10 +229,16 @@ def _encoded_cbor(data: bytes) -> Optional[str]:
 
 
 _TEXT: Dict[int, Callable[[str], Optional[str]]] = {
-    0: _date_time, 32: _uri_reference, 33: _base64url, 34: _base64, 35: _regexp}
+    0: _date_time, 32: _uri_reference, 33: _base64url, 34: _base64, 35: _regexp, 36: message_error}
 
 #: The tag numbers whose content is checked.
 CHECKED_TAGS = frozenset(_TEXT) | {24}
+
+
+def _shown(text: str, limit: int = 80) -> str:
+    """*text* as Python writes it, cut to *limit* characters (a MIME message can be long)."""
+    shown = repr(text)
+    return shown if len(shown) <= limit else shown[:limit - 3] + '...'
 
 
 def content_error(tag: int, content: Any) -> Optional[str]:
@@ -241,4 +254,4 @@ def content_error(tag: int, content: Any) -> Optional[str]:
     if check is None or not isinstance(content, str):
         return None
     problem = check(content)
-    return f"tag {tag} content {content!r} is not valid: {problem}" if problem else None
+    return f"tag {tag} content {_shown(content)} is not valid: {problem}" if problem else None
