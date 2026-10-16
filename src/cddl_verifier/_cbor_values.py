@@ -14,6 +14,8 @@ it compares, hashes, pickles and prints as the plain value does. Floats have
 no preferred width, so a float decoded with the record always carries it.
 """
 
+import math
+import struct
 from typing import Any, Dict, Optional
 
 #: The ``info`` of a definite-length head is its additional information: the
@@ -172,9 +174,14 @@ def _encoded_class(base: type) -> type:
     def __reduce__(self):
         return (base, (base(self),))
 
-    cls = type(base.__name__, (base,), {'__reduce__': __reduce__, '__module__': __name__,
-                                        '__doc__': f"A {base.__name__} that remembers how it "
-                                                   f"was encoded (``info``)."})
+    attrs = {'__reduce__': __reduce__, '__module__': __name__,
+             '__doc__': f"A {base.__name__} that remembers how it was encoded (``info``)."}
+    if base is float:
+        # A float is immutable: a copy is the float itself, so a float map key keeps its
+        # width (the encoder writes a float in the width it carries, #96)
+        attrs['__copy__'] = lambda self: self
+        attrs['__deepcopy__'] = lambda self, memo: self
+    cls = type(base.__name__, (base,), attrs)
     return cls
 
 
@@ -208,3 +215,61 @@ def head_info(value: Any) -> Optional[int]:
     if isinstance(value, str):
         return shortest_info(len(value.encode('utf-8')))
     return None
+
+
+# ---------------------------------------------------------------- float widths
+
+_FLOAT_FORMATS = {25: '>e', 26: '>f', 27: '>d'}
+_FLOAT_BITS = {16: 25, 32: 26, 64: 27}
+_NAN = {25: b'\x7e\x00', 26: b'\x7f\xc0\x00\x00', 27: b'\x7f\xf8\x00\x00\x00\x00\x00\x00'}
+
+
+def pack_float(value: float, info: int) -> Optional[bytes]:
+    """The argument bytes of *value* as a float of width *info* (25, 26 or 27), or ``None``.
+
+    ``None`` when the width cannot hold the value exactly. A NaN is always the
+    quiet NaN (RFC 8949 section 4.2.2) and ``-0.0`` stays distinct from ``0.0``.
+    """
+    if value != value:
+        return _NAN[info]
+    fmt = _FLOAT_FORMATS[info]
+    try:
+        packed = struct.pack(fmt, value)
+    except OverflowError:
+        return None
+    unpacked = struct.unpack(fmt, packed)[0]
+    if unpacked == value and math.copysign(1.0, unpacked) == math.copysign(1.0, value):
+        return packed
+    return None
+
+
+def float_width(value: Any, bits: int) -> float:
+    """*value* as a float the encoder writes in a given width: 16, 32 or 64 bits.
+
+    ``encode`` writes a float in the shortest width that holds it exactly
+    (RFC 8949 section 4.1). Use this for a value a schema or a protocol wants in
+    a fixed width (``float64``)::
+
+        encode({"x": float_width(1.5, 64)})   # a9 .. fb 3ff8000000000000
+
+    The result is a ``float`` that compares and prints as *value* does and
+    carries its width as ``info`` (:func:`head_info`), like a float decoded with
+    ``keep_encoding=True``, so the validator takes it for a float of that width.
+    ``encode(canonical=True)`` always writes the shortest width, and so ignores it.
+
+    Raises ``ValueError`` for a width other than 16, 32 or 64 and for a value
+    the width cannot hold exactly (``float_width(0.1, 32)``); ``TypeError`` for
+    anything but a float or an int.
+    """
+    info = _FLOAT_BITS.get(bits) if isinstance(bits, int) and not isinstance(bits, bool) else None
+    if info is None:
+        raise ValueError(f"a float is 16, 32 or 64 bits wide, not {bits!r}")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(f"float_width needs a float or an int, not {type(value).__name__}")
+    try:
+        number = float(value)
+    except OverflowError:
+        raise ValueError(f"{value!r} is too large for a float") from None
+    if pack_float(number, info) is None:
+        raise ValueError(f"{value!r} does not fit a {bits}-bit float exactly")
+    return with_info(number, info)

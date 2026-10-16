@@ -202,7 +202,9 @@ written, so `float16` rejects a float written as a double: `fb 3ff8000000000000`
 choices `float16-32`, `float32-64` accept the widths they name. A float given as
 a Python value was never written, so it matches every width it fits without
 loss: `1.5` is `float16`, `float32` and `float64`, `1.1` only `float64`,
-`1e300` only `float64`.
+`1e300` only `float64`. `encode` writes a Python float in the shortest of those widths, so
+bytes built from `{"x": 1.5}` are `float16`; wrap the value in `float_width(1.5, 64)` (a float
+that carries its width, matched like a decoded one) when the schema wants a double.
 
 ### Other prelude types
 

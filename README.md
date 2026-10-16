@@ -136,7 +136,8 @@ its items. See [docs/API.md](https://github.com/sahebbiswas/cddl_verifier/blob/m
 - **Canonical encoding**: implements the RFC 8949 §4.2.1 core deterministic
   profile (see [CANONICAL_AND_JSON.md](https://github.com/sahebbiswas/cddl_verifier/blob/main/docs/CANONICAL_AND_JSON.md)).
   The optional §4.2.2 reduction of integral floats to integers is not applied,
-  and non-canonical mode still writes floats as 8-byte doubles.
+  and floats are written in their shortest exact width in both modes (RFC 8949 §4.1);
+  `float_width(value, 64)` fixes the width of one value.
 - **CBOR**: indefinite-length items, `undefined` and the other simple values
   decode; the encoder writes definite-length items. `decode` rejects a CBOR
   sequence; `decode_sequence` reads one.
