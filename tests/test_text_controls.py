@@ -262,7 +262,7 @@ class HexFloats(Cases, unittest.TestCase):
         import random
         import struct
         generator = random.Random(1)
-        for fmt in ("%a", "%A", "%.4a", "%#a", "%20a", "%-20a", "%+020a"):
+        for fmt in ("%a", "%A", "%.4a", "%#a", "%20a", "%-20a", "%+020a", "%.0a", "%.3A", "%#.0a", "%20.1a"):
             (spec,) = [part for part in conversions.parse_format(fmt) if not isinstance(part, str)]
             for _ in range(200):
                 value = struct.unpack(">d", generator.getrandbits(64).to_bytes(8, "big"))[0]
@@ -273,6 +273,20 @@ class HexFloats(Cases, unittest.TestCase):
                 self.assertIsNotNone(read, (fmt, value, text))
                 if spec.precision is None:
                     self.assertEqual(read, value, (fmt, value, text))
+
+    def test_a_precision_that_rounds_up_into_a_lead_digit_of_two(self):
+        self.check('r = text .printf ["%.0a", float]',
+                   [("0x2p+0", True), ("0x1p+1", True), ("0x3p+0", False), ("0x2.8p+0", False)])
+        self.check('r = text .printf ["%.3a", float]', [("0x2.000p+7", True), ("0x1.000p+8", True), ("0x2.001p+7", False)])
+        self.check('r = text .printf ["%.0a", 2.0]', [("0x2p+0", True), ("0x1p+1", True)])
+        self.check('r = text .printf ["%.0A", -2.0]', [("-0X2P+0", True), ("-0X1P+1", True), ("0X2P+0", False)])
+        self.check('r = text .printf ["%.0a", float]',
+                   [("0x2p+1023", True), ("-0x2p+1023", True), ("0x2p+1024", False),
+                    ("0x0p-1022", True), ("-0x0p-1022", True)])
+        for fmt, value in (("%.0a", 1.7976931348623157e308), ("%.0a", 1.5), ("%.3a", 255.99), ("%.1a", 1.96875), ("%.0a", 1.9999999999999998)):
+            (spec,) = [part for part in conversions.parse_format(fmt) if not isinstance(part, str)]
+            text = conversions.format_float(spec, value)
+            self.assertIsNotNone(conversions.read_conversion(spec, text), (fmt, value, text))
 
     def test_a_schema_with_a_literal_value(self):
         self.check('r = text .printf ["%a", 1.5]',

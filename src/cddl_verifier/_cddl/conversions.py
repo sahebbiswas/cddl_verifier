@@ -18,6 +18,7 @@ the caller, which tries the next way of taking the text apart when they do not f
 import base64
 import json
 import math
+import sys
 import re
 from typing import Callable, Dict, Iterator, List, Optional, Tuple
 
@@ -435,8 +436,24 @@ def read_conversion(spec: Spec, text: str):
             if conv == 'o' and '#' in spec.flags and number.startswith('0'):
                 value = sign * int(number, 8)
             return value if format_int(spec, value) == text else None
-        if conv in 'eEfFgGaA':
-            value = float.fromhex(text.strip(' ')) if conv in 'aA' else float(text.strip(' '))
+        if conv in 'aA':
+            stripped = text.strip(' ')
+            sign = -1.0 if stripped.startswith('-') else 1.0
+            try:
+                value = float.fromhex(stripped)
+            except OverflowError:
+                # rounding up the largest values reaches 2**1024 (``0x2p+1023``)
+                value = sign * sys.float_info.max
+                return value if format_float(spec, value) == text else None
+            if format_float(spec, value) == text:
+                return value
+            # a precision can round a neighbouring value to this text: up into a lead
+            # digit of 2 (``%.0a`` of 1.5 is ``0x2p+0``), or a tiny subnormal to
+            # ``0x0p-1022``. The text denotes *value*, and is what the neighbour writes.
+            neighbour = math.nextafter(value, 0.0) if value else sign * 5e-324
+            return value if format_float(spec, neighbour) == text else None
+        if conv in 'eEfFgG':
+            value = float(text.strip(' '))
             return value if format_float(spec, value) == text else None
         if conv == 'c':
             stripped = text.strip(' ') if len(text) > 1 else text
