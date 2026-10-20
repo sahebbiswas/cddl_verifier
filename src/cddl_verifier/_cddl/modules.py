@@ -148,8 +148,13 @@ class _Linker:
 
         missing: List[UnresolvedImportError] = []  # strict: every import not found, in order
 
+        absent: Set[Tuple[str, Optional[str]]] = set()  # strict: the imports that were not found
+
         for _kind, module, prefix, start, end in import_directives(text):
             if (module, prefix) in done:
+                if (module, prefix) in absent:
+                    # loaded once, but every directive that asks for it is reported
+                    missing.append(self.not_found(module, prefix, Span(start, end), schema.source))
                 continue
             done.add((module, prefix))
             if prefix:
@@ -166,6 +171,7 @@ class _Linker:
                 continue
             if result is None:
                 if self.loader.strict:
+                    absent.add((module, prefix))
                     missing.append(self.not_found(module, prefix, Span(start, end), schema.source))
                     continue
                 unloaded.append((module, prefix))

@@ -155,13 +155,22 @@ class TestPosition(unittest.TestCase):
             Validator(PREFIXED, module_path=["/no/such/dir"], strict_modules=True)
         self.assertIn("searched /no/such/dir", str(caught.exception))
 
-    def test_every_unresolved_import_is_reported_once_in_order(self):
+    def test_every_unresolved_directive_is_reported_in_order(self):
         text = ";# import a as x\n;# include b\n;# import a as x\n;# import c\n"
         with self.assertRaises(SchemaError) as caught:
             Validator(text, strict_modules=True)
         errors = caught.exception.errors
-        self.assertEqual([(e.line, e.column) for e in errors], [(1, 1), (2, 1), (4, 1)])
+        self.assertEqual([(e.line, e.column) for e in errors], [(1, 1), (2, 1), (3, 1), (4, 1)])
         self.assertIs(errors[0], caught.exception)
+
+    def test_a_repeated_directive_in_a_module_is_reported_at_each_place(self):
+        modules = {"m": ";# import gone as g\n;# import gone as g\nx = uint"}
+        with self.assertRaises(SchemaError) as caught:
+            Validator(";# import m\nr = uint", modules=modules, strict_modules=True)
+        self.assertEqual([(e.source.name, e.line) for e in caught.exception.errors],
+                         [("<module m>", 1), ("<module m>", 2)])
+        # a module found twice is still loaded once
+        Validator(";# import m\n;# import m\nr = uint", modules={"m": "x = uint"}, strict_modules=True)
 
     def test_directive_offsets(self):
         text = "x = 1\n\t;# include foo\n;# import bar as b ; trailing\n"
