@@ -15,6 +15,7 @@ from ._cddl.typeexpr import as_type, bare_name
 from ._decode import SimpleCBORDecoder
 from ._log import logger
 from ._schema import CDDLParser, _is_dollar_type, _name_type, _text_of
+from .cbor import decode as cbor_decode, decode_sequence as cbor_decode_sequence, encode as cbor_encode
 
 
 def _escape_table() -> Dict[int, str]:
@@ -154,8 +155,8 @@ class EDNGenerator:
             # Check if this type is an alias and resolve to final type
             resolved = self.cddl.resolve_alias(type_name)
             logger.debug(f"EDN: Checked alias for '{_text_of(type_name)}', got '{_text_of(resolved)}'")
-            if resolved != type_name and bare_name(resolved) in self.cddl.type_choices:
-                # It's an alias to a choice - resolve the choice
+            if resolved != type_name and self.cddl.choice_alternatives(resolved) is not None:
+                # It's an alias to a choice (a socket or 'a / b') - resolve the choice
                 final_resolved = self.cddl.resolve_type_choice_for_data(resolved, value)
                 if final_resolved:
                     logger.debug(f"EDN: Resolved alias+choice {_text_of(type_name)} -> "
@@ -193,71 +194,12 @@ class EDNGenerator:
                                              f"{_text_of(resolved_inner)}")
                                 inner_type_name = resolved_inner
             
-            # Check if this type has .cbor control (nested CBOR in bytes)
-            if type_name is not None:
-                type_def = self.cddl.get_type(type_name, inner_value)
-                if type_def and type_def.get('cbor_inner_type'):
-                    # Decode nested CBOR and generate EDN for it
-                    inner_type = type_def['cbor_inner_type']
-                    if isinstance(inner_value, bytes):
-                        try:
-                            logger.debug(f"EDN: Decoding nested CBOR ({len(inner_value)} bytes) for type {_text_of(inner_type)}")
-                            nested_decoder = SimpleCBORDecoder(inner_value)
-                            nested_data = nested_decoder.decode()
-                            logger.debug(f"EDN: Successfully decoded nested CBOR")
-                            
-                            # Save current indent level - this is where the tag sits in parent
-                            saved_indent = self.indent_level
-                            
-                            # Generate EDN for the decoded nested data (starts at indent 0)
-                            self.indent_level = 0
-                            nested_edn = self._generate_value(nested_data, inner_type, annotate)
-                            
-                            # Restore indent level
-                            self.indent_level = saved_indent
-                            
-                            # Now indent the nested content to fit within bytes(...)
-                            # Tag opening is at saved_indent (added by parent)
-                            # bytes( should be at saved_indent + 1
-                            # content should be at saved_indent + 2
-                            # ) for bytes at saved_indent + 1
-                            # ) for tag at saved_indent
-                            
-                            tag_indent = self.indent_str * self.indent_level
-                            bytes_indent = self.indent_str * (self.indent_level + 1)
-                            content_indent = self.indent_str * (self.indent_level + 2)
-                            
-                            # Indent each line of nested content
-                            nested_lines = nested_edn.split('\n')
-                            indented_nested = []
-                            for line in nested_lines:
-                                if line.strip():
-                                    indented_nested.append(content_indent + line)
-                                else:
-                                    indented_nested.append(line)
-                            
-                            # Build bytes<N>(...) wrapper; N = raw byte-string length
-                            _raw_len = len(inner_value)
-                            bytes_wrapped = [bytes_indent + f"bytes<{_raw_len}>("]
-                            bytes_wrapped.extend(indented_nested)
-                            bytes_wrapped.append(bytes_indent + ")")
-                            bytes_content = '\n'.join(bytes_wrapped)
-                            
-                            # Tag annotation and opening - NO prefix (parent adds it to first line)
-                            # But all subsequent lines have full indentation
-                            if annotate and self._named(tag_type_name):
-                                # Add type annotation comment showing the tagged type
-                                tag_comment = f"/ {_text_of(tag_type_name)} / "
-                                result = f"{tag_comment}{tag_num}(\n{bytes_content}\n{tag_indent})"
-                                return result
-                            else:
-                                result = f"{tag_num}(\n{bytes_content}\n{tag_indent})"
-                                return result
-                        except Exception as e:
-                            logger.warning(f"EDN: Failed to decode nested CBOR: {e}")
-                            # Fall back to hex representation
-                            return self._generate_bytes(inner_value)
-            
+            # A byte string that holds CBOR (``bytes .cbor T``) is shown decoded, in << >>
+            if type_name is not None and isinstance(inner_value, bytes):
+                embedded = self._embedded(inner_value, type_name, annotate)
+                if embedded is not None:
+                    return self._tagged_embedded(tag_num, tag_type_name, embedded, annotate)
+
             # For other tagged data (non-.cbor), wrap and continue
             # Save and reset indent for inner content generation
             saved_indent = self.indent_level
@@ -307,6 +249,10 @@ class EDNGenerator:
             logger.debug(f"EDN: Generating array with type_name='{type_name}'")
             return self._generate_array(value, type_name, annotate)
         elif isinstance(value, bytes):
+            if type_name is not None:
+                embedded = self._embedded(value, type_name, annotate)
+                if embedded is not None:
+                    return self._embedded_block(embedded, self.indent_level)
             return self._generate_bytes(value)
         elif isinstance(value, str):
             return self._edn_str(value)
@@ -319,6 +265,98 @@ class EDNGenerator:
         else:
             return str(value)
     
+    def _embedded(self, data: bytes, type_name: Type, annotate: bool) -> Optional[List[str]]:
+        """The EDN of the CBOR inside the byte string *data*, when *type_name* says it holds CBOR.
+
+        ``bytes .cbor T`` holds one item and ``bytes .cborseq [* T]`` a sequence
+        (RFC 8742). The result has one entry per item, each generated at indent 0 for
+        the caller to indent. It is ``None`` when the type says nothing about embedded
+        CBOR, when the bytes are not that CBOR, or when they are not what ``<< >>``
+        would encode again: the notation (RFC 8610 Appendix G.3) is read back by
+        encoding the items, so it cannot show an item that is not in preferred
+        serialization (an overlong head, an indefinite length, a float wider than it
+        needs) without changing the bytes. The caller then shows the byte string.
+        """
+        inner, sequence = None, False
+        type_def = self.cddl.get_type(type_name, data)
+        if type_def and type_def.get('cbor_inner_type'):
+            inner = type_def['cbor_inner_type']
+        else:
+            for node in (type_name, self.cddl.resolve_alias(type_name)):
+                found = query.cbor_control(node)
+                if found:
+                    inner = found[1]
+                    break
+                found = query.cborseq_control(node)
+                if found:
+                    inner, sequence = found[1], True
+                    break
+        if inner is None:
+            return None
+        try:
+            items = cbor_decode_sequence(data) if sequence else [cbor_decode(data)]
+            again = b''.join(cbor_encode(item) for item in items)
+        except Exception as exc:
+            logger.warning(f"EDN: Failed to decode nested CBOR: {exc}")
+            return None
+        if again != data:
+            logger.debug("EDN: embedded CBOR is not in preferred serialization; shown as a byte string")
+            return None
+        types = self._sequence_types(inner, len(items)) if sequence else [inner]
+        saved_indent = self.indent_level
+        self.indent_level = 0
+        try:
+            return [self._generate_value(item, item_type, annotate) for item, item_type in zip(items, types)]
+        finally:
+            self.indent_level = saved_indent
+
+    def _sequence_types(self, array: Type, count: int) -> List[Optional[Type]]:
+        """The type of each of *count* items of a ``.cborseq`` sequence: the entries of *array*, in order.
+
+        ``[* T]`` gives ``T`` for every item and ``[A, B]`` gives ``A`` then ``B``.
+        """
+        inline = query.inline_array(array)
+        if inline:
+            return [inline[1]] * count if inline[0] in ('*', '+') else [inline[1]] + [None] * (count - 1)
+        type_def = self.cddl.get_type(array)
+        if not type_def or type_def.get('type') != 'array':
+            return [None] * count
+        by_index = type_def.get('element_types') or {}
+        repeat = type_def.get('repeat')
+        if repeat is None and type_def.get('occurrence') in ('*', '+'):
+            repeat = 0
+        return [by_index.get(i) if i in by_index or repeat is None or i <= repeat else by_index.get(repeat)
+                for i in range(count)]
+
+    def _embedded_block(self, items: List[str], level: int) -> str:
+        """``<< ... >>`` around the EDN *items* of embedded CBOR (RFC 8610 Appendix G.3).
+
+        *level* is the indent of the line the notation sits on; the first line has no
+        indent, as the caller writes what comes before it.
+        """
+        if not any('\n' in item for item in items):
+            return '<< ' + ', '.join(items) + ' >>' if items else '<<>>'
+        indent = self.indent_str * level
+        inner = indent + self.indent_str
+        lines = ['<<']
+        for number, item in enumerate(items):
+            body = item.split('\n')
+            if number < len(items) - 1:
+                body[-1] += ','
+            lines.extend(inner + line if line.strip() else line for line in body)
+        lines.append(indent + '>>')
+        return '\n'.join(lines)
+
+    def _tagged_embedded(self, tag_num: int, tag_type: Optional[Type], items: List[str],
+                         annotate: bool) -> str:
+        """A tag whose content is embedded CBOR: ``/ type / 506(<< ... >>)``."""
+        prefix = f"/ {_text_of(tag_type)} / " if annotate and self._named(tag_type) else ""
+        block = self._embedded_block(items, self.indent_level + 1)
+        if '\n' not in block:
+            return f"{prefix}{tag_num}({block})"
+        return (f"{prefix}{tag_num}(\n{self.indent_str * (self.indent_level + 1)}{block}\n"
+                f"{self.indent_str * self.indent_level})")
+
     def _edn_key(self, key: Any) -> str:
         """EDN for a map key: an array, map or tag key is written on one line."""
         if isinstance(key, CBORKey):

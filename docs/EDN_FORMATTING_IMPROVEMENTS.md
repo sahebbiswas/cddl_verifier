@@ -15,7 +15,7 @@ cddl-verify cddl-schemas/unified.cddl test-data/minimal-corim.cbor --type tagged
     / id / 0: "urn:example:corim:minimal-example",
     / tags / 1: [
       / tagged-concise-mid-tag / 506(
-        bytes<60>(
+        <<
           / concise-mid-tag / {
             / tag-identity / 1: / tag-identity-map / {
               / tag-id / 0: "urn:example:comid:12345"
@@ -37,7 +37,7 @@ cddl-verify cddl-schemas/unified.cddl test-data/minimal-corim.cbor --type tagged
               ]
             }
           }
-        )
+        >>
       )
     ]
   }
@@ -63,23 +63,34 @@ data without any comment.
 
 ## Nested CBOR
 
-When the content of a tag is a byte string that holds CBOR, and the schema says what the
-CBOR is, the output shows the decoded item inside a `bytes<N>(...)` wrapper. `N` is the length
-of the byte string. In the example, tag 506 holds 60 bytes that decode to a `concise-mid-tag`:
+When a byte string holds CBOR and the schema says what the CBOR is (`bstr .cbor T`), the
+output shows the decoded item between `<<` and `>>`, the notation for embedded CBOR in
+RFC 8610 Appendix G.3. This works wherever the byte string is: under a tag, as a map member,
+as an array element, in a choice (`bstr .cbor T / nil`), or as the root. In the example, tag
+506 holds a byte string that decodes to a `concise-mid-tag`:
 
 ```edn
 506(
-  bytes<60>(
+  <<
     {
       ...
     }
-  )
+  >>
 )
 ```
 
-The wrapper tells you the item is encoded twice: the bytes are the encoding of the map inside.
-A byte string that is not under a tag, even with `.cbor` in the schema, is printed as
-`h'...'`; it is still checked against the schema, as `bstr .cbor T` says.
+The notation tells you the item is encoded twice: the bytes are the encoding of what is
+inside. A `bstr .cborseq` byte string holds a CBOR sequence (RFC 8742) and is written
+`<< 1, 2 >>`, with the items separated by commas. The output is a diagnostic notation, not
+a format to read back: RFC 8949 section 8 gives it no grammar.
+
+`<< >>` stands for the encoding of the items inside it, so it is used only when the bytes are
+what the items encode to in preferred serialization (the shortest heads, definite lengths,
+the shortest float). A byte string with an overlong head, an indefinite length, a float
+written wider than it needs, trailing bytes, or bytes that are not CBOR at all is printed as
+`h'...'`, so the output never shows something other than what is in the data. The data is
+still checked against the schema, as `bstr .cbor T` says. With `--no-annotate` a byte string
+in a map member is not typed and prints as `h'...'`.
 
 ## When the data does not match
 

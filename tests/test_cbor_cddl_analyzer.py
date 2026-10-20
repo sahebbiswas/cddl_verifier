@@ -517,7 +517,7 @@ class TestEDNGeneration(unittest.TestCase):
         self.assertIn('/ person / {', edn)
     
     def test_bytes_wrapper_for_nested_cbor(self):
-        """Test bytes() wrapper for nested CBOR"""
+        """Embedded CBOR is shown decoded inside << >> (RFC 8610 Appendix G.3, #228)"""
         if not (HAS_CBOR_ENCODER or HAS_CBOR2):
             self.skipTest("Requires CBOR encoder (simple_cbor or cbor2)")
         
@@ -543,8 +543,10 @@ class TestEDNGeneration(unittest.TestCase):
         generator = EDNGenerator(cddl, edn_format='keyindex')
         edn = generator.generate(data, 'outer-type')
         
-        # Should have bytes wrapper
-        self.assertIn('bytes<', edn)  # matches bytes<N>( annotation
+        # Should be wrapped in the embedded CBOR notation
+        self.assertIn('<<', edn)
+        self.assertIn('>>', edn)
+        self.assertNotIn('bytes<', edn)
         
         # Should show decoded content
         self.assertIn('/ value / 0:', edn)
@@ -1034,7 +1036,8 @@ class TestValidationGapsCoverage(unittest.TestCase):
         generator = EDNGenerator(cddl, edn_format='keyindex')
         edn = generator.generate(data, 'outer-type')
 
-        self.assertIn("bytes<", edn, "EDN should contain bytes<N>() wrapper")
+        self.assertIn("<<", edn, "EDN should wrap the embedded CBOR in << >>")
+        self.assertNotIn("bytes<", edn)
         self.assertIn("/ value / 0:", edn, "EDN should show inner field annotation")
         self.assertIn("42", edn, "EDN should show inner value")
 
