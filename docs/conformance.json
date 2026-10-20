@@ -1891,7 +1891,7 @@
     "validator": "supported",
     "edn": "supported"
    },
-   "notes": "Draft comment syntax. Modules come from `modules=` / `--module` or a search path; one that is not found keeps its names unchecked and warns (#121). No RFC modules are bundled.",
+   "notes": "Draft comment syntax. Modules come from `modules=` / `--module` or a search path; one that is not found keeps its names unchecked and warns (#121), or is a schema error at its directive with `strict_modules=True` / `--strict-modules` (#229). No RFC modules are bundled.",
    "issues": [],
    "tests": [
     "tests/test_modules.py"

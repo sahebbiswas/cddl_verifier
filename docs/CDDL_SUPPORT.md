@@ -130,6 +130,16 @@ are not checked and match any value, a group from it in a map allows any
 other entries, and `Validator.warnings` (the `Warning:` lines of `cddl-verify`)
 says which modules were missing. No RFC modules are bundled.
 
+That fallback is convenient for looking at a schema, but it means validation is
+weaker than it looks: with `;# import rfc9164 as cbor-ip` unresolved, a value
+at `cbor-ip.ipv4-address` is accepted whatever it is, and one unresolved import
+or include without a prefix turns off the check for undefined names in the whole
+schema, so a typo in a rule name passes. To fail closed, turn on
+`strict_modules=True` (`--strict-modules` in `cddl-verify`): any `;# import` or
+`;# include` that cannot be found, used or not, is a schema error at that line
+and column. Every unresolved import is reported, in `schema_diagnostics` as one
+diagnostic each ([#229](https://github.com/sahebbiswas/cddl_verifier/issues/229)).
+
 ### Generics
 
 Generic rules are instantiated where they are used: `pair<uint, tstr>`, with

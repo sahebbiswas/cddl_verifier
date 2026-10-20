@@ -14,8 +14,11 @@ keeps meaning what it meant on its own. Modules may import modules.
 
 A module is looked up by name in a :class:`ModuleLoader`: first the modules
 it was given explicitly, then ``<name>.cddl`` in each directory of its search
-path. A module that is not found is not an error: its names stay unchecked, as
-they were before modules could be loaded, and :class:`LinkResult` says so.
+path. A module that is not found is not an error by default: its names stay
+unchecked, as they were before modules could be loaded, and :class:`LinkResult`
+says so. A :class:`ModuleLoader` made with ``strict=True`` fails closed instead
+(#229): an import it cannot resolve is a :class:`CDDLSemanticError` at the
+``;# import`` or ``;# include`` line.
 """
 
 import os
@@ -24,10 +27,11 @@ from pathlib import Path
 from typing import Dict, FrozenSet, Iterable, List, Mapping, Optional, Set, Tuple, Union
 
 from .._errors import SchemaError
-from .ast import (ChoiceFrom, GroupRef, GroupRule, Name, Schema, Source, TypeRule,
+from .ast import (ChoiceFrom, GroupRef, GroupRule, Name, Schema, Source, Span, TypeRule,
                   Unwrap)
+from .errors import CDDLSemanticError
 from .parser import parse_cddl
-from .resolve import Imports, parse_imports, resolve
+from .resolve import Imports, import_directives, resolve
 
 #: A module given directly: CDDL text, or a path to a file holding it.
 ModuleSource = Union[str, "os.PathLike[str]"]
@@ -45,12 +49,16 @@ class ModuleLoader:
             (``os.PathLike``), searched first. A trailing ``.cddl`` on a name
             is ignored.
         path: Directories searched, in order, for ``<name>.cddl``.
+        strict: Treat an import that cannot be found as an error (#229), where
+            by default its names are left unchecked and match any value.
     """
 
     def __init__(self, modules: Optional[Mapping[str, ModuleSource]] = None,
-                 path: Iterable[Union[str, "os.PathLike[str]"]] = ()):
+                 path: Iterable[Union[str, "os.PathLike[str]"]] = (),
+                 strict: bool = False):
         self.modules = {_module_key(name): source for name, source in (modules or {}).items()}
         self.path = [Path(directory) for directory in path]
+        self.strict = strict
 
     def find(self, name: str) -> Optional[Tuple[str, str]]:
         """``(text, source name)`` of module *name*, or ``None`` if it is not available.
@@ -129,7 +137,9 @@ class _Linker:
         bound: Dict[str, str] = {}  # prefix -> the module it names
         sockets: Set[Tuple[str, str]] = set()  # (prefix, socket) the imports provide
 
-        for _kind, module, prefix in parse_imports(text):
+        missing: List[CDDLSemanticError] = []  # strict: every import not found, in order
+
+        for _kind, module, prefix, start, end in import_directives(text):
             if (module, prefix) in done:
                 continue
             done.add((module, prefix))
@@ -139,6 +149,9 @@ class _Linker:
                                       f"'{bound[prefix]}' and module '{module}'")
             result = self.module(module, stack)
             if result is None:
+                if self.loader.strict:
+                    missing.append(self.not_found(module, prefix, Span(start, end), schema.source))
+                    continue
                 unloaded.append((module, prefix))
                 if prefix:
                     prefixes.add(prefix)
@@ -175,6 +188,11 @@ class _Linker:
             any_name = any_name or result.imports.any_name
             unloaded.extend(item for item in result.unloaded if item not in unloaded)
 
+        if missing:
+            first = missing[0]
+            first.errors = tuple(missing)
+            raise first
+
         if sockets:
             # Sockets are shared by every module (the extensions of one name
             # merge), so a reference written with the import's prefix, as the
@@ -190,6 +208,16 @@ class _Linker:
         linked = replace(schema, rules=tuple(rules))
         return LinkResult(linked, Imports(frozenset(prefixes), any_name, loaded_prefixes),
                           origins, unloaded, loaded)
+
+    def not_found(self, module: str, prefix: Optional[str], span: Span,
+                  source: Optional[Source]) -> CDDLSemanticError:
+        """The error for an import that cannot be resolved while the loader is strict (#229)."""
+        how = f"imported as '{prefix}'" if prefix else "imported without a prefix"
+        directories = ', '.join(str(directory) for directory in self.loader.path)
+        searched = f"; searched {directories}" if directories else ""
+        return CDDLSemanticError(
+            f"module '{module}' ({how}) was not found{searched}; an import that cannot be "
+            f"resolved is an error with strict_modules (--strict-modules)", span, source)
 
     def module(self, name: str, stack: Tuple[str, ...]) -> Optional[LinkResult]:
         """The linked and checked module *name*, or ``None`` if it is not available."""
