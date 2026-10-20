@@ -448,9 +448,11 @@ shortest head): `5` is `#0.5`, `200` is `#0.24`, a three-element list is `#4.3`.
 
 ## Nested CBOR (`.cbor` control operator)
 
-When a field is typed as `bytes .cbor inner-type`, the EDN generator automatically
-decodes the nested CBOR and renders it inline, wrapped in `bytes<N>(...)` where `N` is
-the byte length of the encoded inner value:
+When a byte string is typed as `bytes .cbor inner-type`, the EDN generator decodes the
+nested CBOR and renders it inline between `<<` and `>>` (RFC 8610 Appendix G.3). It does so
+under a tag, in a map member, in an array element, in a choice (`bytes .cbor inner-type / nil`)
+and at the root. `bytes .cborseq [* inner-type]` is written the same way, with the items of
+the sequence separated by commas:
 
 ```cddl
 payload = #6.506(bytes .cbor inner-type)
@@ -461,13 +463,17 @@ inner-type = {
 
 ```edn
 / outer-type / 506(
-  bytes<4>(
+  <<
     / inner-type / {
       / value / 0: 42
     }
-  )
+  >>
 )
 ```
+
+Bytes that `<< >>` would not encode back to (an overlong head, an indefinite length, a float
+wider than it needs, trailing bytes, or bytes that are not CBOR) are printed as `h'...'`
+instead. See [EDN_FORMATTING_IMPROVEMENTS.md](EDN_FORMATTING_IMPROVEMENTS.md#nested-cbor).
 
 The argument of `.cbor` can be any type: a rule name, a generic instance
 (`bstr .cbor pair<uint, tstr>`), an inline map (`bstr .cbor { a: uint }`) or an

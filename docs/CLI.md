@@ -298,7 +298,7 @@ data `{0: "Alice", 1: 30}`:
 ```
 
 See [EDN_FORMATTING_IMPROVEMENTS.md](EDN_FORMATTING_IMPROVEMENTS.md) for details on
-annotation placement and the `bytes<N>(...)` wrapper used for nested CBOR fields.
+annotation placement and the `<< ... >>` notation used for nested CBOR.
 
 ## `python -m cddl_verifier.json_codec`
 
