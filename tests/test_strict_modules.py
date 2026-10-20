@@ -95,6 +95,35 @@ class TestFailsClosed(unittest.TestCase):
                       strict_modules=True)
         self.assertTrue(str(caught.exception).startswith("<module m>:1:1: module 'q'"))
 
+    def test_the_imports_after_a_module_with_a_missing_import_are_reported_too(self):
+        text = ";# import m as m\n;# import z as z\nr = m.t\n"
+        with self.assertRaises(SchemaError) as caught:
+            Validator(text, modules={"m": ";# import q as q\nt = q.u"}, strict_modules=True)
+        errors = caught.exception.errors
+        self.assertEqual([(e.source.name, e.line, e.column) for e in errors],
+                         [("<module m>", 1, 1), (None, 2, 1)])
+        self.assertIn("module 'q'", errors[0].message)
+        self.assertIn("module 'z'", errors[1].message)
+        self.assertIs(errors[0], caught.exception)
+        found = schema_diagnostics(text, modules={"m": ";# import q as q\nt = q.u"}, strict_modules=True)
+        self.assertEqual([d.schema_location for d in found], ["<module m>:1:1", "<schema>:2:1"])
+
+    def test_a_missing_import_two_modules_share_is_reported_once(self):
+        modules = {"a": ";# import shared as s\nx = uint", "b": ";# import shared as s\ny = uint",
+                   "shared": ";# import gone as g\nt = uint"}
+        with self.assertRaises(SchemaError) as caught:
+            Validator(";# import a\n;# import b\nr = uint", modules=modules, strict_modules=True)
+        errors = caught.exception.errors
+        self.assertEqual([(e.source.name, e.line) for e in errors],
+                         [("<module shared>", 1)])
+
+    def test_missing_imports_at_three_levels_are_all_reported(self):
+        modules = {"a": ";# import b\n;# import gone-a\nx = uint", "b": ";# import gone-b\ny = uint"}
+        with self.assertRaises(SchemaError) as caught:
+            Validator(";# import a\n;# import gone-root\nr = uint", modules=modules, strict_modules=True)
+        self.assertEqual([e.message.split("'")[1] for e in caught.exception.errors],
+                         ["gone-b", "gone-a", "gone-root"])
+
     def test_a_module_found_in_a_module_passes(self):
         v = Validator(";# import m as m\nr = m.t",
                       modules={"m": ";# import q as q\nt = q.u", "q": "u = uint"},

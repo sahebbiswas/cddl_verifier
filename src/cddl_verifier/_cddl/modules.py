@@ -37,6 +37,15 @@ from .resolve import Imports, import_directives, resolve
 ModuleSource = Union[str, "os.PathLike[str]"]
 
 
+class UnresolvedImportError(CDDLSemanticError):
+    """An import a strict loader could not resolve (#229).
+
+    A subclass so the module that imports another one can tell this error from a
+    problem in the module itself, collect it and go on to the rest of its own
+    directives, and report every unresolved import together.
+    """
+
+
 def _module_key(name: str) -> str:
     return name[:-5] if name.endswith('.cddl') else name
 
@@ -137,7 +146,7 @@ class _Linker:
         bound: Dict[str, str] = {}  # prefix -> the module it names
         sockets: Set[Tuple[str, str]] = set()  # (prefix, socket) the imports provide
 
-        missing: List[CDDLSemanticError] = []  # strict: every import not found, in order
+        missing: List[UnresolvedImportError] = []  # strict: every import not found, in order
 
         for _kind, module, prefix, start, end in import_directives(text):
             if (module, prefix) in done:
@@ -147,7 +156,14 @@ class _Linker:
                 if bound.setdefault(prefix, module) != module:
                     raise SchemaError(f"prefix '{prefix}' is used for both module "
                                       f"'{bound[prefix]}' and module '{module}'")
-            result = self.module(module, stack)
+            try:
+                result = self.module(module, stack)
+            except UnresolvedImportError as nested:
+                # the module has imports of its own that were not found: note them
+                # where this import is and go on, so the rest of this schema's
+                # directives are checked too
+                missing.extend(nested.errors)
+                continue
             if result is None:
                 if self.loader.strict:
                     missing.append(self.not_found(module, prefix, Span(start, end), schema.source))
@@ -189,8 +205,12 @@ class _Linker:
             unloaded.extend(item for item in result.unloaded if item not in unloaded)
 
         if missing:
-            first = missing[0]
-            first.errors = tuple(missing)
+            # a module imported from two places is reported once, at its own directive
+            unique: Dict[Tuple[Optional[str], int, int], UnresolvedImportError] = {}
+            for error in missing:
+                unique.setdefault((error.source.name, error.span.start, error.span.end), error)
+            first = next(iter(unique.values()))
+            first.errors = tuple(unique.values())
             raise first
 
         if sockets:
@@ -210,12 +230,12 @@ class _Linker:
                           origins, unloaded, loaded)
 
     def not_found(self, module: str, prefix: Optional[str], span: Span,
-                  source: Optional[Source]) -> CDDLSemanticError:
+                  source: Optional[Source]) -> UnresolvedImportError:
         """The error for an import that cannot be resolved while the loader is strict (#229)."""
         how = f"imported as '{prefix}'" if prefix else "imported without a prefix"
         directories = ', '.join(str(directory) for directory in self.loader.path)
         searched = f"; searched {directories}" if directories else ""
-        return CDDLSemanticError(
+        return UnresolvedImportError(
             f"module '{module}' ({how}) was not found{searched}; an import that cannot be "
             f"resolved is an error with strict_modules (--strict-modules)", span, source)
 
