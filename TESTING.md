@@ -10,6 +10,7 @@ and the standard-library **unittest** runner with no code changes required.
 | `tests/test_public_api.py` | Public API: `validate`, `Validator`, `cddl_verifier.cbor`, `json_codec`, `python -m cddl_verifier` |
 | `tests/test_module_layout.py` | Every private module imports on its own in a fresh interpreter (no import cycle); the CLI names moved out of `_analyzer` (#83) are still importable from it; the analyzer mixins in `_validator/` each import first and none shadows another's method |
 | `tests/test_cbor_cddl_analyzer.py` | CDDL parsing, validation, EDN generation, CoRIM (internal classes) |
+| `tests/test_edn_literals.py` | EDN literals (#227): `NaN`, `Infinity` and `-Infinity` at every float width and as map keys, finite floats unchanged, text strings and map keys escaped as JSON (C0 controls, DEL, C1 controls, U+2028/2029) and read back with `json.loads` |
 | `tests/test_cddl_parser.py` | CDDL lexer, AST and parser: node shapes, spans, syntax errors, printer round trip, bundled schemas, strict parsing through the API and CLI |
 | `tests/test_resolve.py` | `_cddl/resolve.py`: semantic errors with positions (undefined and duplicate names, sockets, type/group misuse, generic arity, controls, ranges, occurrences, alias loops), imports, the resolved model, generic instantiation in the tables (#70) |
 | `tests/test_type_query.py` | `_cddl/query.py`: questions about type expressions answered from nodes (#111, #177); dotted names, decoded `.regexp`, byte literals, controls on literals, parenthesized types (#118), choices from groups (#119) |
