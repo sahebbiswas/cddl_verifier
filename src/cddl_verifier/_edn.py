@@ -3,6 +3,7 @@
 Split from ``_analyzer`` (#83). Nothing in the validator uses it.
 """
 
+import math
 from typing import Any, Dict, List, Optional
 
 from ._cbor import CBORKey
@@ -14,6 +15,24 @@ from ._cddl.typeexpr import as_type, bare_name
 from ._decode import SimpleCBORDecoder
 from ._log import logger
 from ._schema import CDDLParser, _is_dollar_type, _name_type, _text_of
+
+
+def _escape_table() -> Dict[int, str]:
+    """What each character of a text string is written as inside the quotes.
+
+    The notation borrows JSON strings (RFC 8949 section 8, RFC 8259 section 7), so
+    ``"``, ``\\`` and U+0000 to U+001F are escaped (the short forms where JSON has
+    them, ``\\uXXXX`` otherwise). The data may be untrusted and is printed to
+    terminals and logs, so the C1 controls (U+0080 to U+009F), DEL and the line and
+    paragraph separators are escaped as well; ``\\uXXXX`` is valid JSON for any of them.
+    """
+    table = {i: '\\u%04x' % i for i in (*range(0x20), *range(0x7F, 0xA0), 0x2028, 0x2029)}
+    table.update({0x08: '\\b', 0x09: '\\t', 0x0A: '\\n', 0x0C: '\\f', 0x0D: '\\r',
+                  ord('"'): '\\"', ord('\\'): '\\\\'})
+    return table
+
+
+_ESCAPES = _escape_table()
 
 
 class EDNGenerator:
@@ -73,13 +92,21 @@ class EDNGenerator:
     @staticmethod
     def _edn_str(s: str) -> str:
         """Return *s* as a properly escaped EDN text string literal."""
-        escaped = (s
-                   .replace('\\', '\\\\')
-                   .replace('"', '\\"')
-                   .replace('\n', '\\n')
-                   .replace('\r', '\\r')
-                   .replace('\t', '\\t'))
-        return '"' + escaped + '"'
+        return '"' + s.translate(_ESCAPES) + '"'
+
+    @staticmethod
+    def _edn_number(value: Any) -> str:
+        """An integer or float as EDN writes it.
+
+        RFC 8949 section 8 spells the non-finite floats ``NaN``, ``Infinity`` and
+        ``-Infinity``; Python's ``str`` gives ``nan``, ``inf`` and ``-inf``.
+        """
+        if isinstance(value, float):
+            if math.isnan(value):
+                return 'NaN'
+            if math.isinf(value):
+                return 'Infinity' if value > 0 else '-Infinity'
+        return str(value)
 
     def generate(self, data: Any, type_name: str = None, annotate: bool = True) -> str:
         """Generate an annotated EDN string for *data*.
@@ -286,7 +313,7 @@ class EDNGenerator:
         elif isinstance(value, bool):
             return "true" if value else "false"
         elif isinstance(value, (int, float)):
-            return str(value)
+            return self._edn_number(value)
         elif value is None:
             return "null"
         else:
