@@ -8,15 +8,18 @@ alphabet of the control, no blank space, the padding the control prescribes
 the ``-sloppy`` variants, no stray bits after the last character.
 
 ``.printf`` is here too: :func:`parse_format` reads a C ``printf`` format, and
-:func:`match_printf` takes a text apart by a format and :func:`read_conversion` reads
-each piece back into a data item, so that a text is checked by taking it
-apart (the data items are checked against the controller by the caller).
+the pieces of a text that a format could have written are listed by
+:func:`printf_matches` (:func:`match_printf` gives the first) and
+:func:`read_conversion` reads each piece back into a data item, so that a text is
+checked by taking it apart (the data items are checked against the controller by
+the caller, which tries the next way of taking the text apart when they do not fit).
 """
 
 import base64
 import json
+import math
 import re
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, Iterator, List, Optional, Tuple
 
 # ------------------------------------------------------------------ bytes
 
@@ -163,14 +166,14 @@ class Spec:
 
 
 _SPEC = re.compile(r'%([-+ #0]*)([0-9]*)(?:\.([0-9]*))?([a-zA-Z%])')
-_CONVERSIONS = 'diouxXeEfFgGcs'
+_CONVERSIONS = 'diouxXeEfFgGaAcs'
 
 
 def parse_format(fmt: str) -> List[object]:
     """The parts of a ``printf`` format: literal strings and :class:`Spec` objects.
 
     RFC 9741 leaves out the length modifiers and the ``p`` and ``n`` conversions
-    (and ``a``, ``*`` widths are not supported either): they are rejected.
+    (``*`` widths are not supported either): they are rejected.
     """
     parts: List[object] = []
     pos, literal = 0, []
@@ -189,7 +192,7 @@ def parse_format(fmt: str) -> List[object]:
                 raise PrintfError("'%%' takes no flags, width or precision")
             literal.append('%')
         else:
-            if conv in 'hlLjztqaApn' or conv not in _CONVERSIONS:
+            if conv in 'hlLjztqpn' or conv not in _CONVERSIONS:
                 reason = ('length modifiers are not allowed' if conv in 'hlLjztq' else
                           f"the conversion '%{conv}' is not allowed")
                 raise PrintfError(f"{reason} in a .printf format (RFC 9741)")
@@ -245,9 +248,59 @@ def _pad(spec: Spec, prefix: str, body: str, zero: bool) -> str:
 
 
 def format_float(spec: Spec, value: float) -> str:
-    """What ``printf`` writes for a floating point conversion (Python's ``%`` agrees with C here)."""
+    """What ``printf`` writes for a floating point conversion (Python's ``%`` agrees with C here).
+
+    ``%a`` and ``%A``, which Python has no conversion for, are written by :func:`format_hex_float`.
+    """
+    if spec.conv in 'aA':
+        return format_hex_float(spec, value)
     precision = '' if spec.precision is None else f'.{spec.precision}'
     return ('%' + spec.flags + (str(spec.width) if spec.width else '') + precision + spec.conv) % value
+
+
+_HEX_FLOAT = re.compile(r'0x([01])\.([0-9a-f]+)p([+-][0-9]+)\Z')
+
+
+def format_hex_float(spec: Spec, value: float) -> str:
+    """What C99 ``printf`` writes for ``%a`` and ``%A``: a hexadecimal floating-point number.
+
+    This is the form glibc writes: ``0x1.8p+0`` for 1.5 (a normal number starts with
+    ``1``, a subnormal or zero with ``0``), the fraction without trailing zeros unless
+    there is a precision, which rounds half to even, and the exponent in decimal. ``#``
+    keeps the point of a number with no fraction (``0x1.p+0``), and the ``0`` flag pads
+    with zeros after ``0x``. Infinity and NaN are ``inf`` and ``nan`` (``INF`` and
+    ``NAN`` for ``A``), as for the other float conversions; C leaves other details of the
+    text open (the leading digit of a normal number may differ on other platforms).
+    A NaN is written without a sign, as Python writes it for the other float conversions
+    (glibc writes ``-nan`` for one whose sign bit is set).
+    """
+    upper = spec.conv == 'A'
+    nan = math.isnan(value)
+    sign = '-' if not nan and math.copysign(1.0, value) < 0 else \
+        '+' if '+' in spec.flags else ' ' if ' ' in spec.flags else ''
+    if nan or math.isinf(value):
+        word = 'nan' if nan else 'inf'
+        return _pad(spec, sign, word.upper() if upper else word, zero=False)
+    lead, fraction, exponent = _HEX_FLOAT.match(abs(value).hex()).groups()
+    fraction = fraction.ljust(13, '0')
+    if spec.precision is None:
+        fraction = fraction.rstrip('0')
+    elif spec.precision >= 13:
+        fraction = fraction.ljust(spec.precision, '0')
+    else:  # round the 53 bits to the digits asked for, half to even
+        digits = spec.precision
+        shift = (13 - digits) * 4
+        rounded, rest = divmod(int(lead + fraction, 16), 1 << shift)
+        if rest > 1 << (shift - 1) or (rest == 1 << (shift - 1) and rounded & 1):
+            rounded += 1
+        lead = format(rounded >> (4 * digits), 'x')
+        fraction = format(rounded & ((1 << (4 * digits)) - 1), 'x').rjust(digits, '0') if digits else ''
+    point = '.' + fraction if fraction or '#' in spec.flags else ''
+    body = f"{lead}{point}p{'-' if exponent[0] == '-' else '+'}{int(exponent[1:])}"
+    prefix = sign + '0x'
+    if upper:
+        prefix, body = sign + '0X', body.upper()
+    return _pad(spec, prefix, body, zero=True)
 
 
 def format_text(spec: Spec, text: str) -> str:
@@ -270,6 +323,7 @@ class PrintfLimit(Exception):
 
 
 _FLOAT_RUN = re.compile(r'[-+ 0-9.eE]+')
+_HEX_FLOAT_RUN = re.compile(r'[-+ 0-9a-fA-FxXpP.]+')
 _FLOAT_WORD = re.compile(r'[-+ ]?(?:inf|nan|INF|NAN)')
 _RUNS = {conv: re.compile(pattern) for conv, pattern in _INT_CLASS.items()}
 
@@ -280,9 +334,9 @@ def _ends(part: 'Spec', text: str, start: int) -> List[int]:
     if conv in _RUNS:  # a run of characters of a class
         run = _RUNS[conv].match(text, start)
         return list(range(start + 1, run.end() + 1)) if run else []
-    if conv in 'eEfFgG':
+    if conv in 'eEfFgGaA':
         ends = set()
-        run = _FLOAT_RUN.match(text, start)
+        run = (_HEX_FLOAT_RUN if conv in 'aA' else _FLOAT_RUN).match(text, start)
         if run:
             ends.update(range(start + 1, run.end() + 1))
         word = _FLOAT_WORD.match(text, start)
@@ -294,16 +348,19 @@ def _ends(part: 'Spec', text: str, start: int) -> List[int]:
     return list(range(start, size + 1))  # 's'
 
 
-def match_printf(parts: List[object], text: str, budget: int = MATCH_BUDGET) -> Optional[List[str]]:
-    """The pieces of *text* that the conversions of *parts* wrote, or ``None`` if it does not fit.
+def printf_matches(parts: List[object], text: str, budget: int = MATCH_BUDGET) -> Iterator[List[str]]:
+    """Each way the conversions of *parts* could have written *text*, as the list of their pieces.
 
-    Literal parts must appear as they are; each conversion takes the shortest piece
-    that leaves the rest matchable (the first split, when there are several). A
-    position that cannot be completed is remembered, so the work is bounded by the
-    number of parts and the length of the text, and by *budget*.
+    Literal parts must appear as they are. A conversion takes the shortest piece
+    first, so the first way is the one with the shortest early pieces, and the next
+    ways follow as the earlier pieces are made longer (``"%s%s"`` takes ``"abcd"`` as
+    ``"" + "abcd"``, ``"a" + "bcd"``, ... ``"abcd" + ""``). A position that cannot be
+    completed is remembered, so the work is bounded by the number of parts and the
+    length of the text, and by *budget*, which counts the steps over all the ways
+    taken, not each one.
 
     Raises:
-        PrintfLimit: the work needed is more than *budget* characters.
+        PrintfLimit: (while iterating) the work needed is more than *budget* characters.
     """
     failed = set()
     spent = [0]
@@ -315,31 +372,47 @@ def match_printf(parts: List[object], text: str, budget: int = MATCH_BUDGET) -> 
         if spent[0] > budget:
             raise PrintfLimit("matching the text against the .printf format needed too much work")
 
-    def walk(index: int, start: int) -> bool:
-        """Whether parts[index:] can take the text from *start*; the pieces are kept in order."""
+    def walk(index: int, start: int) -> Iterator[None]:
+        """Yield once for each way parts[index:] can take the text from *start*; the pieces are kept in order."""
         if index == len(parts):
-            return start == len(text)
+            if start == len(text):
+                yield
+            return
         if (index, start) in failed:
-            return False
+            return
+        found = False
         part = parts[index]
         if isinstance(part, str):
             charge(len(part) + 1)
-            if text.startswith(part, start) and walk(index + 1, start + len(part)):
-                return True
+            if text.startswith(part, start):
+                for _ in walk(index + 1, start + len(part)):
+                    found = True
+                    yield
         else:
             for end in _ends(part, text, start):
                 charge(1)
                 pieces.append(text[start:end])
-                if walk(index + 1, end):
-                    return True
+                for _ in walk(index + 1, end):
+                    found = True
+                    yield
                 pieces.pop()
-        failed.add((index, start))
-        return False
+        if not found:
+            failed.add((index, start))
 
     try:
-        return list(pieces) if walk(0, 0) else None
+        for _ in walk(0, 0):
+            yield list(pieces)
     except RecursionError:  # a format with more parts than the stack has room for
         raise PrintfLimit("the .printf format has too many parts to match") from None
+
+
+def match_printf(parts: List[object], text: str, budget: int = MATCH_BUDGET) -> Optional[List[str]]:
+    """The first way :func:`printf_matches` takes *text* apart by *parts*, or ``None`` if it does not fit.
+
+    Raises:
+        PrintfLimit: the work needed is more than *budget* characters.
+    """
+    return next(printf_matches(parts, text, budget), None)
 
 
 def read_conversion(spec: Spec, text: str):
@@ -362,8 +435,8 @@ def read_conversion(spec: Spec, text: str):
             if conv == 'o' and '#' in spec.flags and number.startswith('0'):
                 value = sign * int(number, 8)
             return value if format_int(spec, value) == text else None
-        if conv in 'eEfFgG':
-            value = float(text.strip(' '))
+        if conv in 'eEfFgGaA':
+            value = float.fromhex(text.strip(' ')) if conv in 'aA' else float(text.strip(' '))
             return value if format_float(spec, value) == text else None
         if conv == 'c':
             stripped = text.strip(' ') if len(text) > 1 else text

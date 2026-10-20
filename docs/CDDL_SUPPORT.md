@@ -603,13 +603,14 @@ the encoding the RFC names, with the stray-bits rule of the non-`sloppy` forms.
 
 **`.printf`** takes an array whose first element is the format and whose other elements
 are the data items, which may be types: `text .printf ["0x%04x", uint .size 1]`. The
-conversions are `d i u o x X e E f F g G c s` with flags, width and precision; length
-modifiers, `*`, `a`, `p` and `n` are schema errors, as is a count of conversions that
-differs from the count of items. The text is taken apart by the format, each conversion
-is read back and written again, and only exact output matches. Where a format can split
-in several ways (adjacent `%s`), only the first split is tried, so a string that only
-the other split would explain is rejected. Taking the text apart is bounded (200,000 steps);
-a string that needs more is not accepted.
+conversions are `d i u o x X e E f F g G a A c s` with flags, width and precision (`%a`
+is written as glibc writes it: `0x1.8p+0`, `0X1.8P+0` for `%A`); length modifiers, `*`,
+`p` and `n` are schema errors, as is a count of conversions that differs from the count of
+items. The text is taken apart by the format, each conversion is read back and written
+again, and only exact output matches. Where a format can split in several ways (adjacent
+`%s`, or a literal that can also be inside a `%s`), every split is tried, shortest first,
+and the text is valid if one of them gives items that fit the types. Taking the text apart
+is bounded (200,000 steps for all the splits together); a string that needs more is not accepted.
 
 **`.join`** checks that a string is the concatenation of strings that fit the elements
 of an array that is written out, each element once (`text .join ["id-", (tstr .base10 uint)]`).

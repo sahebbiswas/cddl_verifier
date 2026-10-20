@@ -152,18 +152,19 @@ class TextControlsMixin:
             return [_CheckError(f"the format of .printf has {len(specs)} conversion(s) but the array gives "
                                 f"{len(entries) - 1} data item(s)", category='schema')]
         try:
-            groups = conversions.match_printf(parts, value)
+            # a text can often be taken apart in several ways (adjacent ``%s``, or a
+            # literal that can also be inside a ``%s``): any way that gives items of
+            # the right types makes the text valid, so try them in turn
+            for groups in conversions.printf_matches(parts, value):
+                readings = [conversions.read_conversion(spec, group) for spec, group in zip(specs, groups)]
+                if any(reading is None for reading in readings):
+                    continue
+                if not any(self._check_value(reading, item, _depth + 1, strict)
+                           for reading, (item, _occurrence) in zip(readings, entries[1:])):
+                    return []
         except conversions.PrintfLimit:
             return [_CheckError("matching the text against the .printf format took too many steps; it was "
                                 "not accepted", category='value', actual=self._format_value_for_log(value))]
-        if groups is not None:
-            readings = [conversions.read_conversion(spec, group) for spec, group in zip(specs, groups)]
-            if all(reading is not None for reading in readings):
-                for number, (reading, (item, _occurrence)) in enumerate(zip(readings, entries[1:]), 1):
-                    if self._check_value(reading, item, _depth + 1, strict):
-                        break
-                else:
-                    return []
         return [_CheckError(f"{value!r} is not what printf writes for {format_node(control.arg)} (.printf)",
                             category='value', expected=f"text from the .printf format {fmt.value!r}",
                             actual=self._format_value_for_log(value))]

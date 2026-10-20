@@ -142,13 +142,33 @@ class Printf(Cases, unittest.TestCase):
         self.refuses('r = text .printf ["%d"]', fragment="1 conversion")
         self.refuses('r = text .printf ["%ld", int]', fragment="length modifiers")
         self.refuses('r = text .printf ["%*d", int]', 'r = text .printf ["%n", int]',
-                     'r = text .printf ["%a", float]', 'r = text .printf ["%", int]')
+                     'r = text .printf ["%", int]')
         self.refuses('r = text .printf [int]', 'r = text .printf "x"', 'r = text .printf [* int]')
         self.refuses('r = bytes .printf ["%d", int]', 'r = text .printf ["%d %d", int]')
 
     def test_helpers(self):
         spec = conversions.parse_format("a%03db")
         self.assertEqual(len(spec), 3)
+
+    def test_matching_lists_every_split_shortest_first(self):
+        parts = conversions.parse_format("%s%s")
+        self.assertEqual(list(conversions.printf_matches(parts, "abc")),
+                         [["", "abc"], ["a", "bc"], ["ab", "c"], ["abc", ""]])
+        self.assertEqual(list(conversions.printf_matches(conversions.parse_format("%s-%s"), "a-b-c")),
+                         [["a", "b-c"], ["a-b", "c"]])
+        self.assertEqual(list(conversions.printf_matches(conversions.parse_format("%d-%d"), "1x2")), [])
+        self.assertEqual(conversions.match_printf(parts, "abc"), ["", "abc"])
+
+    def test_the_step_budget_covers_all_the_splits(self):
+        parts = conversions.parse_format("%s%s%s%s")
+        with self.assertRaises(conversions.PrintfLimit):
+            for _ in conversions.printf_matches(parts, "a" * 300):
+                pass
+        # a small budget still gives the first split, and stops on the way to the next ones
+        iterator = conversions.printf_matches(conversions.parse_format("%s%s"), "a" * 50, budget=60)
+        self.assertEqual(next(iterator), ["", "a" * 50])
+        with self.assertRaises(conversions.PrintfLimit):
+            list(iterator)
 
     def test_matching_takes_the_first_split_and_is_bounded(self):
         parts = conversions.parse_format("%s%s%s")
@@ -166,6 +186,35 @@ class Printf(Cases, unittest.TestCase):
         self.assertFalse(result.valid)
         self.assertIn("too many steps", str(result.errors[0]))
 
+    def test_adjacent_conversions_try_every_split(self):
+        self.check('r = text .printf ["%s%s", tstr .size 2, tstr .size 2]',
+                   [("abcd", True), ("abc", False), ("abcde", False), ("", False)])
+        self.check('r = text .printf ["%s%s", tstr .size 1, tstr .size 3]', [("abcd", True), ("ab", False)])
+        self.check('r = text .printf ["%s%s%s", tstr .size 1, tstr .size 2, tstr .size 3]',
+                   [("abcdef", True), ("abcde", False)])
+
+    def test_a_literal_inside_a_string_conversion_is_tried_both_ways(self):
+        lower = 'tstr .regexp "[a-z]"'
+        self.check(f'r = text .printf ["%s-%s", {lower}, {lower}]', [("a-b", True), ("a-b-c", False)])
+        self.check('r = text .printf ["%s-%s", tstr .size 3, tstr .size 1]', [("a-b-c", True), ("a-b-cx", False)])
+        self.check('r = text .printf ["%s:%d", tstr, 1..5]', [("a:b:3", True), ("a:b:9", False), ("a:3:b", False)])
+
+    def test_the_other_splits_of_numbers_are_tried_too(self):
+        self.check('r = text .printf ["%d%d", 1..9, 10..99]', [("123", True), ("12", False)])
+        self.check('r = text .printf ["%d%d", 10..99, 1..9]', [("123", True), ("12", False)])
+        self.check('r = text .printf ["%d%s", 1..9, tstr .size 2]', [("1ab", True), ("123", True), ("12", False)])
+
+    def test_splits_that_cannot_be_read_back_are_skipped(self):
+        # "007" as %d%d: only "0" + "07" (no, 07 is not what %d writes) ... none of the splits is exact
+        self.check('r = text .printf ["%d%d", uint, uint]', [("12", True), ("007", False), ("0", False)])
+
+    def test_all_splits_failing_the_types_is_a_bounded_rejection(self):
+        validator = Validator('r = text .printf ["%s%s%s%s", tstr .size 9, tstr, tstr, tstr]')
+        result = validator.validate(cbor.encode("a" * 400))
+        self.assertFalse(result.valid)
+        self.assertIn("too many steps", str(result.errors[0]))
+        self.assertFalse(validator.validate(cbor.encode("abc")).valid)
+
     def test_hostile_formats_do_not_stall(self):
         # adjacent conversions and a literal that is missing used to be a regular expression's worst case
         validator = Validator('r = text .printf ["%s%s%s%s%sX", tstr, tstr, tstr, tstr, tstr]')
@@ -175,6 +224,85 @@ class Printf(Cases, unittest.TestCase):
         self.assertTrue(validator.validate(cbor.encode("abcdX")).valid)
         floats = Validator('r = text .printf ["%f%f%f%fX", float, float, float, float]')
         self.assertFalse(floats.validate(cbor.encode("1" * 3000)).valid)
+
+
+#: ``(format, value, what C's printf writes)``, from glibc.
+C_HEX_FLOATS = [
+    ("%a", 1.5, "0x1.8p+0"), ("%A", 1.5, "0X1.8P+0"), ("%a", 0.0, "0x0p+0"), ("%a", -0.0, "-0x0p+0"),
+    ("%a", 1.0, "0x1p+0"), ("%a", 0.1, "0x1.999999999999ap-4"), ("%a", 255.5, "0x1.ffp+7"),
+    ("%a", -3.0, "-0x1.8p+1"), ("%a", 5e-324, "0x0.0000000000001p-1022"),
+    ("%a", 2.2250738585072014e-308, "0x1p-1022"), ("%a", 1.7976931348623157e308, "0x1.fffffffffffffp+1023"),
+    ("%.0a", 1.5, "0x2p+0"), ("%.0a", 2.5, "0x1p+1"), ("%.0a", 1.9999999999999998, "0x2p+0"),
+    ("%.1a", 0.1, "0x1.ap-4"), ("%.2a", 0.1, "0x1.9ap-4"), ("%.3a", 1.0, "0x1.000p+0"),
+    ("%.15a", 1.5, "0x1.800000000000000p+0"), ("%#a", 1.0, "0x1.p+0"), ("%#.0a", 1.0, "0x1.p+0"),
+    ("%+a", 1.5, "+0x1.8p+0"), ("% a", 1.5, " 0x1.8p+0"), ("%12a", 1.5, "    0x1.8p+0"),
+    ("%-12a", 1.5, "0x1.8p+0    "), ("%012a", -1.5, "-0x0001.8p+0"), ("%012A", 1.5, "0X00001.8P+0"),
+    ("%10a", float("inf"), "       inf"), ("%010a", float("inf"), "       inf"),
+    ("%a", float("-inf"), "-inf"), ("%A", float("inf"), "INF"), ("%.3a", 255.99, "0x2.000p+7"),
+    ("%.1a", 1.96875, "0x2.0p+0"),
+]
+
+
+class HexFloats(Cases, unittest.TestCase):
+    """``%a`` and ``%A`` (#233): RFC 9741 leaves out only the length modifiers, ``%p`` and ``%n``."""
+
+    def test_formatting_agrees_with_c(self):
+        for fmt, value, expected in C_HEX_FLOATS:
+            with self.subTest(fmt=fmt, value=value):
+                (spec,) = [part for part in conversions.parse_format(fmt) if not isinstance(part, str)]
+                self.assertEqual(conversions.format_float(spec, value), expected)
+
+    def test_a_nan_is_written_without_a_sign(self):
+        (spec,) = [part for part in conversions.parse_format("%+a") if not isinstance(part, str)]
+        self.assertEqual(conversions.format_float(spec, float("nan")), "+nan")
+        (spec,) = [part for part in conversions.parse_format("%A") if not isinstance(part, str)]
+        self.assertEqual(conversions.format_float(spec, float("-nan")), "NAN")
+
+    def test_every_finite_value_reads_back_from_its_text(self):
+        import random
+        import struct
+        generator = random.Random(1)
+        for fmt in ("%a", "%A", "%.4a", "%#a", "%20a", "%-20a", "%+020a"):
+            (spec,) = [part for part in conversions.parse_format(fmt) if not isinstance(part, str)]
+            for _ in range(200):
+                value = struct.unpack(">d", generator.getrandbits(64).to_bytes(8, "big"))[0]
+                if value != value:
+                    continue
+                text = conversions.format_float(spec, value)
+                read = conversions.read_conversion(spec, text)
+                self.assertIsNotNone(read, (fmt, value, text))
+                if spec.precision is None:
+                    self.assertEqual(read, value, (fmt, value, text))
+
+    def test_a_schema_with_a_literal_value(self):
+        self.check('r = text .printf ["%a", 1.5]',
+                   [("0x1.8p+0", True), ("0x1.8000000000000p+0", False), ("0x3p-1", False), ("0X1.8P+0", False),
+                    ("1.5", False)])
+        self.check('r = text .printf ["%A", 1.5]', [("0X1.8P+0", True), ("0x1.8p+0", False)])
+        self.check('r = text .printf ["%.2a", 1.5]', [("0x1.80p+0", True), ("0x1.8p+0", False), ("0x1.800000000000p+0", False)])
+        self.check('r = text .printf ["%#a", 1.0]', [("0x1.p+0", True), ("0x1p+0", False)])
+        self.check('r = text .printf ["%012a", -1.5]', [("-0x0001.8p+0", True), ("-0x1.8p+0", False)])
+
+    def test_a_schema_with_a_float_type(self):
+        self.check('r = text .printf ["%a", float]',
+                   [("0x1.8p+0", True), ("-0x0p+0", True), ("inf", True), ("-inf", True), ("nan", True),
+                    ("0x1.999999999999ap-4", True), ("0x0.0000000000001p-1022", True),
+                    ("0x1.8P+0", False), ("0x1.80p+0", False), ("0x1.8", False), ("1.5", False), ("", False)])
+        self.check('r = text .printf ["%A", float]', [("0X1.8P+0", True), ("INF", True), ("0x1.8p+0", False)])
+
+    def test_a_hex_float_in_a_longer_format(self):
+        self.check('r = text .printf ["v=%a;n=%d", float, uint]',
+                   [("v=0x1.8p+0;n=3", True), ("v=0x1.8p+0;n=x", False), ("v=0x1.8p+0", False)])
+        self.check('r = text .printf ["%a%a", float, float]', [("0x1p+00x1p+0", True), ("0x1p+0 0x1p+0", False)])
+
+    def test_the_value_is_held_to_its_type(self):
+        self.check('r = text .printf ["%a", 0.0..1.0]', [("0x1p+0", True), ("0x1.8p+0", False), ("-0x0p+0", True)])
+
+    def test_the_format_is_accepted_and_the_rest_is_still_refused(self):
+        Validator('r = text .printf ["%a %A %.3a", float, float, float]')
+        self.refuses('r = text .printf ["%la", float]', fragment="length modifiers")
+        self.refuses('r = text .printf ["%p", float]', 'r = text .printf ["%n", float]',
+                     fragment="not allowed")
 
 
 class Join(Cases, unittest.TestCase):
