@@ -61,6 +61,7 @@ cddl-verify --version
 | `--edn-format {keyindex,keyname,both}` | EDN key format (default: `keyindex`) |
 | `-M DIR`, `--module-path DIR` | Directory searched for imported CDDL modules (`<name>.cddl`); repeatable. The schema file's own directory is always searched, last |
 | `--module NAME=FILE` | CDDL file for the imported module `NAME`; repeatable |
+| `--strict-modules` | Fail when an imported module (`;# import`, `;# include`) cannot be found, instead of warning and leaving its names unchecked. The error gives the file, line and column of the directive; see [Imported modules](#imported-modules) |
 | `--diagnostics {text,json}` | How problems are reported (default: `text`); see [Diagnostics](#diagnostics) |
 | `--show-types` | Print all parsed CDDL types and exit (not with `--diagnostics json`) |
 | `--verbose` | Enable detailed logging of validation and type resolution |
@@ -250,7 +251,18 @@ r = { tag: coswid.tag-id }
 then next to the schema file, unless `--module rfc9393=path/to/file.cddl` names
 it. The module's rules are checked and become `coswid.<rule>`. A module that
 is not found prints a `Warning:` line on stderr and the names used from it
-match any value.
+match any value. With `--strict-modules` it is an error instead, and the schema
+does not load:
+
+```
+Error loading CDDL file:
+  - schema.cddl:1:1: module 'rfc9393' (imported as 'coswid') was not found; searched modules, .; an import that cannot be resolved is an error with strict_modules (--strict-modules)
+```
+
+Use it when the result must not depend on a module being present, such as
+validating a CoRIM against `cddl-schemas/unified.cddl`, which imports modules that
+are not bundled. With `--diagnostics json` each unresolved import is one `schema`
+diagnostic with its `line` and `column`.
 
 ### Input requirements
 

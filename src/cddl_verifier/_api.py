@@ -89,8 +89,8 @@ def _read_schema(schema: SchemaSource) -> str:
 
 def schema_diagnostics(schema: SchemaSource, *,
                        modules: Optional[Mapping[str, SchemaSource]] = None,
-                       module_path: Sequence[Union[str, "os.PathLike[str]"]] = ()
-                       ) -> Tuple[Diagnostic, ...]:
+                       module_path: Sequence[Union[str, "os.PathLike[str]"]] = (),
+                       strict_modules: bool = False) -> Tuple[Diagnostic, ...]:
     """The problems in a CDDL schema, as diagnostics; none for a schema that is fine.
 
     This is what :class:`Validator` raises :class:`SchemaError` for, returned
@@ -106,8 +106,11 @@ def schema_diagnostics(schema: SchemaSource, *,
     so each is reported, in the order the rules and their members are written.
     A problem in the names (a rule defined twice, a cycle) is reported alone.
 
+    With ``strict_modules=True`` every import the check cannot resolve is a
+    diagnostic at its ``;# import`` or ``;# include`` line (#229).
+
     Args:
-        schema, modules, module_path: As for :class:`Validator`.
+        schema, modules, module_path, strict_modules: As for :class:`Validator`.
 
     Raises:
         TypeError: *schema* is neither ``str`` nor ``os.PathLike``.
@@ -121,9 +124,10 @@ def schema_diagnostics(schema: SchemaSource, *,
     if name is not None:
         search.append(Path(name).parent)
     try:
-        linked = link(parse_cddl(text, source_name=name), ModuleLoader(modules, search))
+        linked = link(parse_cddl(text, source_name=name),
+                      ModuleLoader(modules, search, strict=strict_modules))
     except SchemaError as e:
-        return (schema_diagnostic(e),)
+        return tuple(schema_diagnostic(error) for error in getattr(e, "errors", (e,)))
     return tuple(schema_diagnostic(e) for e in resolve_all(linked.schema, linked.imports)[1])
 
 
@@ -151,6 +155,12 @@ class Validator:
             meaning in CDDL (RFC 8610), so a member is named by its key, a bareword key
             or the label of ``&(name: 0)``. Turn it on for a schema that documents its
             members in comments (#108).
+        strict_modules: Fail closed when an import cannot be resolved. By default
+            the names of a module that is not found match any value, and an
+            unprefixed ``;# import`` or ``;# include`` that is not found turns off
+            the check for undefined names in the whole schema. With
+            ``strict_modules=True`` any ``;# import`` or ``;# include`` that is not
+            found, used or not, raises :class:`SchemaError` at that line (#229).
 
     Attributes:
         warnings: What the schema relies on without checking: an import whose
@@ -161,7 +171,8 @@ class Validator:
         SchemaError: The schema file cannot be read or the schema cannot be
             parsed. For text that is not valid CDDL the message is
             ``file:line:column: problem`` and the exception has ``line`` and
-            ``column`` attributes.
+            ``column`` attributes. So is an unresolved import with
+            ``strict_modules=True``.
         TypeError: *schema* is neither ``str`` nor ``os.PathLike``.
     """
 
@@ -169,14 +180,15 @@ class Validator:
                  modules: Optional[Mapping[str, SchemaSource]] = None,
                  module_path: Sequence[Union[str, "os.PathLike[str]"]] = (),
                  unique_choices: bool = False,
-                 comment_names: bool = False):
+                 comment_names: bool = False,
+                 strict_modules: bool = False):
         text = _read_schema(schema)
         name = os.fspath(schema) if isinstance(schema, os.PathLike) else None
         self._unique_choices = unique_choices
         search = list(module_path)
         if name is not None:
             search.append(Path(name).parent)
-        loader = ModuleLoader(modules, search)
+        loader = ModuleLoader(modules, search, strict=strict_modules)
         try:
             self._parser = _schema.CDDLParser(text, source_name=name, loader=loader,
                                               comment_names=comment_names)
@@ -274,6 +286,7 @@ def validate(schema: SchemaSource, data: Any,
              module_path: Sequence[Union[str, "os.PathLike[str]"]] = (),
              unique_choices: bool = False,
              comment_names: bool = False,
+             strict_modules: bool = False,
              require_deterministic: bool = False) -> ValidationResult:
     """Validate *data* against a CDDL *schema*.
 
@@ -281,5 +294,6 @@ def validate(schema: SchemaSource, data: Any,
     :class:`Validator` once to check many items against the same schema.
     """
     return Validator(schema, modules=modules, module_path=module_path,
-                     unique_choices=unique_choices, comment_names=comment_names).validate(
+                     unique_choices=unique_choices, comment_names=comment_names,
+                     strict_modules=strict_modules).validate(
         data, root_type, require_deterministic=require_deterministic)

@@ -1067,6 +1067,21 @@ _IMPORT = re.compile(r'^[ \t]*;#[ \t]*(import|include)[ \t]+([^\s;]+)'
                      r'(?:[ \t]+as[ \t]+([^\s;]+))?', re.MULTILINE)
 
 
+def import_directives(text: str) -> List[Tuple[str, str, Optional[str], int, int]]:
+    """``(kind, module, prefix, start, end)`` of each ``;# import`` / ``;# include`` comment.
+
+    ``start`` and ``end`` are code-point offsets into *text*: ``start`` is at the
+    ``;#`` (not at the indent before it) and ``end`` after the last word of the
+    directive. Repeats are kept, so each one can be located.
+    """
+    found = []
+    for match in _IMPORT.finditer(text):
+        text_of = match.group(0)
+        start = match.start() + len(text_of) - len(text_of.lstrip(' \t'))
+        found.append((match.group(1), match.group(2), match.group(3), start, match.end()))
+    return found
+
+
 def parse_imports(text: str) -> List[Tuple[str, str, Optional[str]]]:
     """``(kind, module, prefix)`` of each ``;# import`` / ``;# include`` comment.
 
@@ -1074,8 +1089,8 @@ def parse_imports(text: str) -> List[Tuple[str, str, Optional[str]]]:
     ``as``, or ``None``. Repeats are dropped.
     """
     found: List[Tuple[str, str, Optional[str]]] = []
-    for match in _IMPORT.finditer(text):
-        item = (match.group(1), match.group(2), match.group(3))
+    for kind, module, prefix, _start, _end in import_directives(text):
+        item = (kind, module, prefix)
         if item not in found:
             found.append(item)
     return found
