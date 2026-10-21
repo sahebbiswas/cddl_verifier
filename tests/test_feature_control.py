@@ -323,6 +323,45 @@ class TestFeaturesUsed(unittest.TestCase):
         self.assertEqual(validator.validate(encode("x")).features_used, ())
         self.assertEqual(validator.validate(encode(1)).features_used, ("ext-int",))
 
+    def test_a_probe_of_a_computed_key_member_is_not_a_use(self):
+        schema = 'r = { ? "z" => bstr, ? tstr => ((int .feature "a") / tstr), * tstr => any }'
+        self.assertEqual(check(schema, {"a": "text", "z": 1}).features_used, ())
+        self.assertEqual(check(schema, {"a": 5}).features_used, ("a",))
+
+    def test_the_member_an_entry_goes_to_uses_its_key_feature(self):
+        schema = ('p = { * (tstr .feature "k") => int, * tstr => any }')
+        self.assertEqual(check(schema, {"x": 1}).features_used, ("k",))
+        self.assertEqual(check(schema, {"x": "s"}).features_used, ())
+
+    def test_an_optional_array_entry_that_took_no_element_is_not_a_use(self):
+        schema = 'r = [? (int .feature "a"), int]'
+        self.assertEqual(check(schema, [1]).features_used, ())
+        self.assertEqual(check(schema, [1, 2]).features_used, ("a",))
+
+    def test_array_entries_that_took_elements_are_uses(self):
+        schema = 'r = [* int .feature "a", * tstr .feature "b"]'
+        self.assertEqual(check(schema, [1, "s"]).features_used, ("a", "b"))
+        self.assertEqual(check(schema, [1, 2]).features_used, ("a",))
+        self.assertEqual(check(schema, ["s"]).features_used, ("b",))
+        self.assertEqual(check(schema, []).features_used, ())
+
+    def test_an_array_in_a_group_choice(self):
+        schema = 'r = [(int .feature "a", tstr) // (int, tstr .feature "b")]'
+        self.assertIn(check(schema, [1, "s"]).features_used, (("a",), ("b",)))
+        self.assertTrue(check(schema, [1, "s"]).valid)
+
+    def test_a_recursive_group_in_an_array(self):
+        schema = 'r = [g]\ng = (? g, int .feature "n")'
+        self.assertEqual(check(schema, [1, 2, 3]).features_used, ("n",))
+
+    def test_the_choice_checker_of_the_schema_does_not_keep_what_it_probes(self):
+        validator = Validator('t = int .feature "a" / tstr .feature "b"\nr = {x: t}')
+        for _ in range(3):
+            validator.validate(encode({"x": 1}))
+            validator.to_edn(encode({"x": 1}), root_type="r")
+        checker = validator._parser._choice_checker
+        self.assertTrue(checker is None or checker._feature_trail == [])
+
     def test_extension_members_are_listed(self):
         schema = 'p = { name: tstr, * (text .feature "further") => any }'
         self.assertEqual(check(schema, {"name": "a"}).features_used, ())

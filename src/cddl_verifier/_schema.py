@@ -559,7 +559,9 @@ class CDDLParser:
         if checker is None:
             from ._analyzer import CBORAnalyzer  # deferred: the analyzer imports this module
             checker = self._choice_checker = CBORAnalyzer(self, features=self.features)
-        return [alt for alt in alternatives if not checker._check_value(cbor_data, alt)]
+        matches = [alt for alt in alternatives if not checker._check_value(cbor_data, alt)]
+        del checker._feature_trail[:]  # a probe: what it matched is not a use of a feature
+        return matches
 
     def resolve_type_choice_for_data(self, choice, cbor_data: Any,
                                      validator=None) -> Optional[Type]:

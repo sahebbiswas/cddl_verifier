@@ -27,9 +27,15 @@ class ContainersMixin:
         after each entry, so each element is checked against each entry type
         at most once. Returns ``None`` when one assignment takes every
         element, else an error naming the first element none gets past.
+
+        A position is reached with the ``.feature`` names (RFC 9165) used by the elements
+        that were taken on the way there, so that when an assignment is found only the
+        features of the elements it gave to entries are recorded, not those of an entry
+        that an element was tried against and then went to another.
         """
         count = len(data)
         fits: Dict[Tuple[int, Type], bool] = {}
+        fit_features: Dict[Tuple[int, Type], Tuple[str, ...]] = {}
         tried: Dict[int, List[Tuple[Type, str]]] = {}
         furthest = [0]
         # Ends found so far for a group reference being followed, by (reference,
@@ -55,15 +61,15 @@ class ContainersMixin:
                 visit = (entry['ref'], frozenset(starts))
                 choices = self.cddl.group_sequence(entry['ref'])
                 if choices is None:
-                    return set()
+                    return {}
                 if visit in approximate:
                     reentered.add(visit)
-                    return set(approximate[visit])
-                approximate[visit] = set()
+                    return dict(approximate[visit])
+                approximate[visit] = {}
                 try:
                     while True:
                         ends = yield group_ends(choices, starts)
-                        if visit not in reentered or ends <= approximate[visit]:
+                        if visit not in reentered or ends.keys() <= approximate[visit].keys():
                             return ends
                         approximate[visit] = ends
                         reentered.discard(visit)
@@ -71,50 +77,55 @@ class ContainersMixin:
                     del approximate[visit]
                     reentered.discard(visit)
             node = as_type(entry['type'])
-            ends = set()
-            for pos in starts:
+            ends: Dict[int, Tuple[str, ...]] = {}
+            for pos, used in starts.items():
                 if pos >= count:
                     continue
                 key = (pos, node)
                 if key not in fits:
                     self._push_breadcrumb(f"[{pos}]", step=_Index(pos))  # where the element is
+                    mark = len(self._feature_trail)
                     try:
                         errors = self._check_value(data[pos], node)
                     finally:
                         self._pop_breadcrumb()
                     fits[key] = not errors
+                    # the element may yet go to another entry: keep what it used with the fit
+                    fit_features[key] = tuple(self._feature_trail[mark:])
+                    del self._feature_trail[mark:]
                     if errors:
                         tried.setdefault(pos, []).append((node, errors[0]))
                 if fits[key]:
-                    ends.add(pos + 1)
+                    ends.setdefault(pos + 1, used + fit_features[key])
                     furthest[0] = max(furthest[0], pos + 1)
             return ends
 
         def entry_ends(entry, starts):
             low, high = entry['min'], entry['max']
-            ends = set(starts) if low == 0 else set()
+            ends = dict(starts) if low == 0 else {}
             seen = set(ends)
-            frontier, done = set(starts), 0
+            frontier, done = dict(starts), 0
             while frontier and (high is None or done < high):
                 done += 1
                 reached = yield unit_ends(entry, frontier)
                 if done >= low:
                     # a position reached again, after more repeats, adds nothing
-                    reached -= seen
-                    seen |= reached
-                    ends |= reached
+                    reached = {pos: used for pos, used in reached.items() if pos not in seen}
+                    seen |= reached.keys()
+                    ends.update(reached)
                 frontier = reached
             return ends
 
         def group_ends(choices, starts):
-            ends = set()
+            ends: Dict[int, Tuple[str, ...]] = {}
             for entries in choices:
-                reached = set(starts)
+                reached = dict(starts)
                 for entry in entries:
                     reached = yield entry_ends(entry, reached)
                     if not reached:
                         break
-                ends |= reached
+                for pos, used in reached.items():
+                    ends.setdefault(pos, used)
             return ends
 
         def solve(task):
@@ -131,7 +142,9 @@ class ContainersMixin:
                     value = None
             return value
 
-        if count in solve(group_ends(sequence, {0})):
+        taken = solve(group_ends(sequence, {0: ()}))
+        if count in taken:
+            self._feature_trail.extend(taken[count])  # the features of the elements as assigned
             return None
         index = furthest[0]
         if index >= count:
@@ -218,6 +231,7 @@ class ContainersMixin:
         if not computed_keys:
             return set()
         deferred = set()
+        mark = len(self._feature_trail)
         for key, info in type_def['fields'].items():
             if key not in data or info.get('cut', True) or not info.get('optional'):
                 continue
@@ -227,6 +241,7 @@ class ContainersMixin:
             if any(not self._check_value(key_value, c['key'], strict=True)
                    and not self._check_value(data[key], c['type']) for c in computed_keys):
                 deferred.add(key)
+        del self._feature_trail[mark:]  # probes: the member that takes the entry is checked later
         return deferred
 
     def _check_repeated_choices(self, data: dict, type_def: dict, type_name: str, breadcrumb,
