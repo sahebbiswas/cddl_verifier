@@ -565,8 +565,10 @@ unsigned_corim = CBORTag(501, corim)
 # 2. Sign: a signed CoRIM is a COSE_Sign1 (tag 18) whose payload is the encoded
 #    tag 501 item: [protected, unprotected, payload, signature]
 payload = cbor_encode(unsigned_corim, canonical=True)
-signature = sign_data(payload, private_key)
 protected = cbor_encode({1: -7})                # alg: ES256
+# COSE signs the Sig_structure (RFC 9052 section 4.4), not the payload alone
+to_be_signed = cbor_encode(["Signature1", protected, b"", payload], canonical=True)
+signature = sign_data(to_be_signed, private_key)
 signed_corim = CBORTag(18, [protected, {}, payload, signature])
 
 # 3. Save as CBOR
