@@ -836,10 +836,10 @@ class _Resolver:
                 parts = conversions.parse_format(fmt)
             except conversions.PrintfError as exc:
                 return f"the format string of '.printf' is not usable: {exc}"
-            wanted = sum(1 for part in parts if not isinstance(part, str))
+            wanted = conversions.item_count(parts)
             if wanted != len(entries) - 1:
-                return (f"the format string of '.printf' has {wanted} conversion(s) but the array "
-                        f"gives {len(entries) - 1} data item(s)")
+                return (f"the format string of '.printf' has {wanted} data item(s) (one for each "
+                        f"conversion and each '*') but the array gives {len(entries) - 1}")
         else:
             for entry, _occurrence in entries:
                 kinds = self.kinds(entry, scope)

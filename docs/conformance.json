@@ -3266,7 +3266,7 @@
     "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "The text is what C `printf` writes for the format (the first element of the argument array) and data items that match the other elements, which may be types. Conversions `d i u o x X e E f F g G a A c s` with flags, width and precision; length modifiers, `*`, `p` and `n` are schema errors. The text is taken apart by the format and each conversion read back and written again, so only exact output matches. Where a format can be split in several ways (adjacent `%s`, or a literal that can also be inside a `%s`), every split is tried and the text is valid if one of them gives items of the right types, within a budget of 200,000 steps.",
+   "notes": "The text is what C `printf` writes for the format (the first element of the argument array) and data items that match the other elements, which may be types. Conversions `d i u o x X e E f F g G a A c s` with flags, width and precision (a `*` takes the next data item, as in C: `[\"%*d\", 5, uint]`, #241); length modifiers, `p` and `n` are schema errors. The text is taken apart by the format and each conversion read back and written again, so only exact output matches. Where a format can be split in several ways (adjacent `%s`, or a literal that can also be inside a `%s`), every split is tried and the text is valid if one of them gives items of the right types, within a budget of 200,000 steps.",
    "issues": [],
    "tests": [
     "tests/test_text_controls.py"

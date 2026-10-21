@@ -20,7 +20,8 @@ import json
 import math
 import sys
 import re
-from typing import Callable, Dict, Iterator, List, Optional, Tuple
+from itertools import chain
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple
 
 # ------------------------------------------------------------------ bytes
 
@@ -159,22 +160,42 @@ class PrintfError(ValueError):
 class Spec:
     """One ``%`` conversion of a format."""
 
-    __slots__ = ('flags', 'width', 'precision', 'conv')
+    __slots__ = ('flags', 'width', 'precision', 'conv', 'star_width', 'star_precision')
 
-    def __init__(self, flags: str, width: int, precision: Optional[int], conv: str):
-        """Set up the object."""
+    def __init__(self, flags: str, width: int, precision: Optional[int], conv: str,
+                 star_width: bool = False, star_precision: bool = False):
+        """Set up the object; a ``*`` width or precision takes its value from a data item (RFC 9741)."""
         self.flags, self.width, self.precision, self.conv = flags, width, precision, conv
+        self.star_width, self.star_precision = star_width, star_precision
+
+    @property
+    def arity(self) -> int:
+        """How many data items the conversion takes: the value, and one for each ``*``."""
+        return 1 + self.star_width + self.star_precision
+
+    def with_(self, width: int = 0, precision: Optional[int] = None) -> 'Spec':
+        """This conversion with the ``*`` values filled in (a negative width means the ``-`` flag)."""
+        flags = self.flags + '-' if width < 0 and '-' not in self.flags else self.flags
+        return Spec(flags, abs(width) if self.star_width else self.width,
+                    (None if precision is None or precision < 0 else precision) if self.star_precision
+                    else self.precision, self.conv)
 
 
-_SPEC = re.compile(r'%([-+ #0]*)([0-9]*)(?:\.([0-9]*))?([a-zA-Z%])')
+def item_count(parts: List[object]) -> int:
+    """How many data items a parsed format takes (a ``*`` takes one more than its conversion)."""
+    return sum(part.arity for part in parts if not isinstance(part, str))
+
+
+_SPEC = re.compile(r'%([-+ #0]*)([0-9]*|\*)(?:\.([0-9]*|\*))?([a-zA-Z%])')
 _CONVERSIONS = 'diouxXeEfFgGaAcs'
 
 
 def parse_format(fmt: str) -> List[object]:
     """The parts of a ``printf`` format: literal strings and :class:`Spec` objects.
 
-    RFC 9741 leaves out the length modifiers and the ``p`` and ``n`` conversions
-    (``*`` widths are not supported either): they are rejected.
+    RFC 9741 leaves out the length modifiers and the ``p`` and ``n`` conversions:
+    they are rejected. A ``*`` width or precision is kept (``Spec.star_width``): C takes
+    it from an extra argument before the value.
     """
     parts: List[object] = []
     pos, literal = 0, []
@@ -200,8 +221,9 @@ def parse_format(fmt: str) -> List[object]:
             if literal:
                 parts.append(''.join(literal))
                 literal = []
-            parts.append(Spec(flags, int(width) if width else 0,
-                              None if precision is None else int(precision or 0), conv))
+            parts.append(Spec(flags, int(width) if width and width != '*' else 0,
+                              None if precision in (None, '*') else int(precision or 0), conv,
+                              star_width=width == '*', star_precision=precision == '*'))
         pos = match.end()
     if literal:
         parts.append(''.join(literal))
@@ -345,7 +367,8 @@ def _ends(part: 'Spec', text: str, start: int) -> List[int]:
             ends.add(word.end())
         return sorted(ends)
     if conv == 'c':
-        return list(range(start + 1, size + 1)) if part.width > 1 else ([start + 1] if start < size else [])
+        wide = part.width > 1 or part.star_width
+        return list(range(start + 1, size + 1)) if wide else ([start + 1] if start < size else [])
     return list(range(start, size + 1))  # 's'
 
 
@@ -464,3 +487,93 @@ def read_conversion(spec: Spec, text: str):
         return text if format_text(spec, text) == text else None  # 's'
     except (ValueError, OverflowError):
         return None
+
+
+def read_all(spec: Spec, text: str) -> Iterator[Any]:
+    """Every data item *text* can stand for as the output of *spec* (:func:`read_conversion` gives one).
+
+    That is one item for every conversion but ``%s`` with a width, which pads the string:
+    ``"  ab"`` is ``"  ab"`` and, at width 4, ``"ab"`` and ``" ab"`` as well.
+    """
+    if spec.conv == 's' and spec.width > 0:
+        size = len(text)
+        if format_text(spec, text) == text:
+            yield text
+        if size != spec.width:  # a cut value is padded back to exactly the width
+            return
+        trailing = '-' in spec.flags
+        stripped = text.rstrip(' ') if trailing else text.lstrip(' ')
+        for cut in range(1, size - len(stripped) + 1):  # only the run of spaces can be padding
+            if spec.precision is not None and size - cut > spec.precision:
+                continue
+            yield text[:size - cut] if trailing else text[cut:]
+        return
+    value = read_conversion(spec, text)
+    if value is not None:
+        yield value
+
+
+_INT_MAX = 2 ** 31 - 1
+
+#: A ``%g`` precision this large writes every digit a double has (767) and picks the
+#: positional style for every exponent (up to 308), as the largest ``int`` does.
+_G_ENOUGH = 1100
+
+
+def _shown_precision(spec: Spec, text: str) -> Optional[int]:
+    """The precision to format with when testing the largest ``int`` against *text* (``None``: it cannot write *text*).
+
+    The largest ``int`` is a candidate only because a precision that writes a text
+    shorter than itself (``%.*s``, ``%.*g``) can be any larger value. Formatting with it
+    would build a string of that length (and ``%.2147483647d`` takes seconds and
+    gigabytes), so it is replaced by a precision that writes the same text. A conversion
+    that pads to the precision (an integer, ``%e``, ``%f``, ``%a`` of a number) would write
+    a text that long, which *text* is not.
+    """
+    conv = spec.conv
+    if conv == 's':
+        return len(text)
+    if conv == 'c':
+        return 0  # the precision is ignored
+    special = text.strip(' ').lstrip('+-').lower() in ('inf', 'nan')
+    if conv in 'eEfFaA':
+        return 0 if special else None
+    if conv in 'gG':
+        return 0 if special else (None if '#' in spec.flags else _G_ENOUGH)
+    return None
+
+
+def star_readings(spec: Spec, text: str) -> Iterator[Tuple[Optional[int], Any, Iterable[Optional[int]]]]:
+    """The ways *text* can be the output of a conversion with a ``*`` width or precision (RFC 9741 section 2.3).
+
+    C takes a ``*`` from an extra ``int`` argument that comes before the value, so the
+    text does not say what they were: ``"42"`` is ``%*d`` with a width of 0, 1 or 2 (or
+    -1, -2) and ``"   42"`` one of exactly 5 (or -5, which pads on the right). Each
+    result is ``(precision, value, widths)``: the precision (``None`` when the
+    conversion has no ``*`` precision), the value it was read as, and the widths that
+    write *text* (``[None]`` when the conversion has no ``*`` width). One text can give
+    several results (``%*s`` of ``"  ab"`` is ``"  ab"`` at any width up to 4, and ``"ab"``
+    at 4). A precision that writes a text shorter than itself (``%.*s`` of ``"ab"``) is
+    tried up to the length of the text and as the largest ``int``, not at the values in
+    between; ``-1`` stands for every negative precision, which C treats as no precision.
+    """
+    size = len(text)
+    if spec.star_precision:
+        precisions: List[Optional[int]] = [-1, *range(size + 1), _INT_MAX]
+    else:
+        precisions = [None]
+    for precision in precisions:
+        shown = precision
+        if precision == _INT_MAX:
+            shown = _shown_precision(spec, text)
+            if shown is None:
+                continue
+        if not spec.star_width:
+            for value in read_all(spec.with_(0, shown), text):
+                yield precision, value, [None]
+            continue
+        for value in read_all(spec.with_(0, shown), text):  # no padding: any width not wider than the text
+            yield precision, value, chain((0,), range(1, size + 1), range(-1, -size - 1, -1))
+        for width in (size, -size):  # padded to the width of the text
+            for padded in read_all(spec.with_(width, shown), text):
+                yield precision, padded, [width]
