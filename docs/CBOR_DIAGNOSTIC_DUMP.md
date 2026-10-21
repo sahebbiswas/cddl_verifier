@@ -406,9 +406,10 @@ Analyze CBOR-based protocols like CoRIM, CoSWID, COSE:
 
 ```python
 # CoRIM example
-corim_data = cbor_encode(CBORTag(501, {  # Tag 501
+comid = cbor_encode({0: {0: "comid-001"}})  # a concise-mid-tag, abbreviated
+corim_data = cbor_encode(CBORTag(501, {  # Tag 501: unsigned-corim-map
     0: "corim-id",
-    1: [CBORTag(506, {0: "comid-001"})],  # Tag 506
+    1: [CBORTag(506, comid)],  # Tag 506: CoMID, as encoded CBOR in a byte string
 }))
 
 print(cbor_diag_dump(corim_data))

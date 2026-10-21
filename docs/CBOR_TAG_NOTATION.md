@@ -42,6 +42,11 @@ This shows:
 - Top-level data is wrapped in tag **501** (unsigned-corim-map)
 - Inside tags array, each element is wrapped in tag **506** (concise-mid-tag/CoMID)
 
+In `draft-ietf-rats-corim` the content of tags 505, 506 and 508 is a byte string holding
+the encoded tag (`bytes .cbor`), which EDN shows between `<<` and `>>`
+([EDN_FORMATTING_IMPROVEMENTS.md](EDN_FORMATTING_IMPROVEMENTS.md)). The examples in this
+page show the map directly inside the tag to keep them short.
+
 ### Common CBOR Tags in CoRIM
 
 **Tag 32: URI**
@@ -112,9 +117,10 @@ Common tags you'll see in CoRIM/CoMID/CoSWID:
 | 32 | URI | Text strings that are URIs | `32("https://...")` |
 | 37 | UUID | Binary UUID | `37(h'...')` |
 | 501 | unsigned-corim-map | CoRIM without signature | `501({...})` |
-| 502 | signed-corim | Signed CoRIM (COSE) | `502({...})` |
-| 505 | concise-swid-tag | CoSWID tag | `505({...})` |
-| 506 | concise-mid-tag | CoMID tag | `506({...})` |
+| 18 | signed-corim | Signed CoRIM (a COSE_Sign1 whose payload is the encoded tag 501) | `18([h'..', {}, h'..', h'..'])` |
+| 505 | concise-swid-tag | CoSWID tag (`bytes .cbor`) | `505(<<{...}>>)` |
+| 506 | concise-mid-tag | CoMID tag (`bytes .cbor`) | `506(<<{...}>>)` |
+| 508 | concise-tl-tag | CoTL tag (`bytes .cbor`) | `508(<<{...}>>)` |
 | 600 | UEID | Unique Endpoint ID | `600(h'...')` |
 | 601 | OID | Object Identifier | `601(...)` |
 

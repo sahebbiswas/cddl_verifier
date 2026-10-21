@@ -113,9 +113,8 @@ canonical = cbor_encode(data, canonical=True)
 ```python
 # Encode CoRIM data canonically
 corim_data = {
-    "id": "corim-12345",
-    "tags": [...],
-    ...
+    0: "corim-12345",   # corim-id
+    1: [...],           # tags: tagged CoMID, CoSWID or CoTL items
 }
 
 # Canonical encoding for signing
@@ -551,31 +550,45 @@ print("✅ Data verified!")
 ### Complete Example: CoRIM Workflow
 
 ```python
-# Create CoRIM data
+# A CoRIM is a map with integer keys (draft-ietf-rats-corim); this one only
+# illustrates the shape. Tag 506 is a CoMID, and a tag 505 (CoSWID), 506 or 508
+# (CoTL) holds the *encoded* tag as a byte string (`bytes .cbor`).
+comid = {                                      # a concise-mid-tag
+    1: {0: "comid-001"},                       # tag-identity: tag-id
+    4: {                                       # triples (must not be empty)
+        0: [[                                  # reference-triples
+            {0: {1: "Example Vendor", 2: "Example Model"}},   # environment: class
+            [{1: {1: 1}}],                     # measurements: mval with svn 1
+        ]],
+    },
+}
 corim = {
-    "id": "example.corim.001",
-    "tags": [
-        CBORTag(506, {  # Tag 506 = CoMID
-            0: "comid-001",
-            1: [],
-        })
-    ]
+    0: "example.corim.001",                    # corim-id
+    1: [CBORTag(506, cbor_encode(comid))],     # tags
 }
 
-# 1. Encode canonically for signing
-canonical = cbor_encode(corim, canonical=True)
+# 1. Unsigned CoRIM: the map in tag 501 (tagged-unsigned-corim-map)
+unsigned_corim = CBORTag(501, corim)
 
-# 2. Sign
-signature = sign_data(canonical, private_key)
+# 2. Sign: a signed CoRIM is a COSE_Sign1 (tag 18) whose payload is the encoded
+#    tag 501 item: [protected, unprotected, payload, signature]
+payload = cbor_encode(unsigned_corim, canonical=True)
+corim_meta = {0: {0: "Example Signer"}}         # corim-meta-map: signer: signer-name
+protected = cbor_encode({
+    1: -7,                                      # alg: ES256
+    3: "application/rim+cbor",                  # content type of the payload
+    8: cbor_encode(corim_meta),                 # corim-meta (bytes .cbor)
+})
+# COSE signs the Sig_structure (RFC 9052 section 4.4), not the payload alone
+to_be_signed = cbor_encode(["Signature1", protected, b"", payload], canonical=True)
+signature = sign_data(to_be_signed, private_key)
+signed_corim = CBORTag(18, [protected, {}, payload, signature])
 
-# 3. Create signed CoRIM
-signed_corim = CBORTag(501, corim)  # Tag 501 = unsigned-corim-map
-
-# 4. Save as CBOR
+# 3. Save as CBOR
 with open('corim.cbor', 'wb') as f:
     f.write(cbor_encode(signed_corim))
 
-# 5. Also export as JSON for inspection
+# 4. Also export as JSON for inspection
 json_str = cbor_to_json(
     cbor_encode(signed_corim),
     typed=True,

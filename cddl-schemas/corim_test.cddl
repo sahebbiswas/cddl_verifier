@@ -1,5 +1,7 @@
-; CoRIM CDDL Schema (simplified from draft-ietf-rats-corim-09)
-; This is a test schema to validate CDDL parser features
+; CoRIM CDDL Schema (simplified from draft-ietf-rats-corim)
+; This is a test schema to validate CDDL parser features. It keeps the tag numbers and
+; the `bytes .cbor` wrapping of the draft (tests/test_corim_docs.py checks them against
+; unified.cddl) but leaves out most of the draft: use unified.cddl for real CoRIM data.
 
 ; CDDL sockets (extension points)
 $$corim-map-extension = ()
@@ -13,7 +15,7 @@ $corim-id-type-choice /= uuid-type
 uuid-type = bstr .size 16
 
 ; Non-empty generic
-non-empty<M> = (M) .within ({ + any => any })
+non-empty<M> = (M) .and ({ + any => any })
 
 ; CoRIM top level
 corim-map = {
@@ -49,8 +51,12 @@ $corim-role-type-choice /= & ( manifest-creator : 1 )
 $corim-role-type-choice /= & ( manifest-signer : 2 )
 
 ; Tag types
-$concise-tag-type-choice /= #6.505(comid-map)
-$concise-tag-type-choice /= #6.506(coswid-map)
+$concise-tag-type-choice /= tagged-concise-swid-tag
+$concise-tag-type-choice /= tagged-concise-mid-tag
+
+; 505 is CoSWID, 506 is CoMID; both wrap the encoded tag (CoTL, 508, is left out)
+tagged-concise-swid-tag = #6.505(bytes .cbor coswid-map)
+tagged-concise-mid-tag = #6.506(bytes .cbor comid-map)
 
 ; CoMID (Concise Module Identifier)
 comid-map = {
@@ -240,11 +246,13 @@ ip6-addr = bstr .size 16
 ; Crypto keys
 $crypto-key-type-choice /= tagged-pkix-base64-key-type
 $crypto-key-type-choice /= tagged-pkix-base64-cert-type
+$crypto-key-type-choice /= tagged-pkix-base64-cert-path-type
 $crypto-key-type-choice /= tagged-cose-key-type
 
 tagged-pkix-base64-key-type = #6.554(tstr)
 tagged-pkix-base64-cert-type = #6.555(tstr)
-tagged-cose-key-type = #6.556(cose-key-type)
+tagged-pkix-base64-cert-path-type = #6.556(tstr)
+tagged-cose-key-type = #6.558(cose-key-type)
 
 cose-key-type = any
 

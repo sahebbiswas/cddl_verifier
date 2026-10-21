@@ -69,8 +69,10 @@ CoRIM uses CBOR tags with `#6.xxx(type)` notation.
 
 **Example:**
 ```cddl
-$concise-tag-type-choice /= #6.505(comid-map)
-$concise-tag-type-choice /= #6.506(coswid-map)
+$concise-tag-type-choice /= tagged-concise-swid-tag
+$concise-tag-type-choice /= tagged-concise-mid-tag
+tagged-concise-swid-tag = #6.505(bytes .cbor coswid-map)  ; 505 is CoSWID
+tagged-concise-mid-tag = #6.506(bytes .cbor comid-map)    ; 506 is CoMID
 tagged-uuid-type = #6.37(uuid-type)
 ```
 
