@@ -59,7 +59,7 @@ the left edge gives the names:
 The name in a map or array comment is the CDDL rule the value was checked against. For the
 formats of the keys, see [IANA_ANNOTATIONS_STATUS.md](IANA_ANNOTATIONS_STATUS.md#three-ways-to-write-the-keys)
 and `--edn-format` in [CLI.md](CLI.md#edn-output-formats). `--no-annotate` prints the same
-data without any comment.
+items without any comment, and with `keyname` or `both` the keys stay as in the data.
 
 ## Nested CBOR
 
@@ -89,8 +89,10 @@ what the items encode to in preferred serialization (the shortest heads, definit
 the shortest float). A byte string with an overlong head, an indefinite length, a float
 written wider than it needs, trailing bytes, or bytes that are not CBOR at all is printed as
 `h'...'`, so the output never shows something other than what is in the data. The data is
-still checked against the schema, as `bstr .cbor T` says. With `--no-annotate` a byte string
-in a map member is not typed and prints as `h'...'`.
+still checked against the schema, as `bstr .cbor T` says. `--no-annotate` (`annotate=False`) expands
+the same items: only the comments, the type headers and the member names go (#236), so a
+map member, an array element, a tag or a choice prints as `<< ... >>` exactly as it does
+with annotation.
 
 ## When the data does not match
 
