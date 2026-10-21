@@ -613,9 +613,14 @@ the encoding the RFC names, with the stray-bits rule of the non-`sloppy` forms.
 **`.printf`** takes an array whose first element is the format and whose other elements
 are the data items, which may be types: `text .printf ["0x%04x", uint .size 1]`. The
 conversions are `d i u o x X e E f F g G a A c s` with flags, width and precision (`%a`
-is written as glibc writes it: `0x1.8p+0`, `0X1.8P+0` for `%A`); length modifiers, `*`,
-`p` and `n` are schema errors, as is a count of conversions that differs from the count of
-items. The text is taken apart by the format, each conversion is read back and written
+is written as glibc writes it: `0x1.8p+0`, `0X1.8P+0` for `%A`). A `*` width or precision
+takes an extra item before the value, as C does (`text .printf ["%*d", 5, uint]` matches
+`"   42"`; a negative width pads on the right, a negative precision is none). The text does
+not say what the `*` was, so it is read back: `"   42"` is a width of exactly 5 (or -5), `"42"`
+any width up to 2, and the item must fit one of them. A precision larger than the text it
+writes (`%.*s` of `"ab"`) is tried as the length of the text and as the largest `int`. Length
+modifiers, `p` and `n` are schema errors, as is a count of items that differs from the count of
+conversions plus `*`s. A padded `%s` (`%5s`) may be the string with or without its padding. The text is taken apart by the format, each conversion is read back and written
 again, and only exact output matches. Where a format can split in several ways (adjacent
 `%s`, or a literal that can also be inside a `%s`), every split is tried, shortest first,
 and the text is valid if one of them gives items that fit the types. Taking the text apart

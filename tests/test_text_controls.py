@@ -139,10 +139,10 @@ class Printf(Cases, unittest.TestCase):
         self.check('r = text .printf [("0x" .cat "%02x"), uint]', [("0x0a", True), ("0xa", False)])
 
     def test_schema_errors(self):
-        self.refuses('r = text .printf ["%d"]', fragment="1 conversion")
+        self.refuses('r = text .printf ["%d"]', fragment="1 data item")
         self.refuses('r = text .printf ["%ld", int]', fragment="length modifiers")
-        self.refuses('r = text .printf ["%*d", int]', 'r = text .printf ["%n", int]',
-                     'r = text .printf ["%", int]')
+        self.refuses('r = text .printf ["%*d", int]', fragment="2 data item")  # the width is an item (#241)
+        self.refuses('r = text .printf ["%n", int]', 'r = text .printf ["%", int]')
         self.refuses('r = text .printf [int]', 'r = text .printf "x"', 'r = text .printf [* int]')
         self.refuses('r = bytes .printf ["%d", int]', 'r = text .printf ["%d %d", int]')
 

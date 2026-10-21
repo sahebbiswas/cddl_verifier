@@ -148,19 +148,23 @@ class TextControlsMixin:
         except conversions.PrintfError as exc:
             return [_CheckError(f"the format of .printf is not usable: {exc}", category='schema')]
         specs = [part for part in parts if not isinstance(part, str)]
-        if len(specs) != len(entries) - 1:
-            return [_CheckError(f"the format of .printf has {len(specs)} conversion(s) but the array gives "
-                                f"{len(entries) - 1} data item(s)", category='schema')]
+        wanted = conversions.item_count(parts)
+        if wanted != len(entries) - 1:
+            return [_CheckError(f"the format of .printf has {wanted} data item(s) (one for each conversion and "
+                                f"each '*') but the array gives {len(entries) - 1}", category='schema')]
+        spent = [self._PRINTF_STAR_BUDGET]
         try:
             # a text can often be taken apart in several ways (adjacent ``%s``, or a
             # literal that can also be inside a ``%s``): any way that gives items of
             # the right types makes the text valid, so try them in turn
             for groups in conversions.printf_matches(parts, value):
-                readings = [conversions.read_conversion(spec, group) for spec, group in zip(specs, groups)]
-                if any(reading is None for reading in readings):
-                    continue
-                if not any(self._check_value(reading, item, _depth + 1, strict)
-                           for reading, (item, _occurrence) in zip(readings, entries[1:])):
+                items, fits = [entry[0] for entry in entries[1:]], True
+                for spec, group in zip(specs, groups):
+                    taken, items = items[:spec.arity], items[spec.arity:]
+                    if not self._printf_conversion_fits(spec, group, taken, _depth, strict, spent):
+                        fits = False
+                        break
+                if fits:
                     return []
         except conversions.PrintfLimit:
             return [_CheckError("matching the text against the .printf format took too many steps; it was "
@@ -168,6 +172,35 @@ class TextControlsMixin:
         return [_CheckError(f"{value!r} is not what printf writes for {format_node(control.arg)} (.printf)",
                             category='value', expected=f"text from the .printf format {fmt.value!r}",
                             actual=self._format_value_for_log(value))]
+
+    #: How many ``*`` width and precision readings a ``.printf`` check may try (they are not in the text).
+    _PRINTF_STAR_BUDGET = 20_000
+
+    def _printf_conversion_fits(self, spec: 'conversions.Spec', text: str, items: list, _depth: int,
+                                strict: bool, spent: list) -> bool:
+        """Whether *text*, written by *spec*, reads as data items of the types *items* (value last, after any ``*``)."""
+        if not (spec.star_width or spec.star_precision):
+            return any(not self._check_value(reading, items[0], _depth + 1, strict)
+                       for reading in conversions.read_all(spec, text))
+        width_item = items[0] if spec.star_width else None
+        precision_item = items[int(spec.star_width)] if spec.star_precision else None
+        for precision, reading, widths in conversions.star_readings(spec, text):
+            spent[0] -= 1
+            if spent[0] < 0:
+                raise conversions.PrintfLimit("too many readings of a '*' width or precision")
+            if self._check_value(reading, items[-1], _depth + 1, strict):
+                continue
+            if precision_item is not None and self._check_value(precision, precision_item, _depth + 1, strict):
+                continue
+            if width_item is None:
+                return True
+            for width in widths:
+                spent[0] -= 1
+                if spent[0] < 0:
+                    raise conversions.PrintfLimit("too many readings of a '*' width or precision")
+                if not self._check_value(width, width_item, _depth + 1, strict):
+                    return True
+        return False
 
     def _join_errors(self, value: Any, control: Control, _depth: int, strict: bool) -> List[str]:
         """``text .join [a, ".", b]``: *value* is the concatenation of strings that fit the elements.
