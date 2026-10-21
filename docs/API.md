@@ -70,12 +70,15 @@ Parses a schema once so it can check many items.
   not, raises `SchemaError` with the `line` and `column` of the directive; the
   exception's `errors` holds one error per unresolved import
   ([CDDL_SUPPORT.md](CDDL_SUPPORT.md#modules)).
-- `features`: the `.feature` names (RFC 9165) that are enabled. By default
-  (`None`) every feature is, and `T .feature "x"` is just `T`. With a collection of
-  names, even an empty one, only those are: `T .feature "x"` matches only while `"x"`
-  is in it, a choice falls through to its other alternatives, and the diagnostic names
-  the feature that is not enabled. A single string is refused (`{"x"}`, not `"x"`);
-  see [CDDL_SUPPORT.md](CDDL_SUPPORT.md#feature).
+- `features`: the `.feature` names (RFC 9165) that are enabled; any iterable of
+  text strings. By default (`None`) every feature is enabled, and `T .feature "x"`
+  is just `T`. With a collection of names, even an empty one (which enables none),
+  only those are: `T .feature "x"` matches only while `"x"` is in it, a choice falls
+  through to its other alternatives, and the diagnostic names the feature that is not
+  enabled. `features={'x'}`, `['x']`, `('x',)` and `frozenset({'x'})` all enable
+  just `x`; `features='x'` raises `TypeError` (a string would be read as a
+  collection of letters), as does a name that is not a string. See
+  [CDDL_SUPPORT.md](CDDL_SUPPORT.md#feature).
 - Raises `SchemaError` (a `ValueError`) when a schema file cannot be read, is
   not valid CDDL, or does not make sense (an undefined name, a generic given
   the wrong number of arguments, an unknown control operator; see

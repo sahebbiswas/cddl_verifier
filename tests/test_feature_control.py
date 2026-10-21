@@ -340,6 +340,14 @@ class TestFeaturesUsed(unittest.TestCase):
         self.assertNotIn("features_used", document)
         self.assertEqual(set(document), {"format_version", "valid", "root_type", "diagnostics"})
 
+    def test_the_analyzer_exposes_them(self):
+        from cddl_verifier import _analyzer, _schema
+        parser = _schema.CDDLParser('r = [int .feature "a", tstr .feature "b", int .feature "a"]')
+        analyzer = _analyzer.CBORAnalyzer(parser)
+        self.assertEqual(analyzer.features_used, ())
+        self.assertTrue(analyzer.validate([1, "s", 2], "r"))
+        self.assertEqual(analyzer.features_used, ("a", "b"))
+
     def test_the_result_still_compares_by_value(self):
         self.assertEqual(check(CHOICE, 42), check(CHOICE, 42))
         self.assertNotEqual(check(CHOICE, 42), check(CHOICE, "x"))

@@ -176,7 +176,7 @@ Examples:
     parser.add_argument('--feature', action='append', default=None, metavar='NAME',
                         help='Enable the RFC 9165 feature NAME for ".feature" controls; repeatable. '
                              'With no --feature and no --no-features every feature is enabled; '
-                             'with one, only the named features are')
+                             'with one or more --feature options only the named features are enabled.')
     parser.add_argument('--no-features', action='store_true',
                         help='Enable no RFC 9165 feature: "T .feature NAME" matches nothing')
     parser.add_argument('--diagnostics', choices=['text', 'json'], default='text',
@@ -339,7 +339,7 @@ Examples:
 
         if analyzer.validate(cbor_data, root_type, cbor_bytes):
             valid = True
-            features_used = tuple(dict.fromkeys(analyzer._feature_trail))
+            features_used = analyzer.features_used
             print("[OK] Validation successful", file=sys.stderr)
             if features_used:
                 print(f"Features used: {', '.join(features_used)}", file=sys.stderr)

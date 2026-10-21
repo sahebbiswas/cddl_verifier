@@ -274,7 +274,7 @@ class Validator:
         ok = analyzer.validate(data, root, cbor_bytes)
         diagnostics = analyzer.get_diagnostics()
         valid = bool(ok) and not diagnostics
-        used = tuple(dict.fromkeys(analyzer._feature_trail)) if valid else ()
+        used = analyzer.features_used if valid else ()
         return ValidationResult(valid, root, diagnostics, data, used)
 
     def to_edn(self, data: Any, root_type: Optional[str] = None, *,

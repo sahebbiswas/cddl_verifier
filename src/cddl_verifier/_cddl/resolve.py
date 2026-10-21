@@ -108,6 +108,8 @@ _KIND_NAMES = {
 
 #: Controls whose argument is checked as the schema is read (and again once a generic
 #: rule's arguments are in).
+#: ``.feature`` has no entry in ``_CONTROL_KINDS`` because it applies to any target; its
+#: controller (a name or ``[name, detail]``) is checked by ``computed.feature``.
 _ARGUMENT_CHECKED = frozenset({'bits', 'regexp', 'abnf', 'abnfb', 'plus', 'cat', 'det',
                                'printf', 'join', 'feature'})
 

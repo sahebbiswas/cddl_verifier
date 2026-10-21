@@ -21,7 +21,7 @@ This module keeps the state they share (``__init__``). ``CDDLParser`` lives in `
 """
 
 
-from typing import Any, Dict, FrozenSet, Iterable, List, Optional
+from typing import Any, Dict, FrozenSet, Iterable, List, Optional, Tuple
 
 from ._decode import SimpleCBORDecoder  # noqa: F401 (re-exported)
 from ._log import Colors, logger  # noqa: F401 (re-exported)
@@ -101,6 +101,12 @@ class CBORAnalyzer(ReportingMixin, ValidationMixin, StructuresMixin, ContainersM
         #: The features the parts of the data that matched have used so far; a part that
         #: is tried and does not match takes its entries back (``_check_value``).
         self._feature_trail: List[str] = []
+
+    @property
+    def features_used(self) -> Tuple[str, ...]:
+        """The ``.feature`` names the parts of the data that matched used in the last
+        :meth:`validate`, in the order met and once each (RFC 9165 section 4)."""
+        return tuple(dict.fromkeys(self._feature_trail))
         self.validation_errors: List[str] = []
         self.breadcrumb: List[str] = []  # Track CDDL path for logging
         self.cbor_bytes: Optional[bytes] = None  # Raw CBOR bytes for offset tracking

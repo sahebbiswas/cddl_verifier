@@ -13,7 +13,7 @@ range of numbers; :func:`contains` says whether a data item is one of them.
 """
 
 import math
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 from .ast import (Array, BytesLit, Control, FloatLit, GroupRef, InlineGroup, IntLit, Member, Name, Paren,
                   Range, TextLit, Type)
@@ -293,7 +293,7 @@ def array_entries(rules: Dict[str, object], node, _depth: int = 0):
     return None
 
 
-def feature(rules: Dict[str, object], node):
+def feature(rules: Dict[str, object], node) -> Tuple[str, Optional[Type]]:
     """``(name, detail)`` for the controller of ``.feature`` (RFC 9165 section 4).
 
     The controller is the feature name, a text string (which may be computed, ``"a" .cat
