@@ -30,8 +30,9 @@ more than ``_MAX_STATES`` states is rejected as a pattern, and a match that woul
 more than ``MATCH_BUDGET`` steps raises ``XsdRegexLimit``.
 
 What is covered: the whole XSD 1.0 grammar, with the Unicode categories of the
-running Python (``unicodedata``) and the Unicode blocks in ``_BLOCKS``. Other
-blocks are reported as unsupported rather than guessed.
+running Python (``unicodedata``) and every Unicode block (``unicode_blocks``,
+#231, under the names of all versions of the W3C Note). A name that is no block is a
+schema error.
 """
 
 import re
@@ -39,6 +40,8 @@ import unicodedata
 from bisect import bisect_right
 from functools import lru_cache
 from typing import Dict, List, Optional, Tuple
+
+from .unicode_blocks import ALIASES, BLOCKS
 
 __all__ = ['XsdRegexError', 'XsdRegexLimit', 'MATCH_BUDGET', 'compile_pattern', 'fullmatch']
 
@@ -132,28 +135,10 @@ _CATEGORY_NAMES = frozenset(
     'L Lu Ll Lt Lm Lo M Mn Mc Me N Nd Nl No P Pc Pd Ps Pe Pi Pf Po Z Zs Zl Zp '
     'S Sm Sc Sk So C Cc Cf Co Cn'.split())
 
-#: Unicode blocks by their XSD name (``\p{IsGreek}``): the common ones.
-_BLOCKS: Dict[str, Tuple[int, int]] = {
-    'BasicLatin': (0x0000, 0x007F), 'Latin-1Supplement': (0x0080, 0x00FF),
-    'LatinExtended-A': (0x0100, 0x017F), 'LatinExtended-B': (0x0180, 0x024F),
-    'IPAExtensions': (0x0250, 0x02AF), 'SpacingModifierLetters': (0x02B0, 0x02FF),
-    'CombiningDiacriticalMarks': (0x0300, 0x036F), 'Greek': (0x0370, 0x03FF),
-    'Cyrillic': (0x0400, 0x04FF), 'Armenian': (0x0530, 0x058F), 'Hebrew': (0x0590, 0x05FF),
-    'Arabic': (0x0600, 0x06FF), 'Devanagari': (0x0900, 0x097F), 'Thai': (0x0E00, 0x0E7F),
-    'Georgian': (0x10A0, 0x10FF), 'HangulJamo': (0x1100, 0x11FF),
-    'LatinExtendedAdditional': (0x1E00, 0x1EFF), 'GreekExtended': (0x1F00, 0x1FFF),
-    'GeneralPunctuation': (0x2000, 0x206F), 'SuperscriptsandSubscripts': (0x2070, 0x209F),
-    'CurrencySymbols': (0x20A0, 0x20CF), 'LetterlikeSymbols': (0x2100, 0x214F),
-    'NumberForms': (0x2150, 0x218F), 'Arrows': (0x2190, 0x21FF),
-    'MathematicalOperators': (0x2200, 0x22FF), 'BoxDrawing': (0x2500, 0x257F),
-    'GeometricShapes': (0x25A0, 0x25FF), 'MiscellaneousSymbols': (0x2600, 0x26FF),
-    'Dingbats': (0x2700, 0x27BF), 'CJKSymbolsandPunctuation': (0x3000, 0x303F),
-    'Hiragana': (0x3040, 0x309F), 'Katakana': (0x30A0, 0x30FF), 'Bopomofo': (0x3100, 0x312F),
-    'CJKUnifiedIdeographs': (0x4E00, 0x9FFF), 'HangulSyllables': (0xAC00, 0xD7AF),
-    'PrivateUse': (0xE000, 0xF8FF), 'CJKCompatibilityIdeographs': (0xF900, 0xFAFF),
-    'AlphabeticPresentationForms': (0xFB00, 0xFB4F),
-    'HalfwidthandFullwidthForms': (0xFF00, 0xFFEF), 'Specials': (0xFFF0, 0xFFFD),
-}
+def _block(name: str) -> Optional[Tuple[int, int]]:
+    """The code points of the block ``name`` (without ``Is``), or ``None`` if there is none."""
+    return BLOCKS.get(ALIASES.get(name, name))
+
 
 _SPACE: Ranges = [(0x09, 0x0A), (0x0D, 0x0D), (0x20, 0x20)]
 
@@ -316,7 +301,7 @@ class _Parser:
         name = self.text[self.pos + 1:end]
         self.pos = end + 1
         if name.startswith('Is'):
-            block = _BLOCKS.get(name[2:])
+            block = _block(name[2:])
             if block is None:
                 raise self.error(f"the Unicode block \\{ch}{{{name}}} is not supported", start)
             ranges: Ranges = [block]
