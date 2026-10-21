@@ -122,6 +122,50 @@ class StarPrecision(unittest.TestCase):
         self.assertFalse(accepts('r = text .printf ["%*.*d", 6, 3, uint]', "     7"))
 
 
+class Cost(unittest.TestCase):
+    """The readings of a long text take time in proportion to its length, and never format the largest ``int``."""
+
+    def test_the_largest_precision_is_never_formatted(self):
+        import time
+        for conv, text in (('d', '42'), ('x', '2a'), ('f', '1.5'), ('e', '1.5e+00'), ('a', '0x1.8p+0'), ('s', 'ab')):
+            spec = conversions.Spec('', 0, None, conv, False, True)
+            start = time.perf_counter()
+            list(conversions.star_readings(spec, text))
+            self.assertLess(time.perf_counter() - start, 0.5, conv)
+
+    def test_the_largest_precision_still_writes_what_ignores_it(self):
+        precisions = lambda conv, text, flags='': [p for p, _v, _w in conversions.star_readings(
+            conversions.Spec(flags, 0, None, conv, False, True), text)]
+        top = conversions._INT_MAX
+        self.assertIn(top, precisions('s', 'ab'))                 # %.*s: no cut at any precision >= 2
+        self.assertIn(top, precisions('g', '1.5'))                # %.*g strips trailing zeros
+        self.assertIn(top, precisions('g', '100000000000000000000'))   # positional, not 1e+20
+        self.assertNotIn(top, precisions('g', '1e+20'))
+        self.assertNotIn(top, precisions('g', '1.50000', '#'))   # '#' keeps the zeros: that long
+        self.assertIn(top, precisions('f', 'inf'))
+        self.assertNotIn(top, precisions('f', '1.5'))             # would be that many digits
+        self.assertNotIn(top, precisions('d', '42'))
+
+    def test_a_long_padded_text_is_read_in_linear_time(self):
+        import time
+        text = ' ' * 20000 + 'ab'
+        start = time.perf_counter()
+        for width, flags in ((len(text), ''), (len(text), '-'), (5, '')):
+            spec = conversions.Spec(flags, width, None, 's', False, False)
+            list(conversions.read_all(spec, text if flags == '' else 'ab' + ' ' * 20000))
+        self.assertLess(time.perf_counter() - start, 1.0)
+
+    def test_the_cuts_of_a_padded_string_are_the_same(self):
+        read = lambda width, flags, text, precision=None: list(conversions.read_all(
+            conversions.Spec(flags, width, precision, 's', False, False), text))
+        self.assertEqual(read(4, '', '  ab'), ['  ab', ' ab', 'ab'])
+        self.assertEqual(read(4, '-', 'ab  '), ['ab  ', 'ab ', 'ab'][:3])
+        self.assertEqual(read(2, '', ' ab'), [' ab'])             # longer than the width: nothing was padded
+        self.assertEqual(read(4, '', 'a  b'), ['a  b'])           # only a leading run of spaces can be padding
+        self.assertEqual(read(4, '', '  ab', 3), [' ab', 'ab'])   # precision 3 cuts the 4-character reading
+        self.assertEqual(read(4, '', '  ab', 1), [])              # precision 1 cuts every reading to one character
+
+
 class Several(unittest.TestCase):
     def test_items_are_taken_in_order_per_conversion(self):
         schema = 'r = text .printf ["%*d|%d|%.*f", 4, uint, int, 1, float]'

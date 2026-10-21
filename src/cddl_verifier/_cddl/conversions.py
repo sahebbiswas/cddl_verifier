@@ -495,12 +495,17 @@ def read_all(spec: Spec, text: str) -> Iterator[Any]:
     ``"  ab"`` is ``"  ab"`` and, at width 4, ``"ab"`` and ``" ab"`` as well.
     """
     if spec.conv == 's' and spec.width > 0:
+        size = len(text)
+        if format_text(spec, text) == text:
+            yield text
+        if size != spec.width:  # a cut value is padded back to exactly the width
+            return
         trailing = '-' in spec.flags
-        for cut in range(len(text) + 1):
-            value = text[:len(text) - cut] if trailing else text[cut:]
-            if not (text[len(text) - cut:] if trailing else text[:cut]).strip(' '):
-                if format_text(spec, value) == text:
-                    yield value
+        stripped = text.rstrip(' ') if trailing else text.lstrip(' ')
+        for cut in range(1, size - len(stripped) + 1):  # only the run of spaces can be padding
+            if spec.precision is not None and size - cut > spec.precision:
+                continue
+            yield text[:size - cut] if trailing else text[cut:]
         return
     value = read_conversion(spec, text)
     if value is not None:
@@ -508,6 +513,33 @@ def read_all(spec: Spec, text: str) -> Iterator[Any]:
 
 
 _INT_MAX = 2 ** 31 - 1
+
+#: A ``%g`` precision this large writes every digit a double has (767) and picks the
+#: positional style for every exponent (up to 308), as the largest ``int`` does.
+_G_ENOUGH = 1100
+
+
+def _shown_precision(spec: Spec, text: str) -> Optional[int]:
+    """The precision to format with when testing the largest ``int`` against *text* (``None``: it cannot write *text*).
+
+    The largest ``int`` is a candidate only because a precision that writes a text
+    shorter than itself (``%.*s``, ``%.*g``) can be any larger value. Formatting with it
+    would build a string of that length (and ``%.2147483647d`` takes seconds and
+    gigabytes), so it is replaced by a precision that writes the same text. A conversion
+    that pads to the precision (an integer, ``%e``, ``%f``, ``%a`` of a number) would write
+    a text that long, which *text* is not.
+    """
+    conv = spec.conv
+    if conv == 's':
+        return len(text)
+    if conv == 'c':
+        return 0  # the precision is ignored
+    special = text.strip(' ').lstrip('+-').lower() in ('inf', 'nan')
+    if conv in 'eEfFaA':
+        return 0 if special else None
+    if conv in 'gG':
+        return 0 if special else (None if '#' in spec.flags else _G_ENOUGH)
+    return None
 
 
 def star_readings(spec: Spec, text: str) -> Iterator[Tuple[Optional[int], Any, List[Optional[int]]]]:
@@ -530,12 +562,17 @@ def star_readings(spec: Spec, text: str) -> Iterator[Tuple[Optional[int], Any, L
     else:
         precisions = [None]
     for precision in precisions:
+        shown = precision
+        if precision == _INT_MAX:
+            shown = _shown_precision(spec, text)
+            if shown is None:
+                continue
         if not spec.star_width:
-            for value in read_all(spec.with_(0, precision), text):
+            for value in read_all(spec.with_(0, shown), text):
                 yield precision, value, [None]
             continue
-        for value in read_all(spec.with_(0, precision), text):  # no padding: any width not wider than the text
+        for value in read_all(spec.with_(0, shown), text):  # no padding: any width not wider than the text
             yield precision, value, [0, *range(1, size + 1), *range(-1, -size - 1, -1)]
         for width in (size, -size):  # padded to the width of the text
-            for padded in read_all(spec.with_(width, precision), text):
+            for padded in read_all(spec.with_(width, shown), text):
                 yield precision, padded, [width]
