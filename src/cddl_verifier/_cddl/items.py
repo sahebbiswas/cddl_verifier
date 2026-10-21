@@ -41,6 +41,16 @@ _UINT_LIMIT = 2 ** 64
 _FLOAT_FORMATS = {25: '>e', 26: '>f'}
 
 
+def as_tag(value: Any) -> Any:
+    """*value* as a :class:`CBORTag` when it is a bignum the decoder returned as an ``int``, else *value*.
+
+    A tag 2 or 3 around a byte string of 2^64 or more is an ``int`` in decoded data (so that
+    it round-trips); a schema that names the tag (``#6.2(bstr)``) must see the tag (#234).
+    """
+    parts = tag_parts(value) if _is_bignum(value) else None
+    return value if parts is None else CBORTag(parts[0], parts[1])
+
+
 def is_tag(value: Any) -> bool:
     """A decoded tag, or an integer too big for major type 0 or 1 (a bignum)."""
     return isinstance(value, CBORTag) or _is_bignum(value)

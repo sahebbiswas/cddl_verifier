@@ -277,9 +277,9 @@ class TestTagReferences(unittest.TestCase):
 
     def test_tag_number_must_satisfy_the_type(self):
         self.check("r = #6.<uint .le 10>(any)", [("c101", True), ("d8206178", False)])
-        self.check("r = #6.<1 / 2>(any)", [("c101", True), ("c201", True), ("c301", False)])
+        self.check("r = #6.<1 / 9>(any)", [("c101", True), ("c901", True), ("c301", False)])
         self.check("r = {a: #6.<1..5>(tstr)}",
-                   [("a16161c26178", True), ("a16161d8206178", False)])
+                   [("a16161c46178", True), ("a16161d8206178", False)])
 
     def test_tag_number_through_a_named_type(self):
         self.check("r = #6.<epoch>(int)\nepoch = 1 / 2", [("c101", True), ("c301", False)])

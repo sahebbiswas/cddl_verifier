@@ -12,6 +12,7 @@ tag     content
 ======  ===============================================================
 0       an RFC 3339 ``date-time`` (calendar-valid, offset 00:00 to 23:59,
         second 60 only at the end of a UTC month)
+2, 3    a byte string (the magnitude of a positive or negative bignum)
 24      a byte string holding exactly one well-formed CBOR item
 32      an RFC 3986 URI reference (``::x`` and ``a b`` are not)
 33      base64url text without padding (RFC 4648 section 5)
@@ -28,13 +29,14 @@ tag     content
         :mod:`._cddl.mime` for what is and is not checked)
 ======  ===============================================================
 
-A content of the wrong type (a number under tag 0) is left to the type check of
-the rule.
+Tags 2 and 3 (bignums) and 24 take a byte string and the other tags a text string
+(RFC 8949 section 3.4.3); content of another type is an error whatever the schema
+says about it (#234), so ``#6.2(any)`` does not accept ``2(0)``.
 """
 
 import ipaddress
 import re
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from .mime import message_error
 
@@ -231,8 +233,14 @@ def _encoded_cbor(data: bytes) -> Optional[str]:
 _TEXT: Dict[int, Callable[[str], Optional[str]]] = {
     0: _date_time, 32: _uri_reference, 33: _base64url, 34: _base64, 35: _regexp, 36: message_error}
 
+#: The type of content each registered tag takes (RFC 8949 section 3.4 and the IANA registry):
+#: bignums and encoded CBOR wrap a byte string, the text tags a text string.
+_EXPECTED_TYPE: Dict[int, Tuple[type, str]] = {
+    **{tag: (str, 'a text string') for tag in _TEXT},
+    2: (bytes, 'a byte string'), 3: (bytes, 'a byte string'), 24: (bytes, 'a byte string')}
+
 #: The tag numbers whose content is checked.
-CHECKED_TAGS = frozenset(_TEXT) | {24}
+CHECKED_TAGS = frozenset(_EXPECTED_TYPE)
 
 
 def _shown(text: str, limit: int = 80) -> str:
@@ -241,17 +249,37 @@ def _shown(text: str, limit: int = 80) -> str:
     return shown if len(shown) <= limit else shown[:limit - 3] + '...'
 
 
+def _kind(content: Any) -> str:
+    """What *content* is, for a message."""
+    if isinstance(content, bool):
+        return 'a boolean'
+    for kind, name in ((int, 'an integer'), (float, 'a float'), (bytes, 'a byte string'),
+                       (str, 'a text string'), (list, 'an array'), (dict, 'a map')):
+        if isinstance(content, kind):
+            return name
+    return 'a tagged item' if hasattr(content, 'tag') else 'null' if content is None else 'another item'
+
+
 def content_error(tag: int, content: Any) -> Optional[str]:
     """Why *content* is not what tag *tag* means, or ``None``.
 
-    Content of another type than the tag takes (a number under tag 0) gives
-    ``None``: the type check reports that.
+    A registered tag takes one type of content (``_EXPECTED_TYPE``: a byte string
+    under tags 2, 3 and 24, a text string under 0 and 32 to 36), and content of
+    another type is reported here, so that a schema which does not say the type
+    (``#6.2(any)``) rejects ``2(0)`` too (#234). Tags that are not registered take
+    anything.
     """
+    expected = _EXPECTED_TYPE.get(tag)
+    if expected is None:
+        return None
+    kind, noun = expected
+    if not isinstance(content, kind) or isinstance(content, bool):
+        return f"tag {tag} content must be {noun}, not {_kind(content)}"
     if tag == 24:
-        problem = _encoded_cbor(content) if isinstance(content, bytes) else None
+        problem = _encoded_cbor(content)
         return f"tag 24 content is not valid: {problem}" if problem else None
     check = _TEXT.get(tag)
-    if check is None or not isinstance(content, str):
+    if check is None:  # tags 2 and 3: any byte string is a bignum
         return None
     problem = check(content)
     return f"tag {tag} content {_shown(content)} is not valid: {problem}" if problem else None

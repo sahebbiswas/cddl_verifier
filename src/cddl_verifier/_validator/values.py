@@ -8,7 +8,7 @@ from typing import Any, List, Optional, Tuple
 
 from .._cddl import computed, query, tagcontent
 from .._cddl.ast import Control, IntLit, Major, Tag, Type, Unwrap
-from .._cddl.items import major_error, tag_parts
+from .._cddl.items import as_tag, major_error, tag_parts
 from .._cddl.printer import format_node
 from .._cddl.typeexpr import as_type, bare_name
 from .._log import logger
@@ -130,6 +130,7 @@ class ValuesMixin:
         tag_info = query.tag(expr)
         if tag_info:
             expected_tag, inner = tag_info
+            value = as_tag(value)
             if not self._is_tagged(value):
                 return [_CheckError(
                     f"requires CBOR tag {expected_tag}, but the data is not tagged{_tuple_hint(value)}",
@@ -282,6 +283,14 @@ class ValuesMixin:
             if errors:
                 return [self._reworded(errors[0], f"tag number {parts[0]} does not match "
                                        f"{format_node(item.tag_type)}: {errors[0]}")]
+        # '#6(any)' and '#6.<uint>(any)' name no tag, so the content of a registered tag is
+        # checked here too: '2(0)' is not a bignum whatever the schema says (#234).
+        if isinstance(parts[0], int) and not isinstance(parts[0], bool):
+            content_error = tagcontent.content_error(parts[0], parts[1])
+            if content_error:
+                return [_CheckError(content_error, category='tag',
+                                    expected=f"valid tag {parts[0]} content",
+                                    actual=_describe_value(parts[1]))]
         return self._check_value(parts[1], item.inner, _depth + 1, strict)
 
     @staticmethod

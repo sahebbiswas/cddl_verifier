@@ -71,12 +71,25 @@ class TestContentError(unittest.TestCase):
         for data in (b'', b'\xff\xff', b'\x01\x02', b'\x62a', b'\x1c'):
             self.assertIsNotNone(content_error(24, data), data)
 
-    def test_other_tags_and_other_types_are_left_alone(self):
-        self.assertIsNone(content_error(36, 5))          # not text: the type check reports that
+    def test_other_tags_are_left_alone(self):
         self.assertIsNone(content_error(1, 'x'))
-        self.assertIsNone(content_error(0, 5))          # the type check reports that
-        self.assertIsNone(content_error(24, 'text'))
-        self.assertEqual(CHECKED_TAGS, {0, 24, 32, 33, 34, 35, 36})
+        self.assertIsNone(content_error(100, 5))
+        self.assertEqual(CHECKED_TAGS, {0, 2, 3, 24, 32, 33, 34, 35, 36})
+
+    def test_content_of_another_type_is_reported_without_the_schema(self):
+        # #234: the type of the content is part of what the tag means
+        for tag, wrong in [(0, 5), (36, 5), (32, b'x'), (2, 0), (2, 'not-bytes'), (3, ''),
+                           (3, [1]), (24, 'text'), (24, 5), (2, None), (2, True), (0, {})]:
+            self.assertIn(f"tag {tag} content must be", content_error(tag, wrong), (tag, wrong))
+        self.assertIn('not an integer', content_error(2, 0))
+        self.assertIn('not a text string', content_error(3, ''))
+        self.assertIn('not a boolean', content_error(2, True))
+        self.assertIn('not null', content_error(2, None))
+
+    def test_any_byte_string_is_a_bignum(self):
+        for content in (b'', b'\x00', b'\x01', b'\xff' * 20):
+            self.assertIsNone(content_error(2, content))
+            self.assertIsNone(content_error(3, content))
 
     def test_message_names_the_tag_and_the_problem(self):
         message = content_error(0, '2021-02-29T00:00:00Z')
@@ -135,6 +148,68 @@ class TestInTheValidator(unittest.TestCase):
         self.assertTrue(ok('r = #6.24(bstr .cbor uint)', CBORTag(24, b'\x01')))
         self.assertFalse(ok('r = #6.24(bstr .cbor uint)', CBORTag(24, b'\x61a')))
         self.assertFalse(ok('r = #6.24(bstr .cbor uint)', CBORTag(24, b'\xff')))
+
+
+class TestContentTypeWhateverTheSchemaSays(unittest.TestCase):
+    """#234: ``#6.2(any)`` does not accept ``2(0)``; the content type belongs to the tag."""
+
+    SCHEMAS = ['r = #6.2(any)', 'r = #6.<uint>(any)', 'r = #6(any)', 'r = #6.<2 / 3>(any)',
+               'r = #6.2(bstr)', 'r = #6.2(uint)', 'r = b\nb = #6.2(any)',
+               'r = {a: #6.2(any)}', 'r = [* #6.2(any)]', 'r = #6.2(any) / nil']
+
+    def wrap(self, schema, item):
+        if schema.startswith('r = {'):
+            return {'a': item}
+        return [item] if schema.startswith('r = [') else item
+
+    def test_not_bytes_is_rejected(self):
+        for schema in self.SCHEMAS:
+            for bad in (CBORTag(2, 0), CBORTag(2, 'not-bytes'), CBORTag(3, ''), CBORTag(2, [1])):
+                value = self.wrap(schema, bad)
+                if bad.tag == 3 and '#6.2' in schema:
+                    continue  # the tag number is wrong as well
+                self.assertFalse(ok(schema, value), (schema, bad))
+
+    def test_bytes_is_accepted(self):
+        for schema in ('r = #6.2(any)', 'r = #6.<uint>(any)', 'r = #6(any)', 'r = #6.2(bstr)',
+                       'r = {a: #6.2(any)}', 'r = [* #6.2(any)]'):
+            self.assertTrue(ok(schema, self.wrap(schema, CBORTag(2, b'\x01'))), schema)
+            self.assertTrue(ok(schema, self.wrap(schema, CBORTag(2, b''))), schema)
+        self.assertTrue(ok('r = #6.3(any)', CBORTag(3, b'\x01')))
+
+    def test_message(self):
+        result = validate('r = #6.2(any)', bytes.fromhex('c200'), root_type='r')
+        self.assertFalse(result.valid)
+        self.assertIn('tag 2 content must be a byte string, not an integer', result.errors[0])
+        result = validate('r = #6(any)', bytes.fromhex('c360'), root_type='r')
+        self.assertIn('tag 3 content must be a byte string, not a text string', result.errors[0])
+
+    def test_registered_tags_with_the_wrong_content_type(self):
+        for schema, bad in [('r = #6.0(any)', CBORTag(0, 5)), ('r = #6.24(any)', CBORTag(24, 5)),
+                            ('r = #6.32(any)', CBORTag(32, 5)), ('r = #6.36(any)', CBORTag(36, b'x')),
+                            ('r = #6.<uint>(any)', CBORTag(33, 5))]:
+            self.assertFalse(ok(schema, bad), schema)
+
+    def test_unregistered_tags_take_any_content(self):
+        self.assertTrue(ok('r = #6.1(any)', CBORTag(1, 5)))
+        self.assertTrue(ok('r = #6.100(any)', CBORTag(100, 'x')))
+        self.assertTrue(ok('r = #6(any)', CBORTag(100, 5)))
+
+    def test_big_bignums_are_seen_as_the_tag(self):
+        big, negative = 2 ** 64, -1 - 2 ** 64
+        for schema in ('r = #6.2(bstr)', 'r = #6.2(any)', 'r = #6.<2 / 3>(bstr)', 'r = b\nb = #6.2(bstr)',
+                       'r = {a: #6.2(bstr)}', 'r = [* #6.2(bstr)]'):
+            self.assertTrue(ok(schema, self.wrap(schema, big)), schema)
+        self.assertTrue(ok('r = #6.3(bstr)', negative))
+        self.assertFalse(ok('r = #6.3(bstr)', big))       # positive: tag 2
+        self.assertFalse(ok('r = #6.2(uint)', big))       # the content is a byte string
+        self.assertTrue(ok('r = biguint', big))
+        self.assertTrue(ok('r = bigint', negative))
+
+    def test_decoder_still_reads_the_bytes(self):
+        for hex_ in ('c200', 'c360'):
+            self.assertIsInstance(cbor.decode(bytes.fromhex(hex_)), CBORTag)
+            self.assertIsInstance(cbor.decode(bytes.fromhex(hex_), require_deterministic=True), CBORTag)
 
 
 if __name__ == '__main__':

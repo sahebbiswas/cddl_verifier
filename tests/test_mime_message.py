@@ -139,9 +139,9 @@ class InTheTagCheck(unittest.TestCase):
         self.assertIsNone(content_error(36, "Content-Type: text/plain\r\n\r\nhi"))
         self.assertIsNotNone(content_error(36, "x"))
 
-    def test_content_of_another_type_is_left_to_the_type_check(self):
+    def test_content_of_another_type_is_reported(self):
         for content in (5, b"Subject: x", None, ["Subject: x"]):
-            self.assertIsNone(content_error(36, content))
+            self.assertIn("must be a text string", content_error(36, content))
 
     def test_a_long_message_is_cut_in_the_message(self):
         message = content_error(36, "Subject" + "x" * 5000)

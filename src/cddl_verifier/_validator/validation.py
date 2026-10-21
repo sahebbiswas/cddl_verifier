@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 
 from .._cbor_values import CBORTag
 from .._cddl import query, tagcontent
+from .._cddl.items import as_tag
 from .._cddl.printer import format_node
 from .._cddl.typeexpr import as_type, bare_name
 from .._log import Colors, logger
@@ -48,6 +49,7 @@ class ValidationMixin:
             tag_info = query.tag(node)
             if tag_info:
                 expected_tag, node = tag_info
+                value = as_tag(value)
                 if not isinstance(value, CBORTag):
                     self._report(
                         f"Type '{type_name}' requires CBOR tag {expected_tag}, "

@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional, Set, Tuple
 
 from .._cbor import CBORKey
 from .._cddl import query, tagcontent
+from .._cddl.items import as_tag
 from .._cddl.ast import Unwrap
 from .._cddl.printer import format_node
 from .._cddl.typeexpr import bare_name
@@ -26,6 +27,7 @@ class StructuresMixin:
         # Tags: the data must carry exactly the tags the rule declares
         # (``r = #6.501(m)``), outermost first. Any other tag is rejected.
         for expected_tag in type_def.get('cbor_tags', ()):
+            data = as_tag(data)
             if not self._is_tagged(data):
                 error_msg = (f"Type '{type_name}' requires CBOR tag {expected_tag}, "
                              f"but the data is not tagged{_tuple_hint(data)}")
