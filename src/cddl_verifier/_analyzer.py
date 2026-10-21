@@ -101,12 +101,6 @@ class CBORAnalyzer(ReportingMixin, ValidationMixin, StructuresMixin, ContainersM
         #: The features the parts of the data that matched have used so far; a part that
         #: is tried and does not match takes its entries back (``_check_value``).
         self._feature_trail: List[str] = []
-
-    @property
-    def features_used(self) -> Tuple[str, ...]:
-        """The ``.feature`` names the parts of the data that matched used in the last
-        :meth:`validate`, in the order met and once each (RFC 9165 section 4)."""
-        return tuple(dict.fromkeys(self._feature_trail))
         self.validation_errors: List[str] = []
         self.breadcrumb: List[str] = []  # Track CDDL path for logging
         self.cbor_bytes: Optional[bytes] = None  # Raw CBOR bytes for offset tracking
@@ -121,6 +115,12 @@ class CBORAnalyzer(ReportingMixin, ValidationMixin, StructuresMixin, ContainersM
         self._embedded_frames: List[_EmbeddedFrame] = []
         # What was worked out about schema nodes, by kind (``_remembered``, #85)
         self._memo: Dict[str, Dict[int, Any]] = {}
+
+    @property
+    def features_used(self) -> Tuple[str, ...]:
+        """The ``.feature`` names the parts of the data that matched used in the last
+        :meth:`validate`, in the order met and once each (RFC 9165 section 4)."""
+        return tuple(dict.fromkeys(self._feature_trail))
 
 
 def __getattr__(name):
