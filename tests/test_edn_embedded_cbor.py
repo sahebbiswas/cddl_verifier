@@ -189,6 +189,20 @@ class TestNonPreferredEmbedded(unittest.TestCase):
         self.assertIn("506(", text)
         self.assertIn("0: 1_0", text)
 
+    def test_tag_content_head_is_indicated_too(self):
+        schema = "r = #6.506(bytes .cbor inner)\ninner = { &( v : 0 ) => uint }"
+        text = Validator(schema).to_edn(bytes.fromhex("d901fa5804" "a1001801"), root_type="r")
+        self.assertIn(">>_0", text)                  # 5804 where 44 would do
+        plain = Validator(schema).to_edn(bytes.fromhex("d901fa44" "a1001801"), root_type="r")
+        self.assertNotIn(">>_", plain)
+        self.assertIn(")", plain)
+
+    def test_indefinite_embedded_string_nested_in_embedded_cbor_keeps_its_marker(self):
+        schema = "r = bstr .cbor [bstr .cbor inner]\ninner = { &( v : 0 ) => uint }"
+        raw = encode(bytes.fromhex("81" "5f" "44a1001801" "ff"))   # [(_ h'a1001801')]
+        text = Validator(schema).to_edn(raw, root_type="r")
+        self.assertIn("(_ <<", text)
+
     def test_indefinite_string_in_embedded_cbor_is_one_chunk(self):
         schema = "r = { &( a : 0 ) => bstr .cbor [* tstr] }"
         text = Validator(schema).to_edn(encode({0: bytes.fromhex("817f6161ff")}), root_type="r")

@@ -200,7 +200,7 @@ class EDNGenerator:
             if type_name is not None and isinstance(inner_value, bytes):
                 embedded = self._embedded(inner_value, type_name, annotate)
                 if embedded is not None:
-                    return self._tagged_embedded(tag_num, tag_type_name, embedded, annotate)
+                    return self._tagged_embedded(tag_num, tag_type_name, embedded, annotate, inner_value)
 
             # For other tagged data (non-.cbor), wrap and continue
             # Save and reset indent for inner content generation
@@ -254,7 +254,7 @@ class EDNGenerator:
             if type_name is not None:
                 embedded = self._embedded(value, type_name, annotate)
                 if embedded is not None:
-                    return self._embedded_block(embedded, self.indent_level) + indicator(value)
+                    return self._chunked(value, self._embedded_block(embedded, self.indent_level), "''")
             return self._generate_bytes(value)
         elif isinstance(value, str):
             return self._generate_text(value)
@@ -355,10 +355,10 @@ class EDNGenerator:
         return '\n'.join(lines)
 
     def _tagged_embedded(self, tag_num: int, tag_type: Optional[Type], items: List[str],
-                         annotate: bool) -> str:
+                         annotate: bool, inner: bytes) -> str:
         """A tag whose content is embedded CBOR: ``/ type / 506(<< ... >>)``."""
         prefix = f"/ {_text_of(tag_type)} / " if annotate and self._named(tag_type) else ""
-        block = self._embedded_block(items, self.indent_level + 1)
+        block = self._chunked(inner, self._embedded_block(items, self.indent_level + 1), "''")
         if '\n' not in block:
             return f"{prefix}{tag_num}({block})"
         return (f"{prefix}{tag_num}(\n{self.indent_str * (self.indent_level + 1)}{block}\n"
