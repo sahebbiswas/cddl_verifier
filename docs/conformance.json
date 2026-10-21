@@ -2098,7 +2098,7 @@
     "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "The pattern is an XSD regular expression, as RFC 8610 says, matched by an NFA in time linear in the text (#185): the whole text must match, `^` and `$` are ordinary characters, `\\d`, `\\w`, `\\s`, `\\i`, `\\c`, `\\p{...}` and `\\P{...}` follow XSD, and a class can subtract another (`[a-z-[aeiou]]`). Unicode categories come from the running Python and only common blocks (`\\p{IsGreek}`) are known. A pattern XSD does not have (lazy quantifier, `(?:`, back reference) or an unknown category or block is a schema error naming it. A pattern needing more than 50 000 NFA states is a schema error; a match over 10 million steps is refused.",
+   "notes": "The pattern is an XSD regular expression, as RFC 8610 says, matched by an NFA in time linear in the text (#185): the whole text must match, `^` and `$` are ordinary characters, `\\d`, `\\w`, `\\s`, `\\i`, `\\c`, `\\p{...}` and `\\P{...}` follow XSD, and a class can subtract another (`[a-z-[aeiou]]`). Unicode categories come from the running Python and every Unicode block is known (`\\p{IsGreek}`, `\\p{IsBraillePatterns}`; #231). A pattern XSD does not have (lazy quantifier, `(?:`, back reference) or an unknown category or block is a schema error naming it. A pattern needing more than 50 000 NFA states is a schema error; a match over 10 million steps is refused.",
    "issues": [],
    "tests": [
     "tests/test_bits_regexp.py",

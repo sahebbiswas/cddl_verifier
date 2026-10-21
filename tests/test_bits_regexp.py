@@ -160,6 +160,49 @@ class TestXsdRegexpMeaning(unittest.TestCase):
         self.assertFalse(self.match('\\p{IsBasicLatin}', 'α'))
         self.assertTrue(self.match('[\\p{L}\\p{N}]+', 'ab12'))
 
+    def test_blocks_beyond_the_common_ones(self):
+        for pattern, text in [
+            ('\\p{IsBraillePatterns}+', '\u2800\u28ff'),
+            ('\\p{IsMathematicalAlphanumericSymbols}', '\U0001d400'),
+            ('\\p{IsCJKUnifiedIdeographsExtensionB}', '\U00020000'),
+            ('\\p{IsSpecials}', '\uffff'),
+            ('\\p{IsSupplementaryPrivateUseArea-B}', '\U0010ffff'),
+            ('\\p{IsLatin-1Supplement}', '\u00e9'),
+            ('\\p{IsMiscellaneousSymbolsandPictographs}', '\U0001f300'),
+        ]:
+            self.assertTrue(self.match(pattern, text), pattern)
+        self.assertFalse(self.match('\\p{IsBraillePatterns}', 'a'))
+        self.assertTrue(self.match('\\P{IsBraillePatterns}', 'a'))
+        self.assertTrue(self.match('[\\p{IsGreek}\\p{IsCyrillic}]+', 'αб'))
+
+    def test_old_and_new_block_names_are_the_same_block(self):
+        for old, new in [('Greek', 'GreekandCoptic'),
+                         ('CyrillicSupplementary', 'CyrillicSupplement'),
+                         ('CombiningMarksforSymbols', 'CombiningDiacriticalMarksforSymbols'),
+                         ('PrivateUse', 'PrivateUseArea'),
+                         ('MiscellaneousSymbolsAndPictographs', 'MiscellaneousSymbolsandPictographs')]:
+            self.assertEqual(xsd_regex._block(old), xsd_regex._block(new), old)
+            self.assertIsNotNone(xsd_regex._block(new), new)
+
+    def test_surrogate_blocks_are_known_and_match_no_text(self):
+        for name in ('HighSurrogates', 'HighPrivateUseSurrogates', 'LowSurrogates'):
+            self.assertIsNotNone(xsd_regex._block(name), name)
+        self.assertFalse(self.match('\\p{IsHighSurrogates}', 'a'))
+
+    def test_block_table_is_well_formed(self):
+        from cddl_verifier._cddl.unicode_blocks import ALIASES, BLOCKS
+        spans = sorted(BLOCKS.values())
+        for (_, last), (first, _) in zip(spans, spans[1:]):
+            self.assertLess(last, first)
+        for first, last in spans:
+            self.assertLessEqual(first, last)
+            self.assertLessEqual(last, 0x10FFFF)
+        for name, target in ALIASES.items():
+            self.assertIn(target, BLOCKS, name)
+            self.assertNotIn(name, BLOCKS, name)
+        for name in BLOCKS:
+            self.assertRegex(name, r'^[A-Za-z0-9-]+$')
+
     def test_name_characters(self):
         self.assertTrue(self.match('\\i\\c*', 'a-b.c'))
         self.assertFalse(self.match('\\i\\c*', '1a'))

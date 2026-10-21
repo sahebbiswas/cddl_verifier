@@ -34,8 +34,8 @@ characters; `\d` is any Unicode decimal digit; `\w` leaves out punctuation
 (so `_`), separators and "other" characters; `\s` is only space, tab, line feed
 and carriage return; `\i` and `\c` are XML name characters; `\p{Lu}`, `\P{Nd}` and
 `\p{IsGreek}` name Unicode categories and blocks; `[a-z-[aeiou]]` subtracts a
-class. Categories come from the running Python's Unicode database, and only
-the common blocks are known. XSD has no lazy quantifier, `(?:...)`,
+class. Categories come from the running Python's Unicode database, and every
+Unicode block is known (`\p{IsBraillePatterns}`, with the old XSD 1.0 names such as `Greek` too). XSD has no lazy quantifier, `(?:...)`,
 look-around or back reference: such a pattern, or an unknown category or
 block, is a schema error that names it. The argument is checked again
 once a generic's arguments are in (`g<"a+?">`). Matching runs
