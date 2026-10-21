@@ -122,15 +122,11 @@ def explain_cddlc(entry, detail):
                      "RFC 8610 §3.8.1 defines `.size` for byte strings, text strings and unsigned "
                      "integers; this library does not accept `int` as the target of `.size` "
                      "(`uint .size N` works), where cddlc applies it to the non-negative integers."),
-        "16-feature": ("divergence", None, "RFC 9165 leaves which features are enabled to the tool; this "
-                       "library has no way to name them, so every `.feature` counts as enabled and the "
-                       "base type alone decides."),
         "6-bigint": ("divergence", None,
                      "The RFC 8610 prelude defines `bigint = biguint / bignint` (tags 2 and 3 only) "
                      "and this library follows it: an integer that fits in 64 bits is an `int` or "
                      "`integer`, not a `bigint`. The cddlc test also accepts such integers."),
     }
-    notes["16a-feature"] = notes["16-feature"]
     return notes.get(name)
 
 
@@ -217,7 +213,9 @@ def build_cddlc(sources: Path):
                 continue  # `;;+ /foo/`: a comment, not an item
             cases.append(case(f"cddlc/{name}/{index:02d}", "valid" if sign == "+" else "invalid",
                               f"test/{path.name}: `;;{sign} {edn}`", data.hex(), schema=relative,
-                              edn=edn, constructs=constructs))
+                              edn=edn, constructs=constructs,
+                              # the schemas switch "ok" on and "notok" off (#232)
+                              features=["ok"] if name in ("16-feature", "16a-feature") else None))
     return {"id": "cddlc-tests", "title": "cddlc test suite: RFC 8610 and RFC 9165 constructs",
             "sources": [source("cddlc test suite", "https://github.com/cabo/cddlc", repo, "MIT", "test/")],
             "provenance": "converted", "cases": cases}

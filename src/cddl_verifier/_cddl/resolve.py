@@ -109,7 +109,7 @@ _KIND_NAMES = {
 #: Controls whose argument is checked as the schema is read (and again once a generic
 #: rule's arguments are in).
 _ARGUMENT_CHECKED = frozenset({'bits', 'regexp', 'abnf', 'abnfb', 'plus', 'cat', 'det',
-                               'printf', 'join'})
+                               'printf', 'join', 'feature'})
 
 TYPE, GROUP = 'type', 'group'
 
@@ -872,6 +872,14 @@ class _Resolver:
                 return f"'.{node.op}' cannot be computed: {exc}"
         elif node.op in ('printf', 'join'):
             return self.entries_problem(node, scope, node.op)
+        elif node.op == 'feature':
+            if self.open_names(node.arg, scope):
+                return None
+            try:
+                computed.feature(self.rules, node.arg)
+            except computed.ComputeError as exc:
+                return (f"the argument of '.feature' must be a feature name (a text string) or "
+                        f"an array of the name and a detail: {exc}")
         elif node.op == 'regexp':
             pattern = self.literal(node.arg)
             if isinstance(pattern, TextLit):

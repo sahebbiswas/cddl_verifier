@@ -293,6 +293,36 @@ def array_entries(rules: Dict[str, object], node, _depth: int = 0):
     return None
 
 
+def feature(rules: Dict[str, object], node):
+    """``(name, detail)`` for the controller of ``.feature`` (RFC 9165 section 4).
+
+    The controller is the feature name, a text string (which may be computed, ``"a" .cat
+    "b"``), or an array whose first element is that name and whose second, if any, is a
+    more limited detail about the target. *detail* is the type node of the second element,
+    else ``None``.
+
+    Raises:
+        ComputeError: The controller is neither, or the name is not one text string.
+    """
+    entries = array_entries(rules, node)
+    if entries is None:
+        return _feature_name(rules, node), None
+    if not 1 <= len(entries) <= 2:
+        raise ComputeError("an array controller is the feature name and, optionally, one detail")
+    for _entry, occurrence in entries:
+        if occurrence is not None:
+            raise ComputeError(f"the elements of an array controller are written out, each once: "
+                               f"'{occurrence.text}' cannot be followed")
+    return _feature_name(rules, entries[0][0]), (entries[1][0] if len(entries) == 2 else None)
+
+
+def _feature_name(rules, node) -> str:
+    one = single(evaluate(rules, node))
+    if one is None or one.kind != 'text':
+        raise ComputeError("the feature name must be one text string")
+    return one.value
+
+
 def _collect(rules, group_entries, entries: list, depth: int) -> None:
     """Append the entries of a group to *entries*, flattening plain inline groups."""
     for entry in group_entries:

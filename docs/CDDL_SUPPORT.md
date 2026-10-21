@@ -618,6 +618,30 @@ Literals act as markers and every way to split the string is tried, within a bud
 20,000 piece checks; a string that exhausts the budget is not accepted. An array with a
 repeated element (`* tstr`) or a group that cannot be followed is a schema error.
 
+## `.feature`
+
+`T .feature F` (RFC 9165 section 4) marks a use of the feature `F`. The controller is a
+text string (it may be computed, `("a" .cat "b")`, or a rule that is one) or an array of the
+name and one detail, `["name", "detail"]`; anything else is a schema error. The detail is
+for the people reading the schema and is not interpreted.
+
+RFC 9165 gives a tool two things to do. By default every feature is enabled and
+`T .feature F` is `T`. A tool can also be told which features are enabled: with
+`Validator(schema, features={"F"})`, `--feature F` (repeatable) or `--no-features`, only the
+named features are, and `T .feature F` matches only while `F` is one of them. A feature that
+is not enabled makes the target not match and the message names it
+(`feature 'F' is not enabled`); in a choice (`int .feature "ext" / tstr`) the other
+alternatives are tried, and a map entry `* (text .feature "ext") => any` stops matching
+extra keys. The RFC leaves open what a tool does with a feature that is not enabled; this is
+the choice made here.
+
+`ValidationResult.features_used` (the CLI prints `Features used: ...`, and the JSON document
+has `features_used`) is the other mode: the features, in the order met and once each, of the
+parts of the data that matched. An alternative that was tried and did not match uses no
+feature, and an invalid result lists none. A generic rule's parameter as the controller
+(`g<T> = int .feature T`) is accepted and records nothing, as generic instances are not yet
+expanded when data is checked (#243).
+
 ## Validation behaviour
 
 | Condition | Result |

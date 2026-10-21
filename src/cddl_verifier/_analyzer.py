@@ -21,7 +21,7 @@ This module keeps the state they share (``__init__``). ``CDDLParser`` lives in `
 """
 
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, FrozenSet, Iterable, List, Optional
 
 from ._decode import SimpleCBORDecoder  # noqa: F401 (re-exported)
 from ._log import Colors, logger  # noqa: F401 (re-exported)
@@ -35,6 +35,20 @@ from ._validator.support import _CheckError, _EmbeddedFrame, _NO_STEP  # noqa: F
 from ._validator.textcontrols import TextControlsMixin
 from ._validator.validation import ValidationMixin
 from ._validator.values import ValuesMixin
+
+
+def _feature_set(features: Optional[Iterable[str]]) -> Optional[FrozenSet[str]]:
+    """The enabled ``.feature`` names as a frozen set; ``None`` stays ``None`` (all enabled)."""
+    if features is None:
+        return None
+    if isinstance(features, (str, bytes)):
+        raise TypeError("features is a collection of feature names, not one string; "
+                        "pass {'name'} for a single feature")
+    names = frozenset(features)
+    for name in names:
+        if not isinstance(name, str):
+            raise TypeError(f"feature names are text strings, not {type(name).__name__}")
+    return names
 
 
 class CBORAnalyzer(ReportingMixin, ValidationMixin, StructuresMixin, ContainersMixin, ValuesMixin, PrimitivesMixin,
@@ -67,7 +81,8 @@ class CBORAnalyzer(ReportingMixin, ValidationMixin, StructuresMixin, ContainersM
         {'uint', 'int', 'nint', 'biguint', 'bignint', 'bool', 'nil', 'null', 'float',
          'tstr', 'bstr', 'any', 'float16', 'float32', 'float64'})
 
-    def __init__(self, cddl_parser: CDDLParser, unique_choices: bool = False):
+    def __init__(self, cddl_parser: CDDLParser, unique_choices: bool = False,
+                 features: Optional[Iterable[str]] = None):
         """Initialise the analyzer with a parsed CDDL schema.
 
         Args:
@@ -75,9 +90,17 @@ class CBORAnalyzer(ReportingMixin, ValidationMixin, StructuresMixin, ContainersM
             unique_choices: Report data that matches more than one structured
                 alternative (a map, array or tag) of a choice, instead of
                 accepting it (#74).
+            features: The ``.feature`` names (RFC 9165 section 4) that are enabled.
+                ``None`` (the default) enables every feature; a set, even an empty
+                one, enables only the names in it, and ``T .feature "x"`` then matches
+                nothing while ``"x"`` is not in it (#232).
         """
         self.cddl = cddl_parser
         self.unique_choices = unique_choices
+        self.features: Optional[FrozenSet[str]] = _feature_set(features)
+        #: The features the parts of the data that matched have used so far; a part that
+        #: is tried and does not match takes its entries back (``_check_value``).
+        self._feature_trail: List[str] = []
         self.validation_errors: List[str] = []
         self.breadcrumb: List[str] = []  # Track CDDL path for logging
         self.cbor_bytes: Optional[bytes] = None  # Raw CBOR bytes for offset tracking

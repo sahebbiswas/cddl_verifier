@@ -31,9 +31,9 @@ else:
         print(diagnostic.code, diagnostic.message)
 ```
 
-### `validate(schema, data, root_type=None, *, modules=None, module_path=(), unique_choices=False, comment_names=False, strict_modules=False, require_deterministic=False) -> ValidationResult`
+### `validate(schema, data, root_type=None, *, modules=None, module_path=(), unique_choices=False, comment_names=False, strict_modules=False, features=None, require_deterministic=False) -> ValidationResult`
 
-Shorthand for `Validator(schema, modules=modules, module_path=module_path, unique_choices=unique_choices, comment_names=comment_names, strict_modules=strict_modules).validate(data, root_type, require_deterministic=require_deterministic)`.
+Shorthand for `Validator(schema, modules=modules, module_path=module_path, unique_choices=unique_choices, comment_names=comment_names, strict_modules=strict_modules, features=features).validate(data, root_type, require_deterministic=require_deterministic)`.
 
 With `require_deterministic=True` the CBOR bytes must also be deterministically
 encoded ([below](#requiring-deterministic-encoding)): bytes that are not give an
@@ -41,7 +41,7 @@ invalid result with one `decode` diagnostic at the offset of the first
 violation. It needs bytes: a decoded Python value has no encoding to check, so
 passing one raises `TypeError`.
 
-### `Validator(schema, *, modules=None, module_path=(), unique_choices=False, comment_names=False, strict_modules=False)`
+### `Validator(schema, *, modules=None, module_path=(), unique_choices=False, comment_names=False, strict_modules=False, features=None)`
 
 Parses a schema once so it can check many items.
 
@@ -70,6 +70,12 @@ Parses a schema once so it can check many items.
   not, raises `SchemaError` with the `line` and `column` of the directive; the
   exception's `errors` holds one error per unresolved import
   ([CDDL_SUPPORT.md](CDDL_SUPPORT.md#modules)).
+- `features`: the `.feature` names (RFC 9165) that are enabled. By default
+  (`None`) every feature is, and `T .feature "x"` is just `T`. With a collection of
+  names, even an empty one, only those are: `T .feature "x"` matches only while `"x"`
+  is in it, a choice falls through to its other alternatives, and the diagnostic names
+  the feature that is not enabled. A single string is refused (`{"x"}`, not `"x"`);
+  see [CDDL_SUPPORT.md](CDDL_SUPPORT.md#feature).
 - Raises `SchemaError` (a `ValueError`) when a schema file cannot be read, is
   not valid CDDL, or does not make sense (an undefined name, a generic given
   the wrong number of arguments, an unknown control operator; see
@@ -146,10 +152,11 @@ is reported alone, because nothing else can be checked without them.
 | `diagnostics` | Tuple of `Diagnostic` |
 | `errors` | Tuple of error messages (shortcut over `diagnostics`) |
 | `data` | The decoded value, or `None` if decoding failed |
+| `features_used` | Tuple of the `.feature` names (RFC 9165) used by the parts of the data that matched, in the order met and once each; empty for an invalid result |
 
 | Method | Description |
 |--------|-------------|
-| `to_dict()` | `format_version`, `valid`, `root_type` and `diagnostics` as JSON-ready data |
+| `to_dict()` | `format_version`, `valid`, `root_type`, `diagnostics` and, when a feature was used, `features_used`, as JSON-ready data |
 | `to_json(indent=2)` | The same as a JSON document |
 | `format(verbose=False)` | The diagnostics as text (see [`render_text`](#rendering-diagnostics)) |
 

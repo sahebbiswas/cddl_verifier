@@ -7,7 +7,7 @@ module-level dependency on ``_analyzer``.
 
 import copy
 import functools
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, FrozenSet, List, Optional, Tuple
 
 from ._cbor_values import CBORTag
 from ._cddl import computed, parse_cddl, parse_prelude, query, xsd_regex
@@ -118,6 +118,8 @@ class CDDLParser:
         self._choice_checker = None  # a CBORAnalyzer, made on first use (#74)
         self.resolved = None  # ResolvedSchema (#70)
         self._computed: Dict[Any, Any] = {}  # computed literals by node (RFC 9165)
+        #: The ``.feature`` names that are enabled, or ``None`` for all (set by the Validator).
+        self.features: Optional[FrozenSet[str]] = None
         self._type_memo: Optional[Dict[int, Tuple[Any, Optional[Dict]]]] = None
         self.parse()
 
@@ -499,6 +501,25 @@ class CDDLParser:
             raise cached
         return cached
 
+    def feature(self, node):
+        """``(name, detail)`` of the controller *node* of ``.feature``, cached (RFC 9165 section 4).
+
+        Raises:
+            computed.ComputeError: The controller is not a feature name or an array of one.
+        """
+        key = ('feature', node)
+        cached = self._computed.get(key)
+        if cached is None:
+            rules = self.resolved.rules if self.resolved is not None else {}
+            try:
+                cached = computed.feature(rules, node)
+            except computed.ComputeError as exc:
+                cached = exc
+            self._computed[key] = cached
+        if isinstance(cached, Exception):
+            raise cached
+        return cached
+
     def array_entries(self, node) -> list:
         """The ``(type, occurrence)`` entries of the array *node* names, for ``.printf`` and ``.join``."""
         rules = self.resolved.rules if self.resolved is not None else {}
@@ -537,7 +558,7 @@ class CDDLParser:
         checker = self._choice_checker
         if checker is None:
             from ._analyzer import CBORAnalyzer  # deferred: the analyzer imports this module
-            checker = self._choice_checker = CBORAnalyzer(self)
+            checker = self._choice_checker = CBORAnalyzer(self, features=self.features)
         return [alt for alt in alternatives if not checker._check_value(cbor_data, alt)]
 
     def resolve_type_choice_for_data(self, choice, cbor_data: Any,

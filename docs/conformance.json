@@ -2851,9 +2851,12 @@
     "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "Advisory (RFC 9165): the data must match the base type; the feature name is not interpreted.",
-   "issues": [],
+   "notes": "RFC 9165 section 4. The controller is a feature name or an array of the name and a detail (a schema error otherwise). By default every feature is enabled and the data must match the base type. With `features` (`--feature NAME`, `--no-features`) only the named features are: `T .feature F` then matches only while F is enabled, otherwise it fails naming F and a choice falls through to its other alternatives (what a tool does with a disabled feature is its own choice). `ValidationResult.features_used` lists the features of the parts that matched. A generic parameter as the controller is accepted (#243).",
+   "issues": [
+    243
+   ],
    "tests": [
+    "tests/test_feature_control.py",
     "tests/test_resolve.py"
    ],
    "probes": [
@@ -2864,6 +2867,16 @@
      ],
      "invalid": [
       "a"
+     ]
+    },
+    {
+     "schema": "r = uint .feature [\"f\", \"detail\"] / tstr",
+     "valid": [
+      1,
+      "a"
+     ],
+     "invalid": [
+      -1
      ]
     }
    ]

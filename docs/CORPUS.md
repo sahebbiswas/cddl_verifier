@@ -10,7 +10,7 @@ Schemas and CBOR from the RFCs and IETF drafts that use CDDL (RFC 8610 and RFC 9
 
 | Suite | What it covers | Cases | Pass | Gap | Divergence | Source defect |
 |---|---|--:|--:|--:|--:|--:|
-| `cddlc-tests` | cddlc test suite: RFC 8610 and RFC 9165 constructs | 270 | 261 |  | 9 |  |
+| `cddlc-tests` | cddlc test suite: RFC 8610 and RFC 9165 constructs | 270 | 263 |  | 7 |  |
 | `corim` | CoRIM and CoMID (draft-ietf-rats-corim) | 36 | 36 |  |  |  |
 | `cose-rfc9052` | COSE messages and keys (RFC 9052) | 124 | 124 |  |  |  |
 | `coswid-rfc9393` | Concise Software Identification tags (RFC 9393) | 26 | 26 |  |  |  |
@@ -60,7 +60,6 @@ Every source is pinned to the commit it was taken from. Text published in IETF d
 | Suite | Status | Issue | Cases | Why |
 |---|---|---|---|---|
 | `cddlc-tests` | `divergence` |  | `cddlc/13a-size/01`, `cddlc/13a-size/02`, `cddlc/13a-size/04` and 1 more | RFC 8610 §3.8.1 defines `.size` for byte strings, text strings and unsigned integers; this library does not accept `int` as the target of `.size` (`uint .size N` works), where cddlc applies it to the non-negative integers. |
-| `cddlc-tests` | `divergence` |  | `cddlc/16-feature/05`, `cddlc/16a-feature/05` | RFC 9165 leaves which features are enabled to the tool; this library has no way to name them, so every `.feature` counts as enabled and the base type alone decides. |
 | `cddlc-tests` | `divergence` |  | `cddlc/6-bigint/03`, `cddlc/6-bigint/04`, `cddlc/6-bigint/05` | The RFC 8610 prelude defines `bigint = biguint / bignint` (tags 2 and 3 only) and this library follows it: an integer that fits in 64 bits is an `int` or `integer`, not a `bigint`. The cddlc test also accepts such integers. |
 
 ## Unsupported constructs

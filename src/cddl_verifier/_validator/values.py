@@ -6,7 +6,7 @@ Moved verbatim out of ``_analyzer`` (#83); ``CBORAnalyzer`` composes it.
 from dataclasses import replace
 from typing import Any, List, Optional, Tuple
 
-from .._cddl import query, tagcontent
+from .._cddl import computed, query, tagcontent
 from .._cddl.ast import Control, IntLit, Major, Tag, Type, Unwrap
 from .._cddl.items import major_error, tag_parts
 from .._cddl.printer import format_node
@@ -22,7 +22,7 @@ class ValuesMixin:
     #: Controls that compare the value with their argument instead of
     #: describing its shape: equal to (``.eq``), different from (``.ne``), and
     #: matching the argument type too (``.and``, ``.within``).
-    _SET_CONTROLS = frozenset({'eq', 'ne', 'and', 'within'})
+    _SET_CONTROLS = frozenset({'eq', 'ne', 'and', 'within', 'feature'})
 
     def _check_value(self, value: Any, expr, _depth: int = 0,
                      strict: bool = False) -> List[_CheckError]:
@@ -31,8 +31,12 @@ class ValuesMixin:
         See :meth:`_check_errors`. Each error is a :class:`_CheckError`: its
         message, and what is known about where it is and what it expected.
         """
-        return [error if isinstance(error, _CheckError) else _CheckError(error)
-                for error in self._check_errors(value, expr, _depth, strict)]
+        mark = len(self._feature_trail)
+        errors = [error if isinstance(error, _CheckError) else _CheckError(error)
+                  for error in self._check_errors(value, expr, _depth, strict)]
+        if errors:
+            del self._feature_trail[mark:]  # what did not match used no feature
+        return errors
 
     def _check_errors(self, value: Any, expr, _depth: int = 0,
                       strict: bool = False) -> List[str]:
@@ -206,7 +210,12 @@ class ValuesMixin:
         return (target if isinstance(target, Type) else Type((target,))), operands
 
     def _operand_errors(self, value: Any, op: str, arg, _depth: int, strict: bool) -> List[str]:
-        """Check *value* against the argument of ``.eq``, ``.ne``, ``.and`` or ``.within``."""
+        """Check *value* against the argument of ``.eq``, ``.ne``, ``.and`` or ``.within``.
+
+        For ``.feature`` the value already matched the target; the feature is used if enabled.
+        """
+        if op == 'feature':
+            return self._feature_errors(arg)
         operand = arg if isinstance(arg, Type) else Type((arg,))
         errors = self._check_value(value, operand, _depth + 1, strict)
         shown = format_node(operand)
@@ -218,6 +227,27 @@ class ValuesMixin:
                 f"expected a value other than {shown} (.ne), got {self._format_value_for_log(value)}"]
         if errors:
             return [self._reworded(errors[0], f"does not satisfy its control operand '{shown}' (.{op}): {errors[0]}")]
+        return []
+
+    def _feature_errors(self, arg) -> List[_CheckError]:
+        """Use the feature named by the controller *arg* of ``.feature``, or say it is disabled.
+
+        RFC 9165 section 4 leaves open what a tool does with a feature it does not
+        enable; here the target does not match, so a choice falls through to its other
+        alternatives and a lone ``T .feature "x"`` is a failure that names the feature.
+        """
+        try:
+            name, _detail = self.cddl.feature(arg)
+        except computed.ComputeError as exc:
+            # a controller that is a parameter of a generic rule: the schema checks the
+            # name of every instance as it is read, here it is accepted as other controls
+            # of an instance are (the instance is not expanded)
+            logger.debug(f"Cannot name the feature of '.feature {format_node(arg)}': {exc}; accepting")
+            return []
+        if self.features is not None and name not in self.features:
+            return [_CheckError(f"feature '{name}' is not enabled", category='type',
+                                expected=f"feature '{name}' enabled", actual="feature disabled")]
+        self._feature_trail.append(name)
         return []
 
     def _item_errors(self, value: Any, item: 'query.ItemRef', _depth: int,

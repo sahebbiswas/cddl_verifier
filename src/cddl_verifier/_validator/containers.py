@@ -163,6 +163,7 @@ class ContainersMixin:
         saved_errors, saved_breadcrumb = self.validation_errors, list(self.breadcrumb)
         saved_path, saved_rules = list(self._data_path), list(self._rules)
         prefix, depth = self._current_path(), len(saved_breadcrumb)
+        mark = len(self._feature_trail)
         self.validation_errors = []
         try:
             self._validate_type(value, type_def, type_name)
@@ -170,6 +171,8 @@ class ContainersMixin:
         finally:
             self.validation_errors, self.breadcrumb = saved_errors, saved_breadcrumb
             self._data_path, self._rules = saved_path, saved_rules
+        if found:
+            del self._feature_trail[mark:]  # a part that did not match used no feature
         return [self._relative_error(error, prefix, depth) for error in found]
 
     @staticmethod
