@@ -10,6 +10,7 @@ and the standard-library **unittest** runner with no code changes required.
 | `tests/test_public_api.py` | Public API: `validate`, `Validator`, `cddl_verifier.cbor`, `json_codec`, `python -m cddl_verifier` |
 | `tests/test_module_layout.py` | Every private module imports on its own in a fresh interpreter (no import cycle); the CLI names moved out of `_analyzer` (#83) are still importable from it; the analyzer mixins in `_validator/` each import first and none shadows another's method |
 | `tests/test_cbor_cddl_analyzer.py` | CDDL parsing, validation, EDN generation, CoRIM (internal classes) |
+| `tests/test_edn_no_annotate.py` | `annotate=False` prints the same items as the default, only without the comments (#236): embedded CBOR, tags, choices, structured arrays and every `edn_format` |
 | `tests/test_edn_literals.py` | EDN literals (#227): `NaN`, `Infinity` and `-Infinity` at every float width and as map keys, finite floats unchanged, text strings and map keys escaped as JSON (C0 controls, DEL, C1 controls, U+2028/2029) and read back with `json.loads` |
 | `tests/test_edn_embedded_cbor.py` | EDN for embedded CBOR (#228): `bstr .cbor` and `.cborseq` as map members, array elements, choices, aliases and roots in `<< >>`, tags 24 and 506, nesting, the byte-string fallback when `<< >>` would not encode back, aliases to inline choices, and a signed CoRIM (`COSE-Sign1-corim`) |
 | `tests/test_cddl_parser.py` | CDDL lexer, AST and parser: node shapes, spans, syntax errors, printer round trip, bundled schemas, strict parsing through the API and CLI |

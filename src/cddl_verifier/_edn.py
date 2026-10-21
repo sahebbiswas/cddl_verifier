@@ -388,7 +388,7 @@ class EDNGenerator:
             field_name = None
             field_type = None
             is_registered = False
-            if type_def and annotate:
+            if type_def:  # the type decides what is decoded, so it is looked up without annotation too (#236)
                 field_info = type_def['fields'].get(key)
                 if field_info:
                     field_name = field_info['name']
@@ -396,11 +396,12 @@ class EDNGenerator:
                     is_registered = field_info.get('registered', False)
             
             # Determine key string and annotation based on edn_format
-            if self.edn_format == 'keyname' and is_registered and field_name:
+            names = annotate and is_registered and field_name  # names are comments: not without annotation
+            if self.edn_format == 'keyname' and names:
                 # Format: "name": value
                 key_str = self._edn_str(field_name)
                 annotation = ""
-            elif self.edn_format == 'both' and is_registered and field_name:
+            elif self.edn_format == 'both' and names:
                 # Format: 0 / name /: value
                 key_str = self._edn_key(key)
                 key_str = f'{key_str} / {field_name} /'
@@ -411,9 +412,9 @@ class EDNGenerator:
                 
                 # Add annotation prefix
                 annotation = ""
-                if is_registered and field_name and annotate:
+                if annotate and is_registered and field_name:
                     annotation = f"/ {field_name} / "
-                elif field_name and field_name != str(key) and not is_registered and annotate:
+                elif annotate and field_name and field_name != str(key) and not is_registered:
                     # Regular field with comment name different from key
                     annotation = f"/ {field_name} / "
             
