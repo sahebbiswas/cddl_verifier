@@ -128,10 +128,19 @@ A module that is not found does not stop the schema from loading. Names used
 from it (`coswid.tag-id`, or any undefined name after an import without `as`)
 are not checked and match any value, a group from it in a map allows any
 other entries, and `Validator.warnings` (the `Warning:` lines of `cddl-verify`)
-says which modules were missing. No RFC modules are bundled.
+says which modules were missing.
+
+Two RFC modules are bundled and used when an import finds nothing else: `rfc9393` (CoSWID) and
+`rfc9164` (CBOR tags for IP addresses), the CDDL of the published RFCs with their Revised BSD
+licence ([#239](https://github.com/sahebbiswas/cddl_verifier/issues/239)). Modules you give,
+the search path and the schema's own directory come first, so a module of the same name
+replaces the bundled one, and `bundled_modules=False` (`--no-bundled-modules`) turns the
+fallback off. `measured-component` (an Internet-Draft) is not bundled. Because the names of
+`coswid.` and `cbor-ip.` are now checked where they used to match anything, data that a schema
+importing them accepted before can be rejected.
 
 That fallback is convenient for looking at a schema, but it means validation is
-weaker than it looks: with `;# import rfc9164 as cbor-ip` unresolved, a value
+weaker than it looks: with `;# import measured-component as eatmc` unresolved, a value
 at `cbor-ip.ipv4-address` is accepted whatever it is, and one unresolved import
 or include without a prefix turns off the check for undefined names in the whole
 schema, so a typo in a rule name passes. To fail closed, turn on

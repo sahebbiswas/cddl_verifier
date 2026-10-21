@@ -1,0 +1,39 @@
+; CBOR Tags for IPv4 and IPv6 Addresses and Prefixes (RFC 9164)
+; The CDDL of the RFC, as extracted by cddlc (https://github.com/cabo/cddlc, data/rfc9164.cddl).
+; Copyright (c) IETF Trust and the persons identified as the authors of RFC 9164.
+; Code Components extracted from this document must include Revised BSD License text as
+; described in Section 4.e of the Trust Legal Provisions and are provided without warranty
+; as described in the Revised BSD License (see LICENSE-IETF.txt in this directory).
+
+
+ip-address-or-prefix = ipv6-address-or-prefix /
+                       ipv4-address-or-prefix
+
+ipv6-address-or-prefix = #6.54(ipv6-address /
+                               ipv6-address-with-prefix /
+                               ipv6-prefix)
+ipv4-address-or-prefix = #6.52(ipv4-address /
+                               ipv4-address-with-prefix /
+                               ipv4-prefix)
+
+ipv6-address = bytes .size 16
+ipv4-address = bytes .size 4
+
+ipv6-address-with-prefix = [ipv6-address,
+                            ipv6-prefix-length / null,
+                            ?ip-zone-identifier]
+ipv4-address-with-prefix = [ipv4-address,
+                            ipv4-prefix-length / null,
+                            ?ip-zone-identifier]
+
+ipv6-prefix-length = 0..128
+ipv4-prefix-length = 0..32
+
+ipv6-prefix = [ipv6-prefix-length, ipv6-prefix-bytes]
+ipv4-prefix = [ipv4-prefix-length, ipv4-prefix-bytes]
+
+ipv6-prefix-bytes = bytes .size (uint .le 16)
+ipv4-prefix-bytes = bytes .size (uint .le 4)
+
+ip-zone-identifier = uint / text
+

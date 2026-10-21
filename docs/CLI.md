@@ -61,6 +61,7 @@ cddl-verify --version
 | `--edn-format {keyindex,keyname,both}` | EDN key format (default: `keyindex`) |
 | `-M DIR`, `--module-path DIR` | Directory searched for imported CDDL modules (`<name>.cddl`); repeatable. The schema file's own directory is always searched, last |
 | `--module NAME=FILE` | CDDL file for the imported module `NAME`; repeatable |
+| `--no-bundled-modules` | Do not fall back to the CDDL modules the package ships (`rfc9393`, `rfc9164`) for an import that `--module` and `--module-path` do not supply |
 | `--strict-modules` | Fail when an imported module (`;# import`, `;# include`) cannot be found, instead of warning and leaving its names unchecked. The error gives the file, line and column of the directive; see [Imported modules](#imported-modules) |
 | `--feature NAME` | Enable the RFC 9165 feature `NAME` for `.feature` controls; repeatable (`--feature ext1 --feature ext2`). If neither this nor `--no-features` is given, every feature is enabled; if one or more `--feature` are given, only those named are (`T .feature "x"` then fails while `x` is not named) |
 | `--no-features` | Enable no feature: `T .feature NAME` never matches. It cannot be combined with `--feature`: passing both is an error (`--feature and --no-features cannot be used together`, exit status 2) |
@@ -251,19 +252,20 @@ r = { tag: coswid.tag-id }
 
 `cddl-verify` looks for `rfc9393.cddl` in each `--module-path` directory and
 then next to the schema file, unless `--module rfc9393=path/to/file.cddl` names
-it. The module's rules are checked and become `coswid.<rule>`. A module that
-is not found prints a `Warning:` line on stderr and the names used from it
-match any value. With `--strict-modules` it is an error instead, and the schema
-does not load:
+it, and last in the modules the package ships (`rfc9393`, CoSWID, and `rfc9164`, IP
+address tags; `--no-bundled-modules` turns that off). The module's rules are checked and
+become `coswid.<rule>`. A module that is not found prints a `Warning:` line on stderr and
+the names used from it match any value. With `--strict-modules` it is an error instead, and
+the schema does not load:
 
 ```
 Error loading CDDL file:
-  - schema.cddl:1:1: module 'rfc9393' (imported as 'coswid') was not found; searched modules, .; an import that cannot be resolved is an error with strict_modules (--strict-modules)
+  - schema.cddl:1:1: module 'measured-component' (imported as 'eatmc') was not found; searched modules, .; an import that cannot be resolved is an error with strict_modules (--strict-modules)
 ```
 
 Use it when the result must not depend on a module being present, such as
-validating a CoRIM against `cddl-schemas/unified.cddl`, which imports modules that
-are not bundled. With `--diagnostics json` each unresolved import is one `schema`
+validating a CoRIM against `cddl-schemas/unified.cddl`, which imports
+`measured-component`, an Internet-Draft module that is not bundled. With `--diagnostics json` each unresolved import is one `schema`
 diagnostic with its `line` and `column`.
 
 ### Input requirements

@@ -15,7 +15,7 @@ from cddl_verifier.cbor import encode
 
 ROOT = Path(__file__).resolve().parent.parent
 
-PREFIXED = ";# import rfc9164 as cbor-ip\nhost = { ip: cbor-ip.ipv4-address }\n"
+PREFIXED = ";# import ipmod as cbor-ip\nhost = { ip: cbor-ip.ipv4-address }\n"
 UNPREFIXED = ";# include missing-module\nhost = { ip: completely-typoed-type-name }\n"
 
 
@@ -46,7 +46,7 @@ class TestFailsClosed(unittest.TestCase):
     def test_prefixed_import(self):
         with self.assertRaises(SchemaError) as caught:
             validate(PREFIXED, encode({"ip": True}), strict_modules=True)
-        self.assertIn("module 'rfc9164' (imported as 'cbor-ip') was not found", str(caught.exception))
+        self.assertIn("module 'ipmod' (imported as 'cbor-ip') was not found", str(caught.exception))
 
     def test_unprefixed_include(self):
         with self.assertRaises(SchemaError) as caught:
@@ -65,7 +65,7 @@ class TestFailsClosed(unittest.TestCase):
             Validator(";# import nothere as zz\nr = uint", strict_modules=True)
 
     def test_a_module_that_is_found_passes(self):
-        v = Validator(PREFIXED, modules={"rfc9164": "ipv4-address = bstr .size 4"},
+        v = Validator(PREFIXED, modules={"ipmod": "ipv4-address = bstr .size 4"},
                       strict_modules=True)
         self.assertTrue(v.validate(encode({"ip": b"abcd"})).valid)
         self.assertFalse(v.validate(encode({"ip": True})).valid)
@@ -73,7 +73,7 @@ class TestFailsClosed(unittest.TestCase):
 
     def test_a_module_found_on_the_search_path_passes(self):
         with tempfile.TemporaryDirectory() as directory:
-            (Path(directory) / "rfc9164.cddl").write_text("ipv4-address = bstr .size 4", encoding="utf-8")
+            (Path(directory) / "ipmod.cddl").write_text("ipv4-address = bstr .size 4", encoding="utf-8")
             v = Validator(PREFIXED, module_path=[directory], strict_modules=True)
             self.assertTrue(v.validate(encode({"ip": b"abcd"})).valid)
 
@@ -87,7 +87,7 @@ class TestFailsClosed(unittest.TestCase):
         self.assertIn("unified.cddl", message)
         self.assertIn("'measured-component'", message)
         self.assertEqual({e.message.split("'")[1] for e in caught.exception.errors},
-                         {"measured-component", "rfc9393", "rfc9164"})
+                         {"measured-component"})  # rfc9393 and rfc9164 are bundled (#239)
 
     def test_a_module_that_cannot_load_its_own_import_fails_in_the_module(self):
         with self.assertRaises(SchemaError) as caught:
@@ -195,7 +195,7 @@ class TestSchemaDiagnostics(unittest.TestCase):
 
     def test_nothing_when_the_modules_are_found(self):
         self.assertEqual(
-            schema_diagnostics(PREFIXED, modules={"rfc9164": "ipv4-address = bstr .size 4"},
+            schema_diagnostics(PREFIXED, modules={"ipmod": "ipv4-address = bstr .size 4"},
                                strict_modules=True), ())
 
     def test_other_schema_errors_are_reported_as_before(self):
@@ -228,13 +228,13 @@ class TestCli(unittest.TestCase):
     def test_without_the_flag_it_warns_and_accepts(self):
         code, out, err = self.run_cli(self.schema, self.bad)
         self.assertEqual(code, 0, err)
-        self.assertIn("Warning: module 'rfc9164'", err)
+        self.assertIn("Warning: module 'ipmod'", err)
 
     def test_with_the_flag_the_schema_fails_to_load(self):
         code, out, err = self.run_cli(self.schema, self.bad, "--strict-modules")
         self.assertEqual(code, 1)
         self.assertIn("Error loading CDDL file:", err)
-        self.assertIn("main.cddl:1:1: module 'rfc9164' (imported as 'cbor-ip') was not found", err)
+        self.assertIn("main.cddl:1:1: module 'ipmod' (imported as 'cbor-ip') was not found", err)
         self.assertNotIn("Warning:", err)
 
     def test_json_diagnostics(self):
@@ -249,7 +249,7 @@ class TestCli(unittest.TestCase):
 
     def test_with_the_module_supplied_the_flag_passes(self):
         root = Path(self.directory.name)
-        (root / "rfc9164.cddl").write_text("ipv4-address = bstr .size 4", encoding="utf-8")
+        (root / "ipmod.cddl").write_text("ipv4-address = bstr .size 4", encoding="utf-8")
         code, out, err = self.run_cli(self.schema, self.good, "--type", "host", "--strict-modules")
         self.assertEqual(code, 0, err)
         self.assertIn("Validation successful", out + err)
@@ -261,7 +261,7 @@ class TestCli(unittest.TestCase):
         root = Path(self.directory.name)
         (root / "elsewhere.cddl").write_text("ipv4-address = bstr .size 4", encoding="utf-8")
         code, out, err = self.run_cli(self.schema, self.good, "--strict-modules",
-                                      "--module", f"rfc9164={root / 'elsewhere.cddl'}")
+                                      "--module", f"ipmod={root / 'elsewhere.cddl'}")
         self.assertEqual(code, 0, err)
 
 

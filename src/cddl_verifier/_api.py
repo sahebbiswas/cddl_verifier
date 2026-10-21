@@ -99,7 +99,8 @@ def _read_schema(schema: SchemaSource) -> str:
 def schema_diagnostics(schema: SchemaSource, *,
                        modules: Optional[Mapping[str, SchemaSource]] = None,
                        module_path: Sequence[Union[str, "os.PathLike[str]"]] = (),
-                       strict_modules: bool = False) -> Tuple[Diagnostic, ...]:
+                       strict_modules: bool = False,
+                       bundled_modules: bool = True) -> Tuple[Diagnostic, ...]:
     """The problems in a CDDL schema, as diagnostics; none for a schema that is fine.
 
     This is what :class:`Validator` raises :class:`SchemaError` for, returned
@@ -119,7 +120,7 @@ def schema_diagnostics(schema: SchemaSource, *,
     diagnostic at its ``;# import`` or ``;# include`` line (#229).
 
     Args:
-        schema, modules, module_path, strict_modules: As for :class:`Validator`.
+        schema, modules, module_path, strict_modules, bundled_modules: As for :class:`Validator`.
 
     Raises:
         TypeError: *schema* is neither ``str`` nor ``os.PathLike``.
@@ -134,7 +135,7 @@ def schema_diagnostics(schema: SchemaSource, *,
         search.append(Path(name).parent)
     try:
         linked = link(parse_cddl(text, source_name=name),
-                      ModuleLoader(modules, search, strict=strict_modules))
+                      ModuleLoader(modules, search, strict=strict_modules, bundled=bundled_modules))
     except SchemaError as e:
         return tuple(schema_diagnostic(error) for error in getattr(e, "errors", (e,)))
     return tuple(schema_diagnostic(e) for e in resolve_all(linked.schema, linked.imports)[1])
@@ -154,7 +155,9 @@ class Validator:
             and under their own names for an include.
         module_path: Directories searched for ``<module name>.cddl`` when
             *modules* has no entry for it. When *schema* is a path, its
-            directory is searched last.
+            directory is searched last. After that come the modules the package
+            ships: ``rfc9393`` (CoSWID) and ``rfc9164`` (IP addresses), unless
+            *bundled_modules* is false (#239).
         unique_choices: Reject data that matches more than one structured
             (map, array or tag) alternative of a choice. By default a choice
             accepts data that fits any alternative, as CDDL defines it; EDN
@@ -170,6 +173,11 @@ class Validator:
             the check for undefined names in the whole schema. With
             ``strict_modules=True`` any ``;# import`` or ``;# include`` that is not
             found, used or not, raises :class:`SchemaError` at that line (#229).
+        bundled_modules: Look an import up among the modules the package ships when
+            *modules* and *module_path* have none of that name (default ``True``).
+            ``;# import rfc9393 as coswid`` then checks the names of CoSWID instead of
+            leaving them unchecked, so data a schema accepted before can be rejected;
+            ``False`` gives the earlier behaviour. ``measured-component`` is not shipped.
         features: The ``.feature`` names (RFC 9165 section 4) that are enabled. By
             default every feature is enabled and ``T .feature "x"`` is just ``T``.
             With a collection of names, even an empty one, only those features are
@@ -199,7 +207,8 @@ class Validator:
                  unique_choices: bool = False,
                  comment_names: bool = False,
                  strict_modules: bool = False,
-                 features: Optional[Iterable[str]] = None):
+                 features: Optional[Iterable[str]] = None,
+                 bundled_modules: bool = True):
         text = _read_schema(schema)
         name = os.fspath(schema) if isinstance(schema, os.PathLike) else None
         self._unique_choices = unique_choices
@@ -207,7 +216,7 @@ class Validator:
         search = list(module_path)
         if name is not None:
             search.append(Path(name).parent)
-        loader = ModuleLoader(modules, search, strict=strict_modules)
+        loader = ModuleLoader(modules, search, strict=strict_modules, bundled=bundled_modules)
         try:
             self._parser = _schema.CDDLParser(text, source_name=name, loader=loader,
                                               comment_names=comment_names)
@@ -311,7 +320,8 @@ def validate(schema: SchemaSource, data: Any,
              comment_names: bool = False,
              strict_modules: bool = False,
              features: Optional[Iterable[str]] = None,
-             require_deterministic: bool = False) -> ValidationResult:
+             require_deterministic: bool = False,
+             bundled_modules: bool = True) -> ValidationResult:
     """Validate *data* against a CDDL *schema*.
 
     Shorthand for ``Validator(schema).validate(data, root_type)``; build a
@@ -319,5 +329,6 @@ def validate(schema: SchemaSource, data: Any,
     """
     return Validator(schema, modules=modules, module_path=module_path,
                      unique_choices=unique_choices, comment_names=comment_names,
-                     strict_modules=strict_modules, features=features).validate(
+                     strict_modules=strict_modules, features=features,
+                     bundled_modules=bundled_modules).validate(
         data, root_type, require_deterministic=require_deterministic)

@@ -44,6 +44,10 @@ cddl-verify = "cddl_verifier.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+# the CDDL of RFC 9393 and RFC 9164 that imports fall back to (#239), with their licence
+cddl_verifier = ["_modules/*.cddl", "_modules/LICENSE-IETF.txt"]
+
 [tool.setuptools.dynamic]
 version = { attr = "cddl_verifier._version.__version__" }
 

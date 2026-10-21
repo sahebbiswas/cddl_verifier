@@ -257,12 +257,12 @@ Note how IANA registered parameter keys (0, 1, 2, etc.) are displayed as their s
 1. **Structure, not meaning:** The tool checks that data has the shape the schema describes.
    Whatever the CoRIM specification says in prose (for example, that a profile's
    extensions are consistent) is not checked.
-2. **Imported modules:** A CoRIM schema that imports CoSWID needs that file given
-   (`-M` / `--module`); a name from a module that is not loaded matches any value and a
-   warning says so ([CLI.md](CLI.md#imported-modules)). For a CoRIM check that must not
-   pass because a module is missing, use `strict_modules=True` / `--strict-modules`:
-   `unified.cddl` imports `measured-component`, `rfc9393` and `rfc9164`, which are not
-   bundled, and the schema then does not load until all three are given.
+2. **Imported modules:** `unified.cddl` imports `rfc9393` (CoSWID) and `rfc9164` (IP
+   addresses), which the package bundles, and `measured-component`, which it does not (an
+   Internet-Draft): `eatmc.digest` matches any value and a warning says so, unless you give
+   that module (`-M` / `--module`) ([CLI.md](CLI.md#imported-modules)). For a CoRIM check that
+   must not pass because a module is missing, use `strict_modules=True` / `--strict-modules`:
+   the schema then does not load until `measured-component` is given.
 3. **`.regexp` limits:** Patterns are read as XSD regular expressions and matched in time
    linear in the text. A pattern over 50 000 NFA states is a schema error, and a match
    over 10 million steps is refused ([CDDL_SUPPORT.md](CDDL_SUPPORT.md)).

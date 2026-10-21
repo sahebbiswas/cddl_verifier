@@ -14,7 +14,9 @@ keeps meaning what it meant on its own. Modules may import modules.
 
 A module is looked up by name in a :class:`ModuleLoader`: first the modules
 it was given explicitly, then ``<name>.cddl`` in each directory of its search
-path. A module that is not found is not an error by default: its names stay
+path, then the modules the package ships (``BUNDLED_MODULES``: the CDDL of RFC 9393,
+CoSWID, and RFC 9164, IP addresses; #239), unless the loader is made with
+``bundled=False``. A module that is not found is not an error by default: its names stay
 unchecked, as they were before modules could be loaded, and :class:`LinkResult`
 says so. A :class:`ModuleLoader` made with ``strict=True`` fails closed instead
 (#229): an import it cannot resolve is a :class:`CDDLSemanticError` at the
@@ -23,6 +25,7 @@ says so. A :class:`ModuleLoader` made with ``strict=True`` fails closed instead
 
 import os
 from dataclasses import dataclass, field, fields, replace
+from importlib import resources
 from pathlib import Path
 from typing import Dict, FrozenSet, Iterable, List, Mapping, Optional, Set, Tuple, Union
 
@@ -35,6 +38,20 @@ from .resolve import Imports, import_directives, resolve
 
 #: A module given directly: CDDL text, or a path to a file holding it.
 ModuleSource = Union[str, "os.PathLike[str]"]
+
+#: The modules the package ships, found last (#239); the CDDL of published RFCs.
+BUNDLED_MODULES = ('rfc9393', 'rfc9164')
+
+
+def bundled_module(name: str) -> Optional[str]:
+    """The text of the bundled module *name*, or ``None`` if the package does not ship it."""
+    key = _module_key(name)
+    if key not in BUNDLED_MODULES:
+        return None
+    try:
+        return (resources.files('cddl_verifier') / '_modules' / f'{key}.cddl').read_text(encoding='utf-8')
+    except (OSError, UnicodeError, ModuleNotFoundError):  # pragma: no cover - a broken install
+        return None
 
 
 class UnresolvedImportError(CDDLSemanticError):
@@ -60,14 +77,17 @@ class ModuleLoader:
         path: Directories searched, in order, for ``<name>.cddl``.
         strict: Treat an import that cannot be found as an error (#229), where
             by default its names are left unchecked and match any value.
+        bundled: Fall back to the modules the package ships (``BUNDLED_MODULES``)
+            when the explicit modules and the search path have none of that name (#239).
     """
 
     def __init__(self, modules: Optional[Mapping[str, ModuleSource]] = None,
                  path: Iterable[Union[str, "os.PathLike[str]"]] = (),
-                 strict: bool = False):
+                 strict: bool = False, bundled: bool = True):
         self.modules = {_module_key(name): source for name, source in (modules or {}).items()}
         self.path = [Path(directory) for directory in path]
         self.strict = strict
+        self.bundled = bundled
 
     def find(self, name: str) -> Optional[Tuple[str, str]]:
         """``(text, source name)`` of module *name*, or ``None`` if it is not available.
@@ -85,7 +105,8 @@ class ModuleLoader:
             for candidate in (directory / f'{key}.cddl', directory / name):
                 if candidate.is_file():
                     return self._read(candidate, name)
-        return None
+        text = bundled_module(key) if self.bundled else None
+        return None if text is None else (text, f'<bundled module {key}>')
 
     @staticmethod
     def _read(path: Path, name: str) -> Tuple[str, str]:
