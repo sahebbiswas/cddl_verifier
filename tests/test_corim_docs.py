@@ -101,6 +101,10 @@ class TestDocs(unittest.TestCase):
             finally:
                 os.chdir(here)
         self.assertEqual(signed.tag, 18)                 # signed-corim is a COSE_Sign1
+        protected = cbor_decode(signed.value[0])
+        self.assertEqual(protected[1], -7)                              # alg
+        self.assertEqual(protected[3], 'application/rim+cbor')          # content type
+        self.assertEqual(cbor_decode(protected[8]), {0: {0: 'Example Signer'}})  # corim-meta
         unsigned = cbor_decode(signed.value[2])
         self.assertEqual(unsigned.tag, 501)
         member = unsigned.value[1][0]
