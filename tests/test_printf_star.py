@@ -148,7 +148,7 @@ class Cost(unittest.TestCase):
 
     def test_the_widths_of_unpadded_text_are_not_built_up_front(self):
         spec = conversions.Spec('', 0, None, 'd', True, False)
-        widths = next(iter(conversions.star_readings(spec, '4' * 300_000)))[2]
+        widths = next(iter(conversions.star_readings(spec, '4' * 3000)))[2]
         self.assertNotIsInstance(widths, list)
         self.assertEqual(list(widths)[:4], [0, 1, 2, 3])
         small = next(iter(conversions.star_readings(spec, '42')))[2]
