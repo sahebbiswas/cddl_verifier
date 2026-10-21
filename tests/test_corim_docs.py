@@ -110,6 +110,10 @@ class TestDocs(unittest.TestCase):
         member = unsigned.value[1][0]
         self.assertEqual(member.tag, 506)
         self.assertIsInstance(member.value, bytes)       # bytes .cbor
+        comid = cbor_decode(member.value)
+        self.assertIn(1, comid)                          # tag-identity
+        self.assertEqual(comid[1][0], 'comid-001')
+        self.assertTrue(comid[4][0])                     # triples is not empty
         self.assertEqual(sorted(unsigned.value), [0, 1])  # integer keys
 
 

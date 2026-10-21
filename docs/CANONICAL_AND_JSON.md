@@ -553,7 +553,15 @@ print("✅ Data verified!")
 # A CoRIM is a map with integer keys (draft-ietf-rats-corim); this one only
 # illustrates the shape. Tag 506 is a CoMID, and a tag 505 (CoSWID), 506 or 508
 # (CoTL) holds the *encoded* tag as a byte string (`bytes .cbor`).
-comid = {0: {0: "comid-001"}, 1: []}          # a concise-mid-tag, abbreviated
+comid = {                                      # a concise-mid-tag
+    1: {0: "comid-001"},                       # tag-identity: tag-id
+    4: {                                       # triples (must not be empty)
+        0: [[                                  # reference-triples
+            {0: {1: "Example Vendor", 2: "Example Model"}},   # environment: class
+            [{1: {1: 1}}],                     # measurements: mval with svn 1
+        ]],
+    },
+}
 corim = {
     0: "example.corim.001",                    # corim-id
     1: [CBORTag(506, cbor_encode(comid))],     # tags
