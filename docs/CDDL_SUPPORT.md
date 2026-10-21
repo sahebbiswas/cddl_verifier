@@ -490,8 +490,10 @@ inner-type = {
 )
 ```
 
-Bytes that `<< >>` would not encode back to (an overlong head, an indefinite length, a float
-wider than it needs, trailing bytes, or bytes that are not CBOR) are printed as `h'...'`
+Items that are not in preferred serialization (an overlong head, an indefinite length, a float
+wider than it needs) are shown with encoding indicators (`1_0`, `[_ 1, 2]`, `1.5_3`, RFC 8949
+section 8.1); bytes that no indicator can express (two or more chunks of an indefinite string, a tag
+number with a longer head), trailing bytes, or bytes that are not CBOR are printed as `h'...'`
 instead. See [EDN_FORMATTING_IMPROVEMENTS.md](EDN_FORMATTING_IMPROVEMENTS.md#nested-cbor).
 
 The argument of `.cbor` can be any type: a rule name, a generic instance

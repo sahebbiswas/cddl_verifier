@@ -84,15 +84,25 @@ inside. A `bstr .cborseq` byte string holds a CBOR sequence (RFC 8742) and is wr
 `<< 1, 2 >>`, with the items separated by commas. The output is a diagnostic notation, not
 a format to read back: RFC 8949 section 8 gives it no grammar.
 
-`<< >>` stands for the encoding of the items inside it, so it is used only when the bytes are
-what the items encode to in preferred serialization (the shortest heads, definite lengths,
-the shortest float). A byte string with an overlong head, an indefinite length, a float
-written wider than it needs, trailing bytes, or bytes that are not CBOR at all is printed as
-`h'...'`, so the output never shows something other than what is in the data. The data is
-still checked against the schema, as `bstr .cbor T` says. `--no-annotate` (`annotate=False`) expands
-the same items: only the comments, the type headers and the member names go (#236), so a
-map member, an array element, a tag or a choice prints as `<< ... >>` exactly as it does
-with annotation.
+`<< >>` stands for the encoding of the items inside it. An item that is not in preferred
+serialization is shown with the encoding indicators of RFC 8949 section 8.1 (#237), so the
+bytes can still be read back from the notation: `_0` to `_3` after a number or string whose
+head has an argument of 1, 2, 4 or 8 bytes where a shorter head would do (`1_0` is `1801`,
+`"a"_0` is `780161`, `1_1` is `190001`), the width of a float (`1.5_3` is a double
+precision float, shown for a float wider than it needs), and `_` after the opening bracket
+or brace of an array or map of indefinite length (`[_ 1, 2]` is `9f0102ff`; `[_0 ...]` an array
+with a 1-byte count). The same indicators appear on items outside `<< >>`. An indefinite
+string with one chunk inside `<< >>` is `(_ "a")` or `(_ h'01')`; an empty one is `""_` or `''_`.
+
+The decoder does not record the chunks of an indefinite string beyond the first or the width
+of a tag number, and a NaN with a payload cannot be written as `NaN`. Embedded CBOR that
+needs them, trailing bytes, and bytes that are not CBOR at all are printed as `h'...'`, so
+the output never shows something other than what is in the data. Outside `<< >>` an
+indefinite string with chunks is written as the string it holds. The data is still checked
+against the schema, as `bstr .cbor T` says.
+`--no-annotate` (`annotate=False`) expands the same items: only the comments, the type headers
+and the member names go (#236), so a map member, an array element, a tag or a choice prints as
+`<< ... >>` exactly as it does with annotation.
 
 ## When the data does not match
 

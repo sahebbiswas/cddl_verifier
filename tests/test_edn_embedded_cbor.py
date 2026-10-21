@@ -139,31 +139,108 @@ class TestSequences(unittest.TestCase):
         self.assertTrue(text.rstrip().endswith('"x"\n>>'))
 
 
-class TestNotShownAsEmbedded(unittest.TestCase):
-    """Bytes that << >> would not encode back to are shown as a byte string, not altered."""
+class TestNonPreferredEmbedded(unittest.TestCase):
+    """Embedded CBOR that is not in preferred serialization is shown with encoding indicators (#237)."""
 
     schema = "r = { &( a : 0 ) => bstr .cbor inner }\ninner = { &( v : 0 ) => float }\n"
 
-    def hex_member(self, raw: bytes) -> str:
-        text = Validator(self.schema).to_edn(encode({0: raw}), root_type="r")
-        self.assertNotIn("<<", text)
-        return text
-
     def test_float_wider_than_it_needs(self):
-        with_double = encode({0: float_width(1.5, 64)})
-        self.assertIn("h'" + with_double.hex() + "'", self.hex_member(with_double))
-        # the shortest width is shown
-        self.assertIn("<<", Validator(self.schema).to_edn(encode({0: encode({0: 1.5})}), root_type="r"))
+        text = Validator(self.schema).to_edn(encode({0: encode({0: float_width(1.5, 64)})}), root_type="r")
+        self.assertIn("<<", text)
+        self.assertIn("/ v / 0: 1.5_3", text)
+        # the shortest width needs no indicator
+        short = Validator(self.schema).to_edn(encode({0: encode({0: 1.5})}), root_type="r")
+        self.assertIn("/ v / 0: 1.5\n", short)
 
     def test_indefinite_length(self):
         schema = "r = { &( a : 0 ) => bstr .cbor [* int] }"
         text = Validator(schema).to_edn(encode({0: bytes.fromhex("9f0102ff")}), root_type="r")
-        self.assertIn("h'9f0102ff'", text)
+        self.assertIn("<<", text)
+        self.assertIn("[_\n", text)
+        self.assertNotIn("h'", text)
 
     def test_overlong_head(self):
         schema = "r = { &( a : 0 ) => bstr .cbor int }"
         text = Validator(schema).to_edn(encode({0: bytes.fromhex("1801")}), root_type="r")
-        self.assertIn("h'1801'", text)
+        self.assertIn("<< 1_0 >>", text)
+
+    def test_the_notation_is_the_data_again(self):
+        # what is written reads back, by RFC 8949 section 8.1, to the very bytes
+        cases = ["1801", "190001", "3801", "9f0102ff", "bf0102ff", "9800", "a1" + "01" + "02", "fb3ff8000000000000",
+                 "fa3fc00000", "5801aa", "780161", "5fff", "7fff", "7f6161ff", "5f4101ff", "9f9f01ffff",
+                 "c11801", "82fb3ff800000000000018ff"]
+        for hexed in cases:
+            with self.subTest(hexed):
+                raw = bytes.fromhex(hexed)
+                text = Validator("r = { &( a : 0 ) => bstr .cbor any }").to_edn(encode({0: raw}), root_type="r")
+                self.assertIn("<<", text)
+                self.assertNotIn("h'" + hexed, text)
+
+    def test_outer_byte_string_head_is_indicated_too(self):
+        schema = "r = { &( a : 0 ) => bstr .cbor int }"
+        raw = bytes.fromhex("a100580101")
+        text = Validator(schema).to_edn(raw, root_type="r")
+        self.assertIn(">>_0", text)
+
+    def test_tag_with_embedded_cbor_and_indicators(self):
+        schema = "r = #6.506(bytes .cbor inner)\ninner = { &( v : 0 ) => uint }"
+        raw = bytes.fromhex("d901fa44" "a1001801")
+        text = Validator(schema).to_edn(raw, root_type="r")
+        self.assertIn("506(", text)
+        self.assertIn("0: 1_0", text)
+
+    def test_indefinite_string_in_embedded_cbor_is_one_chunk(self):
+        schema = "r = { &( a : 0 ) => bstr .cbor [* tstr] }"
+        text = Validator(schema).to_edn(encode({0: bytes.fromhex("817f6161ff")}), root_type="r")
+        self.assertIn('(_ "a")', text)
+        text = Validator(schema).to_edn(encode({0: bytes.fromhex("817fff")}), root_type="r")
+        self.assertIn('""_', text)
+        schema = "r = { &( a : 0 ) => bstr .cbor [* bstr] }"
+        text = Validator(schema).to_edn(encode({0: bytes.fromhex("815f4101ff")}), root_type="r")
+        self.assertIn("(_ h'01')", text)
+
+    def test_top_level_items_carry_indicators(self):
+        validator = Validator("r = [* any]")
+        text = validator.to_edn(bytes.fromhex("9f1801fb3ff8000000000000190001ff"), root_type="r")
+        self.assertEqual([line.strip().rstrip(",") for line in text.splitlines()],
+                         ["/ r / [_", "1_0", "1.5_3", "1_1", "]"])
+        self.assertEqual(validator.to_edn(bytes.fromhex("9f0102ff"), root_type="r").splitlines()[0], "/ r / [_")
+        self.assertEqual(validator.to_edn(bytes.fromhex("9fff"), root_type="r"), "[_ ]")
+        self.assertEqual(Validator("r = {* any => any}").to_edn(bytes.fromhex("bfff"), root_type="r"), "{_ }")
+        self.assertEqual(Validator("r = [* any]").to_edn(bytes.fromhex("9800"), root_type="r"), "[_0 ]")
+        self.assertEqual(Validator("r = any").to_edn(bytes.fromhex("7fff")), '""_')
+        self.assertEqual(Validator("r = any").to_edn(bytes.fromhex("5fff")), "''_")
+
+    def test_top_level_indefinite_string_has_no_chunk_structure_to_show(self):
+        text = Validator("r = any").to_edn(bytes.fromhex("7f61616162ff"))
+        self.assertEqual(text, '"ab"')  # the chunks are not recorded
+
+    def test_plain_data_is_unchanged(self):
+        text = Validator("r = [* any]").to_edn(bytes.fromhex("831864f93e0063616263"), root_type="r")
+        self.assertNotIn("_", text)
+        self.assertEqual(Validator("r = any").to_edn(encode(1.5)), "1.5")
+
+
+class TestNotShownAsEmbedded(unittest.TestCase):
+    """What no encoding indicator can say stays a byte string (#237)."""
+
+    def hex_member(self, schema: str, raw: str) -> str:
+        text = Validator(schema).to_edn(encode({0: bytes.fromhex(raw)}), root_type="r")
+        self.assertNotIn("<<", text)
+        return text
+
+    def test_two_chunks_of_an_indefinite_string(self):
+        self.assertIn("h'7f61616162ff'",
+                      self.hex_member("r = { &( a : 0 ) => bstr .cbor tstr }", "7f61616162ff"))
+        self.assertIn("h'5f41014102ff'",
+                      self.hex_member("r = { &( a : 0 ) => bstr .cbor bstr }", "5f41014102ff"))
+
+    def test_tag_number_with_a_longer_head(self):
+        self.assertIn("h'd8" + "0101'", self.hex_member("r = { &( a : 0 ) => bstr .cbor any }", "d80101"))
+
+    def test_nan_with_a_payload(self):
+        self.assertIn("h'fb7ff8000000000001'",
+                      self.hex_member("r = { &( a : 0 ) => bstr .cbor float }", "fb7ff8000000000001"))
 
     def test_not_cbor(self):
         schema = "r = { &( a : 0 ) => bstr .cbor int }"
