@@ -62,13 +62,15 @@ def module_paths(suite: dict, entry: dict) -> Tuple[Tuple[str, str], ...]:
 
 
 @lru_cache(maxsize=None)
-def _validator(paths: Tuple[str, ...], modules: Tuple[Tuple[str, str], ...]):
+def _validator(paths: Tuple[str, ...], modules: Tuple[Tuple[str, str], ...],
+               features: Optional[Tuple[str, ...]] = None):
     """``(Validator, None)``, or ``(None, SchemaError)`` for a schema the library refuses."""
     text = "\n".join(_read(path) for path in paths)
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            return Validator(text, modules={name: _read(path) for name, path in modules}), None
+            return Validator(text, modules={name: _read(path) for name, path in modules},
+                             features=features), None
     except SchemaError as error:
         return None, error
 
@@ -80,7 +82,9 @@ def run(suite: dict, entry: dict) -> Tuple[str, str]:
     schema is refused (also the answer for data checked against such a schema),
     or ``schema-ok`` for a case that expects a refusal and was not given one.
     """
-    validator, error = _validator(schema_paths(suite, entry), module_paths(suite, entry))
+    enabled = entry.get("features", suite.get("features"))  # the RFC 9165 features that are on
+    validator, error = _validator(schema_paths(suite, entry), module_paths(suite, entry),
+                                  None if enabled is None else tuple(enabled))
     if entry["expect"] == "schema-error":
         return ("schema-error", str(error)) if error else ("schema-ok", "")
     if error:

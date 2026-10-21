@@ -9,7 +9,7 @@ import os
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, Iterable, Mapping, Optional, Sequence, Tuple, Union
 
 from . import _analyzer, _edn, _schema
 from ._cddl import parse_cddl
@@ -35,13 +35,17 @@ class ValidationResult:
     """Outcome of a validation.
 
     ``bool(result)`` is ``result.valid``. ``data`` holds the decoded value
-    (``None`` if decoding failed).
+    (``None`` if decoding failed). ``features_used`` names, in the order they
+    were met, the features (RFC 9165 ``.feature``) of the parts of the data
+    that matched the schema; it is empty for an invalid result, and for a
+    schema that has no ``.feature``.
     """
 
     valid: bool
     root_type: Optional[str]
     diagnostics: Tuple[Diagnostic, ...] = ()
     data: Any = field(default=None, compare=False, repr=False)
+    features_used: Tuple[str, ...] = ()
 
     def __bool__(self) -> bool:
         return self.valid
@@ -52,22 +56,27 @@ class ValidationResult:
         return tuple(d.message for d in self.diagnostics if d.severity == "error")
 
     def to_dict(self) -> Dict[str, Any]:
-        """The outcome as JSON-ready data: ``valid``, ``root_type`` and ``diagnostics``.
+        """The outcome as JSON-ready data: ``valid``, ``root_type`` and ``diagnostics``, and
+        ``features_used`` when a feature was used.
 
         Each diagnostic is :meth:`Diagnostic.to_dict`. The decoded ``data`` is
         not included.
         """
-        return {
+        document = {
             "format_version": JSON_FORMAT_VERSION,
             "valid": self.valid,
             "root_type": self.root_type,
-            "diagnostics": [d.to_dict() for d in self.diagnostics],
         }
+        if self.features_used:
+            document["features_used"] = list(self.features_used)
+        document["diagnostics"] = [d.to_dict() for d in self.diagnostics]
+        return document
 
     def to_json(self, indent: Optional[int] = 2) -> str:
         """The outcome as a JSON document (see :meth:`to_dict`)."""
+        extra = {"features_used": list(self.features_used)} if self.features_used else {}
         return render_json(self.diagnostics, indent=indent, valid=self.valid,
-                           root_type=self.root_type)
+                           root_type=self.root_type, **extra)
 
     def format(self, *, verbose: bool = False) -> str:
         """The diagnostics as text, one finding per line (see :func:`render_text`)."""
@@ -161,6 +170,14 @@ class Validator:
             the check for undefined names in the whole schema. With
             ``strict_modules=True`` any ``;# import`` or ``;# include`` that is not
             found, used or not, raises :class:`SchemaError` at that line (#229).
+        features: The ``.feature`` names (RFC 9165 section 4) that are enabled. By
+            default every feature is enabled and ``T .feature "x"`` is just ``T``.
+            With a collection of names, even an empty one, only those features are
+            enabled: ``T .feature "x"`` matches only while ``"x"`` is in it, and the
+            diagnostic names the feature that is not. A choice falls through to
+            its other alternatives (``T .feature "x" / U``). RFC 9165 leaves open what
+            a tool does with a feature that is not enabled, so this is a choice of
+            this tool (#232). A single string is refused (``{"x"}``, not ``"x"``).
 
     Attributes:
         warnings: What the schema relies on without checking: an import whose
@@ -181,10 +198,12 @@ class Validator:
                  module_path: Sequence[Union[str, "os.PathLike[str]"]] = (),
                  unique_choices: bool = False,
                  comment_names: bool = False,
-                 strict_modules: bool = False):
+                 strict_modules: bool = False,
+                 features: Optional[Iterable[str]] = None):
         text = _read_schema(schema)
         name = os.fspath(schema) if isinstance(schema, os.PathLike) else None
         self._unique_choices = unique_choices
+        self._features = _analyzer._feature_set(features)
         search = list(module_path)
         if name is not None:
             search.append(Path(name).parent)
@@ -196,6 +215,7 @@ class Validator:
             raise  # syntax errors already say where: "file:line:col: message"
         except Exception as e:  # noqa: BLE001 - anything else is a parser bug
             raise SchemaError(f"cannot parse CDDL schema: {e}") from e
+        self._parser.features = self._features  # EDN output picks choices by the same rule
         self.warnings: Tuple[str, ...] = tuple(self._parser.warnings)
         for message in self.warnings:
             warnings.warn(message, UserWarning, stacklevel=2)
@@ -249,10 +269,13 @@ class Validator:
                                   require_deterministic=require_deterministic)
             except CBORDecodeError as e:
                 return ValidationResult(False, root, (decode_diagnostic(e, cbor_bytes),), None)
-        analyzer = _analyzer.CBORAnalyzer(self._parser, unique_choices=self._unique_choices)
+        analyzer = _analyzer.CBORAnalyzer(self._parser, unique_choices=self._unique_choices,
+                                          features=self._features)
         ok = analyzer.validate(data, root, cbor_bytes)
         diagnostics = analyzer.get_diagnostics()
-        return ValidationResult(bool(ok) and not diagnostics, root, diagnostics, data)
+        valid = bool(ok) and not diagnostics
+        used = analyzer.features_used if valid else ()
+        return ValidationResult(valid, root, diagnostics, data, used)
 
     def to_edn(self, data: Any, root_type: Optional[str] = None, *,
                annotate: bool = True, edn_format: str = "keyindex") -> str:
@@ -287,6 +310,7 @@ def validate(schema: SchemaSource, data: Any,
              unique_choices: bool = False,
              comment_names: bool = False,
              strict_modules: bool = False,
+             features: Optional[Iterable[str]] = None,
              require_deterministic: bool = False) -> ValidationResult:
     """Validate *data* against a CDDL *schema*.
 
@@ -295,5 +319,5 @@ def validate(schema: SchemaSource, data: Any,
     """
     return Validator(schema, modules=modules, module_path=module_path,
                      unique_choices=unique_choices, comment_names=comment_names,
-                     strict_modules=strict_modules).validate(
+                     strict_modules=strict_modules, features=features).validate(
         data, root_type, require_deterministic=require_deterministic)

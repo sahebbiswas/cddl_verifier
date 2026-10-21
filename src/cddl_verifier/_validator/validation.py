@@ -138,6 +138,7 @@ class ValidationMixin:
                     print(err)
         """
         self.validation_errors = []
+        self._feature_trail = []
         self.breadcrumb = []  # Reset breadcrumb
         self._data_path = []
         self._rules = [type_name] if type_name else []

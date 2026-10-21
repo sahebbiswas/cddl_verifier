@@ -188,6 +188,7 @@ class StructuresMixin:
         for key in sorted(extra_keys, key=repr):
             key_value = key.value if isinstance(key, CBORKey) else key
             candidates = []
+            keyed = len(self._feature_trail)
             for index, computed in enumerate(computed_keys):
                 if self._check_value(key_value, computed['key'], strict=True):
                     continue
@@ -206,6 +207,12 @@ class StructuresMixin:
             chosen = (with_room or matching or candidates)[0]
             computed_counts[chosen] = computed_counts.get(chosen, 0) + 1
             extra_keys.discard(key)
+            # the probes of the members the entry did not go to used no feature:
+            # only the member it went to does, by its key and by its value
+            del self._feature_trail[keyed:]
+            self._check_value(key_value, computed_keys[chosen]['key'], strict=True)
+            if chosen in matching:
+                self._check_value(data[key], computed_keys[chosen]['type'])
             if chosen not in matching:
                 self._push_breadcrumb(repr(key), step=key)  # the value is at the key
                 for error in self._check_value(data[key], computed_keys[chosen]['type']):

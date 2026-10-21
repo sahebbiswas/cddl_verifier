@@ -752,6 +752,9 @@
    "constructs": [
     "control.feature"
    ],
+   "features": [
+    "ok"
+   ],
    "source": "test/16-feature.cddl: `;;+ 8`"
   },
   {
@@ -762,6 +765,9 @@
    "edn": "3 / Hmm /",
    "constructs": [
     "control.feature"
+   ],
+   "features": [
+    "ok"
    ],
    "source": "test/16-feature.cddl: `;;+ 3 / Hmm /`"
   },
@@ -774,6 +780,9 @@
    "constructs": [
     "control.feature"
    ],
+   "features": [
+    "ok"
+   ],
    "source": "test/16-feature.cddl: `;;+ 16`"
   },
   {
@@ -784,6 +793,9 @@
    "edn": "-4",
    "constructs": [
     "control.feature"
+   ],
+   "features": [
+    "ok"
    ],
    "source": "test/16-feature.cddl: `;;- -4`"
   },
@@ -796,9 +808,10 @@
    "constructs": [
     "control.feature"
    ],
-   "source": "test/16-feature.cddl: `;;- 4.0`",
-   "status": "divergence",
-   "reason": "RFC 9165 leaves which features are enabled to the tool; this library has no way to name them, so every `.feature` counts as enabled and the base type alone decides."
+   "features": [
+    "ok"
+   ],
+   "source": "test/16-feature.cddl: `;;- 4.0`"
   },
   {
    "id": "cddlc/16a-feature/01",
@@ -808,6 +821,9 @@
    "edn": "8",
    "constructs": [
     "control.feature"
+   ],
+   "features": [
+    "ok"
    ],
    "source": "test/16a-feature.cddl: `;;+ 8`"
   },
@@ -820,6 +836,9 @@
    "constructs": [
     "control.feature"
    ],
+   "features": [
+    "ok"
+   ],
    "source": "test/16a-feature.cddl: `;;+ 3 / Hmm /`"
   },
   {
@@ -830,6 +849,9 @@
    "edn": "16",
    "constructs": [
     "control.feature"
+   ],
+   "features": [
+    "ok"
    ],
    "source": "test/16a-feature.cddl: `;;+ 16`"
   },
@@ -842,6 +864,9 @@
    "constructs": [
     "control.feature"
    ],
+   "features": [
+    "ok"
+   ],
    "source": "test/16a-feature.cddl: `;;- -4`"
   },
   {
@@ -853,9 +878,10 @@
    "constructs": [
     "control.feature"
    ],
-   "source": "test/16a-feature.cddl: `;;- 4.0`",
-   "status": "divergence",
-   "reason": "RFC 9165 leaves which features are enabled to the tool; this library has no way to name them, so every `.feature` counts as enabled and the base type alone decides."
+   "features": [
+    "ok"
+   ],
+   "source": "test/16a-feature.cddl: `;;- 4.0`"
   },
   {
    "id": "cddlc/17-regexp/01",

@@ -618,6 +618,43 @@ Literals act as markers and every way to split the string is tried, within a bud
 20,000 piece checks; a string that exhausts the budget is not accepted. An array with a
 repeated element (`* tstr`) or a group that cannot be followed is a schema error.
 
+## `.feature`
+
+`T .feature F` (RFC 9165 section 4) marks a use of the feature `F`. The controller is a
+text string (it may be computed, `("a" .cat "b")`, or a rule that is one) or an array of the
+name and an optional detail, `["name"]` or `["name", "detail"]`. The name is one text
+string; the detail is any type, written out, and is for the people reading the schema (it is
+not interpreted). Anything else is a schema error when the schema is loaded: a number, byte
+string or type as the controller, an array with no name or with more than two elements
+(`[]`, `["a", 1, 2]`), a first element that is not text (`[1, "a"]`), or an element that
+is repeated or optional (`[* "a"]`).
+
+RFC 9165 gives a tool two things to do. By default every feature is enabled and
+`T .feature F` is `T`. A tool can also be told which features are enabled: with
+`Validator(schema, features={"F"})`, `--feature F` (repeatable) or `--no-features`, only the
+named features are, and `T .feature F` matches only while `F` is one of them. A feature that
+is not enabled makes the target not match and the message names it
+(`feature 'F' is not enabled`, an error diagnostic of category `type`); in a choice (`int .feature "ext" / tstr`) the other
+alternatives are tried, and a map entry `* (text .feature "ext") => any` stops matching
+extra keys. The RFC leaves open what a tool does with a feature that is not enabled; this is
+the choice made here.
+
+`ValidationResult.features_used` (the CLI prints `Features used: ...`, and the JSON document
+has `features_used`) is the other mode: the features, in the order met and once each, of the
+parts of the data that matched. An alternative that was tried and did not match uses no
+feature, a map or group-choice branch that failed as a whole uses none, and an invalid
+result lists none:
+
+```python
+v = Validator('v = int .feature "ext-int" / tstr')
+v.validate(encode(42)).features_used    # ("ext-int",)  the int alternative matched
+v.validate(encode("x")).features_used   # ()            the tstr alternative matched
+v.validate(encode(4.0)).features_used   # ()            invalid
+```
+
+A generic rule's parameter as the controller (`g<T> = int .feature T`) is accepted and
+records nothing, as generic instances are not yet expanded when data is checked (#243).
+
 ## Validation behaviour
 
 | Condition | Result |

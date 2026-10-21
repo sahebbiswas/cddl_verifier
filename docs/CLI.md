@@ -62,6 +62,8 @@ cddl-verify --version
 | `-M DIR`, `--module-path DIR` | Directory searched for imported CDDL modules (`<name>.cddl`); repeatable. The schema file's own directory is always searched, last |
 | `--module NAME=FILE` | CDDL file for the imported module `NAME`; repeatable |
 | `--strict-modules` | Fail when an imported module (`;# import`, `;# include`) cannot be found, instead of warning and leaving its names unchecked. The error gives the file, line and column of the directive; see [Imported modules](#imported-modules) |
+| `--feature NAME` | Enable the RFC 9165 feature `NAME` for `.feature` controls; repeatable (`--feature ext1 --feature ext2`). If neither this nor `--no-features` is given, every feature is enabled; if one or more `--feature` are given, only those named are (`T .feature "x"` then fails while `x` is not named) |
+| `--no-features` | Enable no feature: `T .feature NAME` never matches. It cannot be combined with `--feature`: passing both is an error (`--feature and --no-features cannot be used together`, exit status 2) |
 | `--diagnostics {text,json}` | How problems are reported (default: `text`); see [Diagnostics](#diagnostics) |
 | `--show-types` | Print all parsed CDDL types and exit (not with `--diagnostics json`) |
 | `--verbose` | Enable detailed logging of validation and type resolution |
@@ -91,8 +93,8 @@ makes the result machine-readable:
 
 The document is the one `ValidationResult.to_json()` writes, so the fields are
 described in [API.md](API.md#diagnostic): `format_version`, `valid` (`true`,
-`false`, or `null` when no root type was checked), `root_type`, and
-`diagnostics`. A schema that cannot be loaded gives its problems as
+`false`, or `null` when no root type was checked), `root_type`, `diagnostics`, and
+`features_used`, an array of the `.feature` names used by the data that matched. The key is present only when at least one feature was used, so a consumer treats a missing `features_used` as an empty list. The text mode prints `Features used: a, b` on stderr under the same condition. A schema that cannot be loaded gives its problems as
 `code: "schema"` diagnostics (all of them, not just the first), CBOR that cannot
 be decoded gives one `code: "decode"` diagnostic, and a file that is missing is
 reported the same way, so a script never has to parse stderr.

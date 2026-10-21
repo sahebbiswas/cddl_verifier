@@ -91,9 +91,10 @@ def main(argv=None):
         _reset_cli_logging()
 
 
-def _exit_json(diagnostics, *, valid, root_type=None, status=1):
+def _exit_json(diagnostics, *, valid, root_type=None, status=1, features_used=()):
     """Print the diagnostics document, the only thing on stdout, and exit."""
-    sys.stdout.write(render_json(diagnostics, valid=valid, root_type=root_type) + "\n")
+    extra = {"features_used": list(features_used)} if features_used else {}
+    sys.stdout.write(render_json(diagnostics, valid=valid, root_type=root_type, **extra) + "\n")
     sys.stdout.flush()
     sys.exit(status)
 
@@ -172,6 +173,12 @@ Examples:
     parser.add_argument('--unique-choices', action='store_true',
                         help='Fail when data matches more than one map, array or tag '
                              'alternative of a choice')
+    parser.add_argument('--feature', action='append', default=None, metavar='NAME',
+                        help='Enable the RFC 9165 feature NAME for ".feature" controls; repeatable. '
+                             'With no --feature and no --no-features every feature is enabled; '
+                             'with one or more --feature options only the named features are enabled.')
+    parser.add_argument('--no-features', action='store_true',
+                        help='Enable no RFC 9165 feature: "T .feature NAME" matches nothing')
     parser.add_argument('--diagnostics', choices=['text', 'json'], default='text',
                         help='How problems are reported: text (messages on stderr, the default) '
                              'or json (one JSON document on stdout, progress and logs on stderr; '
@@ -186,7 +193,11 @@ Examples:
                         help='Show parsed CDDL types and exit')
     
     args = parser.parse_args(argv)
-    
+    if args.feature and args.no_features:
+        parser.error("--feature and --no-features cannot be used together")
+    # no option: every feature; --feature NAME: only those; --no-features: none
+    features = frozenset(args.feature or ()) if (args.feature or args.no_features) else None
+
     # Set logging level
     _configure_cli_logging(args.verbose)
     if args.verbose:
@@ -320,14 +331,18 @@ Examples:
     # Validate against the root type.
     # - Explicit --type: hard failure on validation errors (existing behaviour).
     # - Inferred type:   log errors as warnings, then continue to show EDN output.
-    checked_type, valid, diagnostics = root_type, None, ()
+    checked_type, valid, diagnostics, features_used = root_type, None, (), ()
     if root_type:
         print(f"Validating CBOR against CDDL (type: {root_type})...", file=sys.stderr)
-        analyzer = CBORAnalyzer(cddl, unique_choices=args.unique_choices)
+        cddl.features = features  # EDN output picks choices by the same rule
+        analyzer = CBORAnalyzer(cddl, unique_choices=args.unique_choices, features=features)
 
         if analyzer.validate(cbor_data, root_type, cbor_bytes):
             valid = True
+            features_used = analyzer.features_used
             print("[OK] Validation successful", file=sys.stderr)
+            if features_used:
+                print(f"Features used: {', '.join(features_used)}", file=sys.stderr)
         else:
             valid = False
             errors = analyzer.get_errors()
@@ -349,7 +364,8 @@ Examples:
                 sys.exit(1)
 
     if json_mode and not args.output:
-        _exit_json(diagnostics, valid=valid, root_type=checked_type, status=0)
+        _exit_json(diagnostics, valid=valid, root_type=checked_type, status=0,
+                   features_used=features_used)
 
     # Generate EDN
     print("Generating EDN...", file=sys.stderr)
@@ -361,7 +377,8 @@ Examples:
         args.output.write_text(edn_output, encoding='utf-8')
         print(f"[OK] EDN written to: {args.output}", file=sys.stderr)
         if json_mode:
-            _exit_json(diagnostics, valid=valid, root_type=checked_type, status=0)
+            _exit_json(diagnostics, valid=valid, root_type=checked_type, status=0,
+                       features_used=features_used)
     else:
         print("\n" + "=" * 50, file=sys.stderr)
         print("EDN Output:", file=sys.stderr)
