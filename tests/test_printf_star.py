@@ -146,6 +146,14 @@ class Cost(unittest.TestCase):
         self.assertNotIn(top, precisions('f', '1.5'))             # would be that many digits
         self.assertNotIn(top, precisions('d', '42'))
 
+    def test_the_widths_of_unpadded_text_are_not_built_up_front(self):
+        spec = conversions.Spec('', 0, None, 'd', True, False)
+        widths = next(iter(conversions.star_readings(spec, '4' * 300_000)))[2]
+        self.assertNotIsInstance(widths, list)
+        self.assertEqual(list(widths)[:4], [0, 1, 2, 3])
+        small = next(iter(conversions.star_readings(spec, '42')))[2]
+        self.assertEqual(list(small), [0, 1, 2, -1, -2])        # the order the validator tries them in
+
     def test_a_long_padded_text_is_read_in_linear_time(self):
         import time
         text = ' ' * 20000 + 'ab'

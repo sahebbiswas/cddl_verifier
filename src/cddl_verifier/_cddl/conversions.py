@@ -20,7 +20,8 @@ import json
 import math
 import sys
 import re
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
+from itertools import chain
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple
 
 # ------------------------------------------------------------------ bytes
 
@@ -542,7 +543,7 @@ def _shown_precision(spec: Spec, text: str) -> Optional[int]:
     return None
 
 
-def star_readings(spec: Spec, text: str) -> Iterator[Tuple[Optional[int], Any, List[Optional[int]]]]:
+def star_readings(spec: Spec, text: str) -> Iterator[Tuple[Optional[int], Any, Iterable[Optional[int]]]]:
     """The ways *text* can be the output of a conversion with a ``*`` width or precision (RFC 9741 section 2.3).
 
     C takes a ``*`` from an extra ``int`` argument that comes before the value, so the
@@ -572,7 +573,7 @@ def star_readings(spec: Spec, text: str) -> Iterator[Tuple[Optional[int], Any, L
                 yield precision, value, [None]
             continue
         for value in read_all(spec.with_(0, shown), text):  # no padding: any width not wider than the text
-            yield precision, value, [0, *range(1, size + 1), *range(-1, -size - 1, -1)]
+            yield precision, value, chain((0,), range(1, size + 1), range(-1, -size - 1, -1))
         for width in (size, -size):  # padded to the width of the text
             for padded in read_all(spec.with_(width, shown), text):
                 yield precision, padded, [width]
