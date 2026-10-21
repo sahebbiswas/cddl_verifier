@@ -64,10 +64,10 @@ class TestRootTags(TagTestCase):
 
     def test_nested_tags(self):
         self.check([
-            ("r = #6.1(#6.2(m))" + M, CBORTag(1, CBORTag(2, {"a": 1})), True),
-            ("r = #6.1(#6.2(m))" + M, CBORTag(1, {"a": 1}), False),
-            ("r = #6.1(#6.2(m))" + M, CBORTag(1, CBORTag(3, {"a": 1})), False),
-            ("r = #6.1(m)" + M, CBORTag(1, CBORTag(2, {"a": 1})), False),
+            ("r = #6.1(#6.7(m))" + M, CBORTag(1, CBORTag(7, {"a": 1})), True),
+            ("r = #6.1(#6.7(m))" + M, CBORTag(1, {"a": 1}), False),
+            ("r = #6.1(#6.7(m))" + M, CBORTag(1, CBORTag(8, {"a": 1})), False),
+            ("r = #6.1(m)" + M, CBORTag(1, CBORTag(7, {"a": 1})), False),
         ])
 
 

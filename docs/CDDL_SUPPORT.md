@@ -257,7 +257,7 @@ defines it ([#130](https://github.com/sahebbiswas/cddl_verifier/issues/130)):
 | `integer` | `int / bigint` | any integer, of any size |
 | `unsigned` | `uint / biguint` | any non-negative integer, of any size |
 
-The content of tags 0, 24, 32, 33, 34, 35 and 36 is checked for what it means, not
+The content of tags 0, 2, 3, 24, 32, 33, 34, 35 and 36 is checked for what it means, not
 only for its type, wherever the tag is matched, however the schema writes it
 (`tdate`, `#6.0(tstr)`, a field, an element, a choice) (#169):
 
@@ -289,7 +289,16 @@ only for its type, wherever the tag is matched, however the schema writes it
   limit of 7bit bodies are not checked. `36("x")` is rejected;
   `36("Content-Type: text/plain\r\n\r\nhi")` is accepted.
 
-Content of the wrong type (a number under tag 0) is reported as before.
+The type of the content is checked too (#234): tags 2, 3 and 24 wrap a byte string
+(RFC 8949 section 3.4.3) and tags 0 and 32 to 36 a text string, so `2(0)`, `3("")`
+and `0(5)` are rejected with "tag 2 content must be a byte string, not an integer"
+even where the schema leaves the content open (`#6.2(any)`, `#6(any)`,
+`#6.<uint>(any)`), and a schema that names another type for them (`#6.2(uint)`) can
+match no data. A bignum of 2^64 or more, which the decoder returns as a Python `int`,
+is tag 2 or 3 around its byte string wherever a schema names the tag (`#6.2(bstr)`).
+Tags that are not registered take any content. The decoder itself still accepts
+`2(0)`: RFC 8949 section 5.3.2 makes bad tag content a validity matter, so it is
+reported when a schema is checked, not when the bytes are read.
 
 The decoder turns a bignum (tag 2 or 3) whose value does not fit in 64 bits
 into a plain integer, and keeps one that fits as the tag and its bytes (see

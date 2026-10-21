@@ -9,7 +9,7 @@ from typing import Any, List, Optional, Tuple
 from .._cbor_values import CBORSimple, UNDEFINED
 from .._cddl import query, tagcontent
 from .._cddl.ast import BytesLit, FloatLit, IntLit, Range, TextLit, Type
-from .._cddl.items import float_width_fits
+from .._cddl.items import as_tag, float_width_fits
 from .._cddl.printer import format_node
 from .._cddl.typeexpr import as_type, bare_name
 from .._schema import _name_type
@@ -48,6 +48,7 @@ class PrimitivesMixin:
             if not tag_info:
                 return node, value, None
             expected_tag, inner = tag_info
+            value = as_tag(value)
             if not self._is_tagged(value):
                 return node, value, f"requires CBOR tag {expected_tag}, but the data is not tagged{_tuple_hint(value)}"
             if value.tag != expected_tag:

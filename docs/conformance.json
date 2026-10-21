@@ -1561,12 +1561,12 @@
      ]
     },
     {
-     "schema": "r = #6.1(#6.2(uint))",
+     "schema": "r = #6.1(#6.100(uint))",
      "valid": [
       {
        "$tag": 1,
        "$value": {
-        "$tag": 2,
+        "$tag": 100,
         "$value": 5
        }
       }
@@ -1575,7 +1575,7 @@
       {
        "$tag": 1,
        "$value": {
-        "$tag": 3,
+        "$tag": 101,
         "$value": 5
        }
       }
@@ -4092,7 +4092,7 @@
     "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "The tag number, the type of the content and what the content means: `encoded-cbor` is one well-formed CBOR item, `uri` an RFC 3986 URI reference, `b64url` base64url text without padding, `b64legacy` base64 text with padding; for both the unused bits of the last character are 0. `regexp` is checked as a Python `re` pattern (with `(?<name>...)` and `\\k<name>` accepted), which approximates PCRE and ECMA-262 but does not accept every construct of either.",
+   "notes": "The tag number, the type of the content (a byte string under tags 2, 3 and 24, text under 0 and 32 to 36, even under `#6.2(any)`; #234) and what the content means: `encoded-cbor` is one well-formed CBOR item, `uri` an RFC 3986 URI reference, `b64url` base64url text without padding, `b64legacy` base64 text with padding; for both the unused bits of the last character are 0. `regexp` is checked as a Python `re` pattern (with `(?<name>...)` and `\\k<name>` accepted), which approximates PCRE and ECMA-262 but does not accept every construct of either.",
    "issues": [],
    "tests": [
     "tests/test_prelude_types.py",
