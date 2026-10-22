@@ -41,7 +41,7 @@ Full registry: https://www.iana.org/assignments/cbor-tags/cbor-tags.xhtml
 
 The CoRIM is a map in tag 501, and each CoMID in its tags array is tag 506. The content of
 tags 505, 506 and 508 is a byte string holding the *encoded* item (`bytes .cbor`), which EDN
-shows between `<<` and `>>` ([EDN_FORMATTING_IMPROVEMENTS.md](EDN_FORMATTING_IMPROVEMENTS.md)); the [Complete Example](#complete-example) below has them all. Its first lines:
+shows between `<<` and `>>` ([EDN_FORMATTING_IMPROVEMENTS.md](EDN_FORMATTING_IMPROVEMENTS.md)); the [Complete Example](#complete-example) below shows tag 506 (the sample has no CoSWID or CoTL). Its first lines:
 
 ```edn
 / tagged-unsigned-corim-map / 501(
