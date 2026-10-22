@@ -2,7 +2,7 @@
 
 ## Feature
 
-EDN output now uses standard CBOR tag notation `tag_number(content)` to show tagged data, making it immediately clear which CBOR tags wrap which content.
+EDN output uses the standard CBOR tag notation `tag_number(content)` to show tagged data, so it is clear which CBOR tags wrap which content. The tag numbers on this page are those of `draft-ietf-rats-corim` (`cddl-schemas/unified.cddl`), and the examples are the output of the tool for the CoRIM built in [Complete Example](#complete-example); `tests/test_corim_docs.py` checks both.
 
 ## Syntax
 
@@ -13,347 +13,177 @@ tag_number(
 ```
 
 Where:
-- `tag_number` is the CBOR tag value (0-4294967295)
+- `tag_number` is the CBOR tag value (0-18446744073709551615)
 - `content` is the tagged data (can be any CBOR type)
+
+The CDDL type of the tag is a comment in front of it (`/ tagged-concise-mid-tag / 506(...)`) when the schema names it.
+
+## Tags of a CoRIM
+
+| Tag | CDDL name | Content |
+|-----|-----------|---------|
+| 501 | `tagged-unsigned-corim-map` | the CoRIM map |
+| 18 | `signed-corim` | a COSE_Sign1 whose payload is the encoded tag 501 |
+| 505 | `tagged-concise-swid-tag` | a CoSWID, `bytes .cbor` |
+| 506 | `tagged-concise-mid-tag` | a CoMID, `bytes .cbor` |
+| 508 | `tagged-concise-tl-tag` | a CoTL, `bytes .cbor` |
+| 550 | `tagged-ueid-type` | a UEID (`ueid-type`, a byte string) |
+| 552 | `tagged-svn` | a security version number |
+| 111 | `tagged-oid-type` | an OID in its BER encoding (a byte string) |
+| 37 | `tagged-uuid-type` | a UUID (a byte string) |
+| 32 | `uri` | a URI (RFC 8610 prelude) |
+
+Full registry: https://www.iana.org/assignments/cbor-tags/cbor-tags.xhtml
 
 ## Examples
 
-### Tagged Maps (CoRIM Structure)
+### Tagged maps (CoRIM structure)
+
+The CoRIM is a map in tag 501, and each CoMID in its tags array is tag 506. The content of
+tags 505, 506 and 508 is a byte string holding the *encoded* item (`bytes .cbor`), which EDN
+shows between `<<` and `>>` ([EDN_FORMATTING_IMPROVEMENTS.md](EDN_FORMATTING_IMPROVEMENTS.md)); the [Complete Example](#complete-example) below shows tag 506 (the sample has no CoSWID or CoTL). Its first lines:
 
 ```edn
-501(
-{  / corim /
-  0: "test corim id",  / id /
-  1: [
-    506(  / tagged-concise-mid-tag /
-{  / concise-mid-tag /
-      0: "en-GB",  / language /
-      1: {...},  / tag-identity /
-      2: [...],  / entities /
-      4: {...}  / triples /
-    }
+/ tagged-unsigned-corim-map / 501(
+  / corim-map / {
+    / id / 0: "urn:example:corim:acme-roadrunner",
+    / tags / 1: [
+      / tagged-concise-mid-tag / 506(
+        <<
+          / concise-mid-tag / {
+          ...
+        >>
+      )
+    ]
+  }
 )
-  ]  / tags /
-}
-)
 ```
 
-This shows:
-- Top-level data is wrapped in tag **501** (unsigned-corim-map)
-- Inside tags array, each element is wrapped in tag **506** (concise-mid-tag/CoMID)
+### Common tags
 
-In `draft-ietf-rats-corim` the content of tags 505, 506 and 508 is a byte string holding
-the encoded tag (`bytes .cbor`), which EDN shows between `<<` and `>>`
-([EDN_FORMATTING_IMPROVEMENTS.md](EDN_FORMATTING_IMPROVEMENTS.md)). The examples in this
-page show the map directly inside the tag to keep them short.
+Tags on values inside the map, as the output shows them:
 
-### Common CBOR Tags in CoRIM
-
-**Tag 32: URI**
 ```edn
-1: 32("https://acme.example")  / reg-id /
+/ reg-id / 1: / uri / 32("https://acme.example"),
+/ class-id / 0: / tagged-oid-type / 111(h'2b06010401'),
+/ instance / 1: / tagged-ueid-type / 550(h'0102020202020202020202020202020202'),
+/ svn / 1: / tagged-svn / 552(7)
 ```
 
-**Tag 37: UUID** (if present)
-```edn
-0: 37(h'550e8400e29b41d4a716446655440000')
+## Complete Example
+
+The data is built with the library (`CBORTag(506, encode(comid))` for each CoMID, `CBORTag(501, corim)` for the CoRIM):
+
+```bash
+cddl-verify cddl-schemas/unified.cddl corim.cbor --type corim
 ```
 
-**Tag 600: UEID (class-id)**
 ```edn
-0: 600(h'61636d652d696d706c656d656e746174696f6e2d69642d303030303030303031')  / class-id /
-```
-
-**Tag 601: Measured Element**
-```edn
-0: 601(
-{  / $measured-element-type-choice /
-  1: "BL",
-  4: "2.1.0",
-  5: h'acbb11c7e4da217205523ce4ce1a245ae1a239ae3c6bfd9e7871f7e5d8bae86b'
-}
-)  / mkey /
-```
-
-### Nested Tagged Content
-
-Tags can be nested:
-```edn
-501(  / unsigned-corim-map /
-{  / corim /
-  1: [
-    506(  / tagged-concise-mid-tag /
-{  / concise-mid-tag /
-      4: {  / triples-map /
-        0: [
-          [
-            {  / environment-map /
-              0: {  / class-map /
-                0: 600(h'...')  / class-id (UEID) /
-                1: "ACME",  / vendor /
+/ tagged-unsigned-corim-map / 501(
+  / corim-map / {
+    / id / 0: "urn:example:corim:acme-roadrunner",
+    / tags / 1: [
+      / tagged-concise-mid-tag / 506(
+        <<
+          / concise-mid-tag / {
+            / language / 0: "en-GB",
+            / tag-identity / 1: / tag-identity-map / {
+              / tag-id / 0: "urn:example:comid:acme-roadrunner"
+            },
+            / entities / 2: [
+              / comid-entity-map / {
+                / entity-name / 0: "ACME Ltd.",
+                / reg-id / 1: / uri / 32("https://acme.example"),
+                / role / 2: [
+                  0,
+                  1
+                ]
               }
+            ],
+            / triples / 4: / triples-map / {
+              / reference-triples / 0: [
+                / reference-triple-record / [
+                  / environment-map / {
+                    / class / 0: / class-map / {
+                      / class-id / 0: / tagged-oid-type / 111(h'2b06010401'),
+                      / vendor / 1: "ACME",
+                      / model / 2: "RoadRunner"
+                    },
+                    / instance / 1: / tagged-ueid-type / 550(h'0102020202020202020202020202020202')
+                  },
+                  [
+                    / measurement-map / {
+                      / mkey / 0: "BL",
+                      / mval / 1: / measurement-values-map / {
+                        / version / 0: / version-map / {
+                          / version / 0: "2.1.0"
+                        },
+                        / svn / 1: / tagged-svn / 552(7)
+                      }
+                    }
+                  ]
+                ]
+              ]
             }
-          ]
-        ]
-      }
-    }
-)
-  ]
-}
+          }
+        >>
+      )
+    ]
+  }
 )
 ```
 
-This shows:
-- Outer tag **501** (unsigned-corim-map)
-- Tag **506** (concise-mid-tag)
-- Tag **600** (UEID for class-id)
+### Tag annotations
 
-## CBOR Tag Registry
-
-Common tags you'll see in CoRIM/CoMID/CoSWID:
-
-| Tag | Name | Usage | Example |
-|-----|------|-------|---------|
-| 32 | URI | Text strings that are URIs | `32("https://...")` |
-| 37 | UUID | Binary UUID | `37(h'...')` |
-| 501 | unsigned-corim-map | CoRIM without signature | `501({...})` |
-| 18 | signed-corim | Signed CoRIM (a COSE_Sign1 whose payload is the encoded tag 501) | `18([h'..', {}, h'..', h'..'])` |
-| 505 | concise-swid-tag | CoSWID tag (`bytes .cbor`) | `505(<<{...}>>)` |
-| 506 | concise-mid-tag | CoMID tag (`bytes .cbor`) | `506(<<{...}>>)` |
-| 508 | concise-tl-tag | CoTL tag (`bytes .cbor`) | `508(<<{...}>>)` |
-| 600 | UEID | Unique Endpoint ID | `600(h'...')` |
-| 601 | OID | Object Identifier | `601(...)` |
-
-Full registry: https://www.iana.org/assignments/cbor-tags/cbor-tags.xhtml
+- **501** `tagged-unsigned-corim-map` wraps the whole CoRIM.
+- **506** `tagged-concise-mid-tag` wraps the CoMID as embedded CBOR (`<< >>`).
+- **32** `uri` wraps the entity's `reg-id`.
+- **111** `tagged-oid-type` wraps the `class-id` of the environment.
+- **550** `tagged-ueid-type` wraps the `instance`.
+- **552** `tagged-svn` wraps the measured `svn`.
 
 ## How It Works
 
 ### Detection
 
-When the decoder encounters a CBOR tagged value, it returns a `CBORTag`:
+When the decoder meets a tagged value, it returns a `CBORTag`:
+
 ```python
 CBORTag(tag_number, value)
 ```
 
 ### Generation
 
-The EDN generator detects a `CBORTag` and wraps the content:
-```python
-if isinstance(value, CBORTag):
-    tag_num = value.tag
-    inner_value = value.value
-    
-    # Generate EDN for inner value
-    inner_edn = self._generate_value(inner_value, type_name, annotate)
-    
-    # Wrap in tag notation
-    result_lines = [f"{tag_num}(  {tag_comment}"]  # With type annotation
-    result_lines.extend(inner_edn.split('\n'))
-    result_lines.append(")")
-    return '\n'.join(result_lines)
-```
+The EDN generator writes the tag number, then the EDN of the content, in parentheses. For a tag whose content is `bytes .cbor T` (505, 506, 508), the embedded item is decoded, checked against `T` and shown in `<< >>`, so the output has the tag, the byte string and the structure inside it:
 
-### Special Case: Nested CBOR
+1. The data is wrapped in tag **506**.
+2. The CDDL type is `tagged-concise-mid-tag`.
+3. The tag holds a byte string of CBOR.
+4. That CBOR decodes to a `concise-mid-tag`.
 
-For tags with `.cbor` control (nested CBOR in bytes), the tag wrapper shows the decoding:
-```edn
-506(  / tagged-concise-mid-tag /
-{  / concise-mid-tag /
-  ...decoded content...
-}
-)
-```
-
-This makes it clear:
-1. The data is wrapped in tag **506**
-2. The CDDL type is `tagged-concise-mid-tag`
-3. Inside the tag is bytes containing CBOR
-4. That CBOR decodes to `concise-mid-tag` structure
-
-## Complete Example
-
-```edn
-501(
-{  / corim /
-  0: "test corim id",  / id /
-  1: [
-    506(  / tagged-concise-mid-tag /
-{  / concise-mid-tag /
-      2: [
-        {  / entity-map /
-          0: "ACME Ltd.",  / entity-name /
-          1: 32("https://acme.example")  / reg-id /
-          2: [0, 1, 2]  / role /
-        }
-      ],  / entities /
-      4: {  / triples-map /
-        0: [
-          [  / reference-triple-record /
-            {  / environment-map /
-              0: {  / class-map /
-                0: 600(h'61636d652d696d706c656d656e746174696f6e2d69642d303030303030303031')  / class-id /
-                1: "ACME",  / vendor /
-                2: "RoadRunner"  / model /
-              }  / class /
-            },
-            [
-              {  / measurement-map /
-                0: 601(
-{  / $measured-element-type-choice /
-                  1: "BL",
-                  4: "2.1.0",
-                  5: h'acbb11c7e4da217205523ce4ce1a245ae1a239ae3c6bfd9e7871f7e5d8bae86b'
-                }
-)  / mkey /
-              }
-            ]
-          ]
-        ]  / reference-triples /
-      }  / triples /
-    }
-)
-  ]  / tags /
-}
-)
-```
-
-### Tag Annotations
-
-**Tag 501**: unsigned-corim-map - Wraps the entire CoRIM structure
-**Tag 506**: tagged-concise-mid-tag - Wraps CoMID data with nested CBOR
-**Tag 32**: URI - Wraps the entity reg-id URL
-**Tag 600**: UEID - Wraps the class-id (device identifier)
-**Tag 601**: Measured element - Wraps measurement key data
+A byte string that is not in preferred serialization, or is not CBOR at all, is kept as `h'...'` or shown with its encoding indicators, so the output is never something other than the data.
 
 ## Benefits
 
-### 1. **Immediate Tag Visibility**
-Tags are shown inline with their content:
-```edn
-32("https://acme.example")  // Clearly a URI tag
-```
-
-Not hidden in annotations or separate metadata.
-
-### 2. **Standard CBOR Notation**
-Uses the same notation as CBOR diagnostic format (RFC 8949):
-```edn
-tag_number(content)
-```
-
-Familiar to anyone working with CBOR.
-
-### 3. **Structure Clarity**
-Opening `tag(` and closing `)` clearly delineate tagged content:
-```edn
-506(
-{...}
-)
-```
-
-Easy to see where tag begins and ends.
-
-### 4. **Tag Nesting Visible**
-Multiple levels of tags are clearly shown:
-```edn
-501(
-  {...
-    506(
-      {...
-        600(h'...')
-      }
-    )
-  }
-)
-```
-
-### 5. **Type + Tag Information**
-Combines tag number with CDDL type name:
-```edn
-506(  / tagged-concise-mid-tag /
-{  / concise-mid-tag /
-  ...
-}
-)
-```
-
-Shows both the CBOR tag (506) and the CDDL types.
-
-## Comparison
-
-### Without Tag Notation (Old)
-```edn
-{  tagged-concise-mid-tag -> concise-mid-tag /
-  0: "en-GB",
-  1: {...},
-  2: [
-    {
-      0: "ACME Ltd.",
-      1: "https://acme.example",  // Is this a URI tag? Not clear.
-    }
-  ]
-}
-```
-
-Tag information hidden in comments, not clear which values are tagged.
-
-### With Tag Notation (New)
-```edn
-506(  / tagged-concise-mid-tag /
-{  / concise-mid-tag /
-  0: "en-GB",
-  1: {...},
-  2: [
-    {
-      0: "ACME Ltd.",
-      1: 32("https://acme.example"),  // Clearly tagged as URI!
-    }
-  ]
-}
-)
-```
-
-Tag numbers explicit, structure clear, standard notation.
+- **Tag visibility.** The tag number is in front of the value (`32("https://acme.example")`), not in a comment or separate metadata.
+- **Standard notation.** The `tag_number(content)` form of CBOR diagnostic notation (RFC 8949 section 8, RFC 8610 Appendix G).
+- **Clear boundaries.** The opening `tag(` and closing `)` delimit the tagged content, nested tags included.
+- **Tag and type together.** The tag number and the CDDL type name are on the same line.
 
 ## Usage
 
-Tag notation is automatically included in EDN output:
+Tag notation is part of the EDN output:
 
 ```bash
-cddl-verify schema.cddl data.cbor \
-  --type corim --edn-format keyindex
-```
-
-To see tag information with verbose logging:
-```bash
-cddl-verify schema.cddl data.cbor \
-  --type corim --edn-format keyindex --verbose 2>&1 | grep "Tag"
-```
-
-**Example output:**
-```
-[DEBUG] Tag 506 wrapping: dict
-[DEBUG] Tag 32 wrapping: str
-[DEBUG] Tag 600 wrapping: bytes
+cddl-verify schema.cddl data.cbor --type corim --edn-format keyindex
 ```
 
 ## Validation
 
-Tag notation helps validate that:
-- Correct tags are used (e.g., 506 for CoMID, not 505 for CoSWID)
-- Tags wrap the right content type (e.g., tag 32 wraps strings)
-- Tag nesting is correct
-- No missing or extra tags
+Looking at the notation helps check that:
+- The right tags are used (506 for a CoMID, not 505, which is a CoSWID).
+- Tags wrap the right content (tag 32 wraps a text string, tag 506 a byte string of CBOR).
+- Tags are nested correctly.
+- No tag is missing or extra.
 
-## Summary
-
-CBOR tag notation provides:
-- [OK] Standard `tag_number(content)` syntax
-- [OK] Inline tag visibility
-- [OK] Clear tag boundaries with `(` and `)`
-- [OK] Combined tag + type annotations
-- [OK] Nested tag support
-- [OK] Common tags (32, 37, 501, 506, 600, 601)
-- [OK] RFC 8949 CBOR diagnostic format compliance
-
-Every CBOR tag in your data is now explicitly shown, making the structure completely transparent!
+The data is also validated against the schema first, which checks the same things.

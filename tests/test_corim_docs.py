@@ -9,9 +9,9 @@ import re
 import unittest
 from pathlib import Path
 
-from cddl_verifier import validate
+from cddl_verifier import Validator, validate
 from cddl_verifier._cddl.parser import parse_cddl
-from cddl_verifier.cbor import CBORTag, encode
+from cddl_verifier.cbor import CBORTag, decode as cbor_decode, encode
 
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMAS = ROOT / 'cddl-schemas'
@@ -115,6 +115,122 @@ class TestDocs(unittest.TestCase):
         self.assertEqual(comid[1][0], 'comid-001')
         self.assertTrue(comid[4][0])                     # triples is not empty
         self.assertEqual(sorted(unsigned.value), [0, 1])  # integer keys
+
+
+def notation_sample():
+    """The CoRIM that ``docs/CBOR_TAG_NOTATION.md`` shows: a CoMID in tag 506 inside the CoRIM in tag 501."""
+    comid = {
+        0: "en-GB",
+        1: {0: "urn:example:comid:acme-roadrunner"},
+        2: [{0: "ACME Ltd.", 1: CBORTag(32, "https://acme.example"), 2: [0, 1]}],
+        4: {0: [[
+            {0: {0: CBORTag(111, bytes.fromhex("2b06010401")), 1: "ACME", 2: "RoadRunner"},
+             1: CBORTag(550, bytes.fromhex("01" + "02" * 16))},
+            [{0: "BL", 1: {0: {0: "2.1.0"}, 1: CBORTag(552, 7)}}],
+        ]]},
+    }
+    return encode(CBORTag(501, {0: "urn:example:corim:acme-roadrunner", 1: [CBORTag(506, encode(comid))]}))
+
+
+def edn_blocks(text):
+    return re.findall(r'```edn\n(.*?)```', text, re.S)
+
+
+class TestTagNotationDoc(unittest.TestCase):
+    """The EDN and the tag numbers of ``CBOR_TAG_NOTATION.md`` are the tool's output and the draft's (#247)."""
+
+    DOC = read(DOCS / 'CBOR_TAG_NOTATION.md')
+    UNIFIED = read(SCHEMAS / 'unified.cddl')
+
+    @classmethod
+    def setUpClass(cls):
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')   # the measured-component module is not bundled
+            cls.validator = Validator(cls.UNIFIED)
+        cls.data = notation_sample()
+        cls.edn = cls.validator.to_edn(cls.data, root_type='corim')
+
+    def test_the_sample_is_a_valid_corim(self):
+        result = self.validator.validate(self.data, root_type='corim')
+        self.assertTrue(result.valid, result.errors)
+
+    def test_the_complete_example_is_the_output(self):
+        blocks = edn_blocks(self.DOC)
+        self.assertIn(self.edn.rstrip('\n'), [b.rstrip('\n') for b in blocks])
+
+    def test_the_lines_of_the_common_tags_are_in_the_output(self):
+        block = next(b for b in edn_blocks(self.DOC) if b.lstrip().startswith('/ reg-id /'))
+        for line in block.strip().split('\n'):
+            with self.subTest(line=line):
+                self.assertIn(line.strip().rstrip(','), self.edn)
+
+    def test_the_first_lines_are_the_start_of_the_output(self):
+        block = next(b for b in edn_blocks(self.DOC) if b.startswith('/ tagged-unsigned-corim-map /'))
+        self.assertEqual(block.split('\n')[:7], self.edn.split('\n')[:7])
+
+    def test_the_tag_table_is_the_drafts(self):
+        draft = tag_rules(self.UNIFIED)
+        rows = re.findall(r'^\| (\d+) \| `([\w-]+)` \|', self.DOC, re.M)
+        self.assertGreaterEqual(len(rows), 9)
+        for number, name in rows:
+            with self.subTest(name=name):
+                if name in draft:
+                    self.assertEqual(draft[name][0], int(number))
+                else:
+                    self.assertEqual((name, int(number)), ('uri', 32))     # the RFC 8610 prelude
+        self.assertEqual(tag_rules(self.UNIFIED)['signed-corim'][0], 18)
+
+    def test_no_tag_numbers_are_invented(self):
+        self.assertNotRegex(self.DOC, r'\b60[01]\(')
+        self.assertNotIn('Tag 600', self.DOC)
+        self.assertNotIn('Tag 601', self.DOC)
+
+    def test_every_tag_number_in_the_examples_is_the_drafts_or_the_prelude(self):
+        known = {number for number, _ in tag_rules(self.UNIFIED).values()} | {32, 37}
+        for block in edn_blocks(self.DOC):
+            for number in re.findall(r'(?<![\w"\'.])(\d+)\(', block):
+                with self.subTest(tag=number):
+                    self.assertIn(int(number), known)
+
+
+class TestIterativeConstructionDoc(unittest.TestCase):
+    """The CoRIM examples of ``ITERATIVE_CONSTRUCTION.md`` have integer keys and valid tags (#247)."""
+
+    DOC = read(DOCS / 'ITERATIVE_CONSTRUCTION.md')
+
+    @classmethod
+    def setUpClass(cls):
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            cls.validator = Validator(read(SCHEMAS / 'unified.cddl'))
+
+    def snippet(self, heading):
+        start = self.DOC.index(heading)
+        return re.search(r'```python\n(.*?)```', self.DOC[start:], re.S).group(1)
+
+    def check(self, heading, name):
+        namespace = {}
+        exec(self.snippet(heading), namespace)
+        result = self.validator.validate(namespace[name], root_type='corim')
+        self.assertTrue(result.valid, result.errors)
+        item = cbor_decode(namespace[name])
+        self.assertEqual(item.tag, 501)
+        self.assertEqual(sorted(item.value)[:2], [0, 1])          # integer keys: id, tags
+        self.assertTrue(all(tag.tag == 506 and isinstance(tag.value, bytes) for tag in item.value[1]))
+
+    def test_the_corim_example_is_a_valid_corim(self):
+        self.check('### Example 1: Building a CoRIM Structure', 'cbor_bytes')
+
+    def test_the_builder_class_makes_a_valid_corim(self):
+        self.check('### Builder Class Pattern', 'corim_bytes')
+
+    def test_no_string_keys_for_the_corim(self):
+        for heading in ('### Example 1: Building a CoRIM Structure', '### Builder Class Pattern'):
+            code = self.snippet(heading)
+            self.assertNotRegex(code, r'\.set\("(id|tags)"')
+            self.assertNotIn('"environment"', code)
 
 
 if __name__ == '__main__':
