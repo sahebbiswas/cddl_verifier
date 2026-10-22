@@ -19,6 +19,11 @@ from .support import _describe_value, _tuple_hint
 class ValidationMixin:
     """The entry points: root rules, type expressions and the data checks they make."""
 
+    def _log_validation_errors(self) -> None:
+        """Log the errors found so far, one line each."""
+        for error in self.validation_errors:
+            logger.error(f"  - {error}")
+
     def _validate_root_expression(self, data: Any, type_name: str) -> Optional[bool]:
         """Check what the structured-type path cannot: root tags and primitives.
 
@@ -171,6 +176,8 @@ class ValidationMixin:
             
             root_result = self._validate_root_expression(data, type_name)
             if root_result is not None:
+                if not root_result:
+                    self._log_validation_errors()  # the alternatives tried on the way were not logged (#254)
                 return root_result
 
             type_def = self.cddl.get_type(type_name, cbor_data=data)
@@ -197,6 +204,7 @@ class ValidationMixin:
                         
                         for error in self._check_value(data, resolved):
                             self._report(f"Value does not match type '{type_name}': {error}", finding=error)
+                        self._log_validation_errors()  # the alternatives tried were not logged (#254)
                     else:
                         logger.warning(f"'{resolved}' is not a concrete type definition")
                         self._report(
@@ -223,8 +231,7 @@ class ValidationMixin:
                 logger.error("=" * 60)
                 logger.error("VALIDATION FAILED")
                 logger.error("=" * 60)
-                for error in self.validation_errors:
-                    logger.error(f"  - {error}")
+                self._log_validation_errors()
             
             return result
         

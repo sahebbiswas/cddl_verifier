@@ -104,6 +104,35 @@ class TestInvalidData(Logging):
         self.assertTrue(any("matches none of int / tstr" in m for m in self.problems(records)))
 
 
+class TestRootFailures(Logging):
+    """A root that is a choice or a primitive reports its failure in the log, though its alternatives were only tried."""
+
+    def test_root_choice_failure_is_logged(self):
+        for schema, value in (("r = int / tstr", 1.5), ("r = [* int] / tstr", [1, "x"]),
+                              ("r = (int / tstr) .size 2", 1.5)):
+            with self.subTest(schema=schema):
+                result, records = self.run_at(logging.WARNING, schema, value)
+                self.assertFalse(result.valid)
+                logged = self.problems(records)
+                self.assertTrue(any(str(result.errors[0]).split(": ", 1)[-1][:25] in m for m in logged), logged)
+
+    def test_root_primitive_failure_is_logged(self):
+        result, records = self.run_at(logging.WARNING, "r = uint", "x")
+        self.assertFalse(result.valid)
+        self.assertTrue(self.problems(records))
+
+    def test_aliased_choice_failure_is_logged_once(self):
+        result, records = self.run_at(logging.WARNING, "a = int / tstr\nr = a", 1.5)
+        self.assertFalse(result.valid)
+        logged = [m for m in self.problems(records) if "matches none of" in m]
+        self.assertEqual(len(logged), 1, logged)
+
+    def test_root_choice_match_logs_nothing(self):
+        result, records = self.run_at(logging.WARNING, "r = int / tstr", "x")
+        self.assertTrue(result.valid)
+        self.assertEqual(self.problems(records), [])
+
+
 class TestTrying(unittest.TestCase):
     def test_it_is_per_thread_and_ends_with_the_block(self):
         handler = Capture()
