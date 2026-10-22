@@ -13,6 +13,7 @@ from ._cddl.ast import Type
 from ._cddl.printer import format_node
 from ._cddl.typeexpr import as_type, bare_name
 from ._decode import SimpleCBORDecoder
+from ._edn_indicators import array_marker, indicator, rebuild
 from ._log import logger
 from ._schema import CDDLParser, _is_dollar_type, _name_type, _text_of
 from .cbor import decode as cbor_decode, decode_sequence as cbor_decode_sequence, encode as cbor_encode
@@ -75,6 +76,7 @@ class EDNGenerator:
         self.edn_format = edn_format
         self.indent_level = 0
         self.indent_str = "  "
+        self._inside_embedded = 0  # >0 while writing the items of verified embedded CBOR
     
     def _indent_content(self, content: str) -> str:
         """Indent each line of content by one level."""
@@ -198,7 +200,7 @@ class EDNGenerator:
             if type_name is not None and isinstance(inner_value, bytes):
                 embedded = self._embedded(inner_value, type_name, annotate)
                 if embedded is not None:
-                    return self._tagged_embedded(tag_num, tag_type_name, embedded, annotate)
+                    return self._tagged_embedded(tag_num, tag_type_name, embedded, annotate, inner_value)
 
             # For other tagged data (non-.cbor), wrap and continue
             # Save and reset indent for inner content generation
@@ -252,14 +254,14 @@ class EDNGenerator:
             if type_name is not None:
                 embedded = self._embedded(value, type_name, annotate)
                 if embedded is not None:
-                    return self._embedded_block(embedded, self.indent_level)
+                    return self._chunked(value, self._embedded_block(embedded, self.indent_level), "''")
             return self._generate_bytes(value)
         elif isinstance(value, str):
-            return self._edn_str(value)
+            return self._generate_text(value)
         elif isinstance(value, bool):
             return "true" if value else "false"
         elif isinstance(value, (int, float)):
-            return self._edn_number(value)
+            return self._edn_number(value) + indicator(value)
         elif value is None:
             return "null"
         else:
@@ -273,9 +275,12 @@ class EDNGenerator:
         the caller to indent. It is ``None`` when the type says nothing about embedded
         CBOR, when the bytes are not that CBOR, or when they are not what ``<< >>``
         would encode again: the notation (RFC 8610 Appendix G.3) is read back by
-        encoding the items, so it cannot show an item that is not in preferred
-        serialization (an overlong head, an indefinite length, a float wider than it
-        needs) without changing the bytes. The caller then shows the byte string.
+        encoding the items. An item that is not in preferred serialization (an overlong
+        head, an indefinite length, a float wider than it needs) is shown with its
+        encoding indicators (``1_0``, ``[_ 1]``, ``1.5_3``, RFC 8949 section 8.1, #237), which
+        give the same bytes back. What no indicator can say (the chunks of an indefinite
+        string beyond the first, the width of a tag number, a NaN with a payload) is shown
+        by the caller as the byte string.
         """
         inner, sequence = None, False
         type_def = self.cddl.get_type(type_name, data)
@@ -294,8 +299,8 @@ class EDNGenerator:
         if inner is None:
             return None
         try:
-            items = cbor_decode_sequence(data) if sequence else [cbor_decode(data)]
-            again = b''.join(cbor_encode(item) for item in items)
+            items = cbor_decode_sequence(data, True) if sequence else [cbor_decode(data, True)]
+            again = b''.join(rebuild(item) for item in items)
         except Exception as exc:
             logger.warning(f"EDN: Failed to decode nested CBOR: {exc}")
             return None
@@ -305,10 +310,12 @@ class EDNGenerator:
         types = self._sequence_types(inner, len(items)) if sequence else [inner]
         saved_indent = self.indent_level
         self.indent_level = 0
+        self._inside_embedded += 1  # an indefinite string is one chunk here: ``again`` is the data
         try:
             return [self._generate_value(item, item_type, annotate) for item, item_type in zip(items, types)]
         finally:
             self.indent_level = saved_indent
+            self._inside_embedded -= 1
 
     def _sequence_types(self, array: Type, count: int) -> List[Optional[Type]]:
         """The type of each of *count* items of a ``.cborseq`` sequence: the entries of *array*, in order.
@@ -348,10 +355,10 @@ class EDNGenerator:
         return '\n'.join(lines)
 
     def _tagged_embedded(self, tag_num: int, tag_type: Optional[Type], items: List[str],
-                         annotate: bool) -> str:
+                         annotate: bool, inner: bytes) -> str:
         """A tag whose content is embedded CBOR: ``/ type / 506(<< ... >>)``."""
         prefix = f"/ {_text_of(tag_type)} / " if annotate and self._named(tag_type) else ""
-        block = self._embedded_block(items, self.indent_level + 1)
+        block = self._chunked(inner, self._embedded_block(items, self.indent_level + 1), "''")
         if '\n' not in block:
             return f"{prefix}{tag_num}({block})"
         return (f"{prefix}{tag_num}(\n{self.indent_str * (self.indent_level + 1)}{block}\n"
@@ -367,8 +374,9 @@ class EDNGenerator:
 
     def _generate_map(self, data: Dict, type_name: Optional[Type] = None, annotate: bool = True) -> str:
         """Generate EDN for a map/object."""
+        marker = array_marker(data)  # '_' for an indefinite length, '_n' for a longer head (#237)
         if not data:
-            return "{}"
+            return "{" + marker + " }" if marker else "{}"
         
         type_def = self.cddl.get_type(type_name) if type_name is not None else None
         
@@ -378,7 +386,7 @@ class EDNGenerator:
         if annotate and self._named(type_name) and bare_name(type_name) not in ('map', 'dict'):
             type_header = f"/ {_text_of(type_name)} / "
         
-        lines = [type_header + "{"]
+        lines = [type_header + "{" + marker]
         self.indent_level += 1
         
         for i, (key, value) in enumerate(data.items()):
@@ -431,8 +439,9 @@ class EDNGenerator:
     
     def _generate_array(self, data: List, type_name: Optional[Type] = None, annotate: bool = True) -> str:
         """Generate EDN for an array."""
+        marker = array_marker(data)
         if not data:
-            return "[]"
+            return "[" + marker + " ]" if marker else "[]"
         
         # Check if type_name is an inline array definition: [ + type ] or [ * type ]
         element_type = None
@@ -472,7 +481,7 @@ class EDNGenerator:
             # It's a named array type (not inline array syntax)
             type_header = f"/ {_text_of(type_name)} / "
         
-        lines = [type_header + "["]
+        lines = [type_header + "[" + marker]
         self.indent_level += 1
         
         for i, value in enumerate(data):
@@ -532,8 +541,26 @@ class EDNGenerator:
         
         return "\n".join(lines)
     
+    def _chunked(self, data: Any, body: str, empty: str) -> str:
+        """*body*, the string *data* in the notation, with how its head was written (#237).
+
+        An indefinite-length string is ``(_ body)`` in the verified items of embedded CBOR (they
+        have one chunk); an empty one is ``''_`` or ``""_`` (RFC 8949 section 8.1). Elsewhere the
+        chunks are not known, so the string is shown as it reads.
+        """
+        if getattr(data, 'info', None) == 31:
+            if not data:
+                return empty + '_'
+            if self._inside_embedded:
+                return f"(_ {body})"
+            return body
+        return body + indicator(data)
+
+    def _generate_text(self, value: str) -> str:
+        """Generate EDN for a text string."""
+        return self._chunked(value, self._edn_str(value), '""')
+
     def _generate_bytes(self, data: bytes) -> str:
         """Generate EDN for byte string."""
         # Convert to hex string with h' prefix
-        hex_str = data.hex()
-        return f"h'{hex_str}'"
+        return self._chunked(data, f"h'{data.hex()}'", "''")

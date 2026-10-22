@@ -24,12 +24,13 @@ class TestNonFiniteFloats(unittest.TestCase):
             self.assertNotIn(python_spelling, text)
 
     def test_array_elements_and_every_width(self):
-        # half, single and double precision encodings of the same three values
-        for raw in ("83f97e00f97c00f9fc00", "83fa7fc00000fa7f800000faff800000",
-                    "83fb7ff8000000000000fb7ff0000000000000fbfff0000000000000"):
+        # half, single and double precision encodings of the same three values: the width
+        # beyond the shortest is an encoding indicator (RFC 8949 section 8.1, #237)
+        for raw, suffix in (("83f97e00f97c00f9fc00", ""), ("83fa7fc00000fa7f800000faff800000", "_2"),
+                            ("83fb7ff8000000000000fb7ff0000000000000fbfff0000000000000", "_3")):
             text = Validator("r = [* float]").to_edn(bytes.fromhex(raw), root_type="r")
             self.assertEqual([line.strip().rstrip(',') for line in text.splitlines()[1:-1]],
-                             ["NaN", "Infinity", "-Infinity"], raw)
+                             ["NaN" + suffix, "Infinity" + suffix, "-Infinity" + suffix], raw)
 
     def test_as_map_key(self):
         text = edn("r = { * float => int }", {float("inf"): 1})
