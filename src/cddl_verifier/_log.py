@@ -4,8 +4,10 @@ As a library the package emits nothing by default; the CLI (``_cli.main``) attac
 coloured stderr handler and removes it again. Split from ``_analyzer`` (#83).
 """
 
+import contextlib
 import logging
 import sys
+import threading
 
 
 # ANSI color codes for terminal output
@@ -44,6 +46,37 @@ class ColoredFormatter(logging.Formatter):
 # CLI (main) attaches a coloured stderr handler.
 logger = logging.getLogger('cddl_verifier')
 logger.addHandler(logging.NullHandler())
+
+_trial = threading.local()
+
+
+class _TrialFilter(logging.Filter):
+    """Records made while a way of reading the data is only being tried are debug lines (#254).
+
+    A group choice, an optional group or a choice of types is tried one alternative
+    at a time, and the ones that do not match are no error when another does. The
+    errors are kept, not logged: whichever way is reported at the end logs its own.
+    """
+
+    def filter(self, record):
+        if getattr(_trial, 'depth', 0) and record.levelno > logging.DEBUG:
+            if not logger.isEnabledFor(logging.DEBUG):
+                return False  # the level was checked before the record was demoted
+            record.levelno, record.levelname = logging.DEBUG, 'DEBUG'
+        return True
+
+
+logger.addFilter(_TrialFilter())
+
+
+@contextlib.contextmanager
+def trying():
+    """While active (in this thread), what the validator logs from ``ERROR`` down to ``INFO`` is logged as ``DEBUG``."""
+    _trial.depth = getattr(_trial, 'depth', 0) + 1
+    try:
+        yield
+    finally:
+        _trial.depth -= 1
 
 
 class _StderrHandler(logging.StreamHandler):
