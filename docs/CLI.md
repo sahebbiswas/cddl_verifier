@@ -67,7 +67,7 @@ cddl-verify --version
 | `--no-features` | Enable no feature: `T .feature NAME` never matches. It cannot be combined with `--feature`: passing both is an error (`--feature and --no-features cannot be used together`, exit status 2) |
 | `--diagnostics {text,json}` | How problems are reported (default: `text`); see [Diagnostics](#diagnostics) |
 | `--show-types` | Print all parsed CDDL types and exit (not with `--diagnostics json`) |
-| `--verbose` | Enable detailed logging of validation and type resolution |
+| `--verbose` | Enable detailed logging of validation and type resolution. Ways of reading the data that were only tried and did not match (an alternative of a group choice, an optional group left out, one type of a choice) are shown as debug lines here; without `--verbose` they print nothing, and valid data prints no error (#254) |
 | `--version` | Print the version and exit |
 
 Exit status: `0` on success, `1` when a file is missing, the schema cannot be

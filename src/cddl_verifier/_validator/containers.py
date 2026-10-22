@@ -11,7 +11,7 @@ from .._cddl.ast import GroupRef, InlineGroup, Member, Tag, Type
 from .._cddl.printer import format_node
 from .._cddl.typeexpr import as_type, bare_name
 from .._diagnostics import _Index
-from .._log import Colors, logger
+from .._log import Colors, logger, trying
 from .support import _CheckError, _describe_value, _entries_wanted, _UNKNOWN_TYPE
 
 
@@ -179,7 +179,8 @@ class ContainersMixin:
         mark = len(self._feature_trail)
         self.validation_errors = []
         try:
-            self._validate_type(value, type_def, type_name)
+            with trying():
+                self._validate_type(value, type_def, type_name)
             found = self.validation_errors
         finally:
             self.validation_errors, self.breadcrumb = saved_errors, saved_breadcrumb
