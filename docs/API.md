@@ -31,9 +31,9 @@ else:
         print(diagnostic.code, diagnostic.message)
 ```
 
-### `validate(schema, data, root_type=None, *, modules=None, module_path=(), unique_choices=False, comment_names=False, strict_modules=False, features=None, require_deterministic=False) -> ValidationResult`
+### `validate(schema, data, root_type=None, *, modules=None, module_path=(), unique_choices=False, comment_names=False, strict_modules=False, features=None, require_deterministic=False, bundled_modules=True) -> ValidationResult`
 
-Shorthand for `Validator(schema, modules=modules, module_path=module_path, unique_choices=unique_choices, comment_names=comment_names, strict_modules=strict_modules, features=features).validate(data, root_type, require_deterministic=require_deterministic)`.
+Shorthand for `Validator(schema, modules=modules, module_path=module_path, unique_choices=unique_choices, comment_names=comment_names, strict_modules=strict_modules, features=features, bundled_modules=bundled_modules).validate(data, root_type, require_deterministic=require_deterministic)`.
 
 With `require_deterministic=True` the CBOR bytes must also be deterministically
 encoded ([below](#requiring-deterministic-encoding)): bytes that are not give an
@@ -41,7 +41,7 @@ invalid result with one `decode` diagnostic at the offset of the first
 violation. It needs bytes: a decoded Python value has no encoding to check, so
 passing one raises `TypeError`.
 
-### `Validator(schema, *, modules=None, module_path=(), unique_choices=False, comment_names=False, strict_modules=False, features=None)`
+### `Validator(schema, *, modules=None, module_path=(), unique_choices=False, comment_names=False, strict_modules=False, features=None, bundled_modules=True)`
 
 Parses a schema once so it can check many items.
 
@@ -70,6 +70,11 @@ Parses a schema once so it can check many items.
   not, raises `SchemaError` with the `line` and `column` of the directive; the
   exception's `errors` holds one error per unresolved import
   ([CDDL_SUPPORT.md](CDDL_SUPPORT.md#modules)).
+- `bundled_modules` (default `True`): look an import up among the modules the package
+  ships (`rfc9393`, CoSWID, and `rfc9164`, IP address tags) when `modules`, `module_path`
+  and the schema's directory have none of that name. Their names are then checked where they
+  would otherwise match any value; `False` gives the earlier behaviour. `measured-component`
+  is not shipped ([CDDL_SUPPORT.md](CDDL_SUPPORT.md#modules)).
 - `features`: the `.feature` names (RFC 9165) that are enabled; any iterable of
   text strings. By default (`None`) every feature is enabled, and `T .feature "x"`
   is just `T`. With a collection of names, even an empty one (which enables none),
@@ -113,7 +118,7 @@ If `root_type` is `None` and the schema has no rules, `SchemaError` is raised.
 
 ### `schema_diagnostics`
 
-`schema_diagnostics(schema, *, modules=None, module_path=(), strict_modules=False) -> tuple[Diagnostic, ...]`
+`schema_diagnostics(schema, *, modules=None, module_path=(), strict_modules=False, bundled_modules=True) -> tuple[Diagnostic, ...]`
 
 The problems in a schema as `Diagnostic`s, instead of the `SchemaError` that
 `Validator` raises: an empty tuple for a schema that is fine. They render with

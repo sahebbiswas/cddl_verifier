@@ -99,12 +99,12 @@ def _exit_json(diagnostics, *, valid, root_type=None, status=1, features_used=()
     sys.exit(status)
 
 
-def _schema_problems(cddl_file, modules, module_path, error, strict_modules=False):
+def _schema_problems(cddl_file, modules, module_path, error, strict_modules=False, bundled_modules=True):
     """Every problem in the schema that could not be loaded, as diagnostics (#145)."""
     from ._api import schema_diagnostics  # _api imports this module
     try:
         found = schema_diagnostics(cddl_file, modules=modules, module_path=module_path,
-                                   strict_modules=strict_modules)
+                                   strict_modules=strict_modules, bundled_modules=bundled_modules)
     except Exception:  # noqa: BLE001 - fall back to the error that stopped the load
         found = ()
     return found or (schema_diagnostic(error),)
@@ -167,6 +167,9 @@ Examples:
     parser.add_argument('--module', action='append', default=[], metavar='NAME=FILE',
                         help='CDDL file for the imported module NAME (;# import NAME as P); '
                              'repeatable')
+    parser.add_argument('--no-bundled-modules', action='store_true',
+                        help='Do not fall back to the CDDL modules the package ships (rfc9393, '
+                             'rfc9164) for an import that --module and --module-path do not supply')
     parser.add_argument('--strict-modules', action='store_true',
                         help='Fail when an imported CDDL module (;# import / ;# include) cannot '
                              'be found, instead of leaving its names unchecked with a warning')
@@ -231,14 +234,14 @@ Examples:
             parser.error(f"--module expects NAME=FILE, not {item!r}")
         modules[name] = Path(file)
     loader = ModuleLoader(modules, [*args.module_path, args.cddl_file.parent],
-                          strict=args.strict_modules)
+                          strict=args.strict_modules, bundled=not args.no_bundled_modules)
     try:
         cddl = CDDLParser(args.cddl_file.read_text(encoding='utf-8'),
                           source_name=str(args.cddl_file), loader=loader,
                           comment_names=args.comment_names)
     except Exception as e:  # noqa: BLE001 - any read or parse error is a schema problem
         problems = _schema_problems(args.cddl_file, modules, args.module_path, e,
-                                    args.strict_modules)
+                                    args.strict_modules, not args.no_bundled_modules)
         if json_mode:
             _exit_json(problems, valid=False)
         print("Error loading CDDL file:", file=sys.stderr)

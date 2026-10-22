@@ -8,3 +8,4 @@ recursive-include test-data *.cbor
 include docs/conformance.json
 recursive-include scripts *.py
 recursive-include tests/corpus *.json *.cddl
+recursive-include src/cddl_verifier/_modules *.cddl *.txt
