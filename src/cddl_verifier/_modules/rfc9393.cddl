@@ -1,6 +1,6 @@
 ; Concise Software Identification Tags (CoSWID) (RFC 9393)
 ; The CDDL of the RFC, as extracted by cddlc (https://github.com/cabo/cddlc, data/rfc9393.cddl).
-; Copyright (c) IETF Trust and the persons identified as the authors of RFC 9393.
+; Copyright (c) 2023 IETF Trust and the persons identified as the authors of the code. All rights reserved.
 ; Code Components extracted from this document must include Revised BSD License text as
 ; described in Section 4.e of the Trust Legal Provisions and are provided without warranty
 ; as described in the Revised BSD License (see LICENSE-IETF.txt in this directory).

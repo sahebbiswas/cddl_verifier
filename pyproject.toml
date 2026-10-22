@@ -7,8 +7,8 @@ name = "cddl-verifier"
 dynamic = ["version"]
 description = "Validate CBOR data against CDDL schemas, generate annotated EDN, and convert CBOR/JSON"
 readme = "README.md"
-license = "MIT"
-license-files = ["LICENSE"]
+license = "MIT AND BSD-3-Clause"  # BSD-3-Clause: the CDDL of RFC 9393 and RFC 9164 in _modules
+license-files = ["LICENSE", "src/cddl_verifier/_modules/LICENSE-IETF.txt"]
 requires-python = ">=3.9"
 keywords = ["cbor", "cddl", "edn", "rfc8610", "rfc8949", "corim", "validation"]
 classifiers = [

@@ -24,6 +24,35 @@ def quietly(function, *args, **kwargs):
         return function(*args, **kwargs)
 
 
+class TestLicence(unittest.TestCase):
+    """The bundled CDDL is IETF Trust text under the Revised BSD License, and ships with its notice."""
+
+    MODULES = ROOT / "src" / "cddl_verifier" / "_modules"
+
+    def test_the_package_declares_both_licences_and_ships_the_notice(self):
+        text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn('license = "MIT AND BSD-3-Clause"', text)
+        self.assertIn('"src/cddl_verifier/_modules/LICENSE-IETF.txt"', text)
+        self.assertIn('"LICENSE"', text)
+
+    def test_the_notice_names_each_rfc_with_its_year(self):
+        notice = (self.MODULES / "LICENSE-IETF.txt").read_text(encoding="utf-8")
+        for rfc, year in (("9393", "2023"), ("9164", "2021")):
+            with self.subTest(rfc=rfc):
+                self.assertIn(f"rfc{rfc}.cddl", notice)
+                self.assertIn(f"RFC {rfc}", notice)
+                self.assertIn(f"Copyright (c) {year} IETF Trust", notice)
+        self.assertIn("persons identified as the authors of", notice)
+        self.assertIn("Neither the name of Internet Society, IETF or IETF Trust", notice)
+
+    def test_each_module_carries_its_own_copyright_line(self):
+        for rfc, year in (("9393", "2023"), ("9164", "2021")):
+            head = (self.MODULES / f"rfc{rfc}.cddl").read_text(encoding="utf-8")[:700]
+            with self.subTest(rfc=rfc):
+                self.assertIn(f"Copyright (c) {year} IETF Trust", head)
+                self.assertIn("LICENSE-IETF.txt", head)
+
+
 class TestBundled(unittest.TestCase):
     def test_the_modules_and_the_licence_are_shipped(self):
         directory = ROOT / "src" / "cddl_verifier" / "_modules"
