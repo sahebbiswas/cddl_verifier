@@ -327,39 +327,35 @@ cbor.append(7)
 
 ### Example 1: Building a CoRIM Structure
 
+A CoRIM is a map with integer keys (`draft-ietf-rats-corim`): `0` is the id, `1` the
+tags. A CoMID in the tags is wrapped in tag 506 as an *encoded* item (`bytes .cbor`), and
+the whole map in tag 501 (`tagged-unsigned-corim-map`).
+
 ```python
-from cddl_verifier.cbor import CBOR, CBORTag
+from cddl_verifier.cbor import CBOR, CBORTag, encode
+
+def comid(tag_id, vendor, svn):
+    """A concise-mid-tag: tag-identity (1) and triples (4) with reference-triples (0)."""
+    return {
+        1: {0: tag_id},                                    # tag-identity: tag-id
+        4: {0: [[                                          # triples: reference-triples
+            {0: {1: vendor}},                              # environment: class: vendor
+            [{1: {1: CBORTag(552, svn)}}],                 # measurement: mval: svn
+        ]]},
+    }
 
 # Create CoRIM structure iteratively
 corim = CBOR({})
 
 # Set basic fields
-corim.set("id", "example.corim.001")
-corim.set("tags", [])
+corim.set(0, "example.corim.001")     # id
+corim.set(1, [])                      # tags
 
-# Build first tag
-tag1 = {
-    "id": "tag-001",
-    "environment": {
-        "class": {"id": 1},
-        "instance": b'\x01\x02\x03\x04'
-    }
-}
+# Add the tags: a CoMID in tag 506 holds the encoded map
+corim[1].append(CBORTag(506, encode(comid("comid-001", "ACME", 1))))
+corim[1].append(CBORTag(506, encode(comid("comid-002", "Initech", 2))))
 
-# Build second tag
-tag2 = {
-    "id": "tag-002",
-    "environment": {
-        "class": {"id": 2},
-        "instance": b'\x05\x06\x07\x08'
-    }
-}
-
-# Add tags
-corim["tags"].append(tag1)
-corim["tags"].append(tag2)
-
-# Wrap in tag 501 (unsigned-corim-map)
+# Wrap in tag 501 (tagged-unsigned-corim-map)
 tagged_corim = CBORTag(501, corim.data)
 
 # Encode
@@ -526,38 +522,39 @@ def build_user_profile(name, email, admin=False, verified=False):
 ### Builder Class Pattern
 
 ```python
+from cddl_verifier.cbor import CBOR, CBORTag, encode
+
 class CoRIMBuilder:
     """Fluent builder for CoRIM structures"""
     
     def __init__(self, corim_id):
         self.cbor = CBOR({})
-        self.cbor.set("id", corim_id)
-        self.cbor.set("tags", [])
+        self.cbor.set(0, corim_id)          # id
+        self.cbor.set(1, [])                # tags
     
-    def add_tag(self, tag_id, environment):
-        """Add a tag to the CoRIM"""
-        tag = {
-            "id": tag_id,
-            "environment": environment
+    def add_comid(self, tag_id, environment):
+        """Add a CoMID (tag 506, an encoded concise-mid-tag) with one reference triple"""
+        comid = {
+            1: {0: tag_id},                                # tag-identity
+            4: {0: [[environment, [{1: {1: 1}}]]]},        # triples: reference-triples
         }
-        self.cbor["tags"].append(tag)
+        self.cbor[1].append(CBORTag(506, encode(comid)))
         return self
     
     def set_validity(self, not_before, not_after):
-        """Set validity period"""
-        self.cbor.set_nested("validity.not-before", not_before)
-        self.cbor.set_nested("validity.not-after", not_after)
+        """Set the validity period (rim-validity: not-before 0, not-after 1, epoch times)"""
+        self.cbor.set(4, {0: CBORTag(1, not_before), 1: CBORTag(1, not_after)})
         return self
     
     def build(self, canonical=True):
-        """Build the final CBOR"""
-        return self.cbor.encode(canonical=canonical)
+        """Build the final CBOR, tagged 501 (tagged-unsigned-corim-map)"""
+        return CBOR(CBORTag(501, self.cbor.data)).encode(canonical=canonical)
 
 # Usage
 corim_bytes = (CoRIMBuilder("corim-001")
-               .add_tag("tag-1", {"class": {"id": 1}})
-               .add_tag("tag-2", {"class": {"id": 2}})
-               .set_validity("2024-01-01", "2025-01-01")
+               .add_comid("comid-1", {0: {1: "ACME"}})
+               .add_comid("comid-2", {0: {1: "Initech"}})
+               .set_validity(1704067200, 1735689600)
                .build())
 ```
 
