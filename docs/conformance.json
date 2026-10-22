@@ -2851,7 +2851,7 @@
     "validator": "supported",
     "edn": "n/a"
    },
-   "notes": "RFC 9165 section 4. The controller is a feature name or an array of the name and a detail (a schema error otherwise). By default every feature is enabled and the data must match the base type. Given `features` (`--feature NAME`, `--no-features`), only the named features are enabled. `T .feature F` then matches while F is enabled; while it is not, the target does not match, the message names F, and a choice falls through to its other alternatives. The RFC leaves that behaviour to the tool. `ValidationResult.features_used` lists the features of the parts that matched. A generic parameter as the controller is accepted (#243).",
+   "notes": "RFC 9165 section 4. The controller is a feature name or an array of the name and a detail (a schema error otherwise). By default every feature is enabled and the data must match the base type. Given `features` (`--feature NAME`, `--no-features`), only the named features are enabled. `T .feature F` then matches while F is enabled; while it is not, the target does not match, the message names F, and a choice falls through to its other alternatives. The RFC leaves that behaviour to the tool. `ValidationResult.features_used` lists the features of the parts that matched. A generic parameter as the controller is read once the instance has its argument (`g<\"ext\">`).",
    "issues": [
     243
    ],

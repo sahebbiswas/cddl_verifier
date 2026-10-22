@@ -155,7 +155,10 @@ Generic rules are instantiated where they are used: `pair<uint, tstr>`, with
 `pair<A, B> = [A, B]`, checks a two-element array of an unsigned integer and a
 text string, as a rule, a map field or an array element. `opt<uint>`, with
 `opt<T> = T / nil`, is the choice `uint / nil`. Recursive generics such as
-`tree<T> = { v: T, ? l: tree<T> }` are checked at every depth. A generic can also be
+`tree<T> = { v: T, ? kids: [* tree<T>] }` are checked at every depth, in a repeated array
+element too (`[* g<int>]`). A generic rule is no root: when the first rule is generic
+(`g<T> = T / nil` before `r = g<int>`), the first rule that is not generic is the root, and
+data is checked against the instance with its arguments put in (#243). A generic can also be
 the argument of `.cbor` (`bstr .cbor pair<uint, tstr>`): the embedded item is
 checked against the instance. `.and` and `.within` are enforced on any
 target, including a generic structure: `non-empty<{ ? a: int }>`, with
@@ -677,8 +680,8 @@ v.validate(encode("x")).features_used   # ()            the tstr alternative mat
 v.validate(encode(4.0)).features_used   # ()            invalid
 ```
 
-A generic rule's parameter as the controller (`g<T> = int .feature T`) is accepted and
-records nothing, as generic instances are not yet expanded when data is checked (#243).
+A generic rule's parameter as the controller (`g<T> = int .feature T`) is read once the instance
+has its argument, so `r = g<"ext">` is checked and recorded like `int .feature "ext"`.
 
 ## Validation behaviour
 

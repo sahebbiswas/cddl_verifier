@@ -127,8 +127,8 @@ class LegacyTables:
             for alt in rule.type.alternatives:
                 choices.append(self._structured_type(Type((alt,)), f'{name}@{len(choices)}'))
             return
-        if self.first_definition is None and not self._is_group(rule):
-            self.first_definition = name
+        if self.first_definition is None and not self._is_group(rule) and not rule.params:
+            self.first_definition = name  # a generic rule is no root: it has no type of its own (#243)
 
         alt = rule.type.alternatives[0]
         if self._is_group(rule):
@@ -832,8 +832,22 @@ class LegacyTables:
                 # counted and checked by position (#133)
                 return Name(self._synthetic(node, path))
             return Array(_canonical_entries(
-                _map_group(node.group, lambda v, i: self._structured_type(v, f'{path}@{i}'))))
+                _map_group(node.group, lambda v, i: self._structured_type(v, f'{path}@{i}'),
+                           lambda ref, i: self._instance_entry(ref, f'{path}@{i}'))))
         return node
+
+    def _instance_entry(self, ref: GroupRef, path: str):
+        """The entry for ``* g<int>`` in a uniform array, with the arguments of ``g`` put in (#243).
+
+        A reference to a generic *type* rule is one element, so it is lifted like any
+        other: ``g`` itself has its parameter open, and would accept anything there.
+        A reference to a generic group is left as it is.
+        """
+        rule = self.resolved.lookup(ref.name) if self.resolved is not None else None
+        if rule is None or rule.kind != 'type' or len(rule.params) != len(ref.args):
+            return ref
+        return Member(ref.occurrence, None, self._structured_type(Type((Name(ref.name, ref.args),)), path),
+                      ref.comment, span=ref.span)
 
     def _structured_type(self, value, path: str):
         """*value* (an array element or a choice alternative) lifted like any
@@ -1010,8 +1024,11 @@ def _entries(group):
     return [entry for choice in group.choices for entry in choice.entries]
 
 
-def _map_group(group, fn):
-    """A copy of *group* with ``fn(value, index)`` applied to member values."""
+def _map_group(group, fn, ref_fn=None):
+    """A copy of *group* with ``fn(value, index)`` applied to member values.
+
+    With *ref_fn*, a reference to a generic rule (``g<int>``) is replaced by ``ref_fn(ref, index)``.
+    """
     from .ast import Group, GroupChoice
     choices = []
     index = 0
@@ -1021,6 +1038,8 @@ def _map_group(group, fn):
             if isinstance(entry, Member):
                 entry = Member(entry.occurrence, entry.key, fn(entry.value, index),
                                entry.comment, span=entry.span)
+            elif ref_fn is not None and isinstance(entry, GroupRef) and entry.args:
+                entry = ref_fn(entry, index)
             entries.append(entry)
             index += 1
         choices.append(GroupChoice(tuple(entries), span=choice.span))

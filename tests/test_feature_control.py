@@ -152,12 +152,15 @@ class TestEnabled(unittest.TestCase):
         self.assertTrue(check(schema, 1, features={"f"}).valid)
         self.assertFalse(check(schema, 1, features={"some detail"}).valid)
 
-    def test_a_generic_instance_is_not_expanded_so_its_parameter_names_no_feature(self):
-        # as for the other controls of a generic rule: accepted, and no feature recorded
+    def test_a_generic_instance_has_its_parameter_put_in(self):
+        # g<"x"> is int .feature "x" (#243)
         schema = 'g<T> = int .feature T\nr = g<"x">'
-        result = check(schema, 1, features=set())
-        self.assertTrue(result.valid)
-        self.assertEqual(result.features_used, ())
+        off = check(schema, 1, features=set())
+        self.assertFalse(off.valid)
+        self.assertIn("feature 'x' is not enabled", str(off.errors[0]))
+        on = check(schema, 1, features={"x"})
+        self.assertTrue(on.valid)
+        self.assertEqual(on.features_used, ("x",))
 
     def test_any_collection_of_names(self):
         for names in (["ext-int"], ("ext-int",), frozenset({"ext-int"}), iter(["ext-int"]),
